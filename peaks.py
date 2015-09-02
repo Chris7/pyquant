@@ -251,6 +251,8 @@ def findMicro(df, pos, ppm=None, start_mz=None, calc_start_mz=None, isotope=0, s
     lr = np.linspace(peak_gauss[1]-peak_gauss[2]*4, peak_gauss[1]+peak_gauss[2]*4, 1000)
     left_peak, right_peak = peak[1]-peak[2]*2, peak[1]+peak[2]*2
     int_val = integrate.simps(gauss(lr, *peak_gauss), x=lr)# if quant_method == 'integrate' else y[(y.index > left_peak) & (y.index < right_peak)].sum()
+    if not fit:
+        pass
 
     return {'int': int_val if fit else 0, 'bounds': (left, right), 'params': peak, 'error': sorted_peaks[0][1]}
 
@@ -806,6 +808,7 @@ def findEnvelope(df, measured_mz=None, theo_mz=None, max_mz=None, precursor_ppm=
     # returns the envelope of isotopic peaks as well as micro envelopes  of each individual cluster
     spacing = NEUTRON/float(charge)
     start_mz = measured_mz if isotope_offset == 0 else measured_mz+isotope_offset*NEUTRON/float(charge)
+    initial_mz = start_mz
     if max_mz is not None:
         max_mz = max_mz-spacing*0.9 if isotope_offset == 0 else max_mz+isotope_offset*NEUTRON*0.9/float(charge)
     if isotope_ppms is None:
@@ -822,6 +825,7 @@ def findEnvelope(df, measured_mz=None, theo_mz=None, max_mz=None, precursor_ppm=
 
 
     isotope_index = 0
+    use_theo = False
     # This is purposefully verbose to be more explicit
     while get_ppm(start_mz, start) > tolerance:
         # let's try using our theoretical mass
@@ -833,6 +837,7 @@ def findEnvelope(df, measured_mz=None, theo_mz=None, max_mz=None, precursor_ppm=
                 if get_ppm(last_precursor, start) > tolerance:
                     # repeat all of that for the next isotopic index
                     start_mz += spacing
+                    initial_mz += spacing
                     theo_mz += spacing
                     last_precursor += spacing
                     isotope_index += 1
@@ -842,9 +847,10 @@ def findEnvelope(df, measured_mz=None, theo_mz=None, max_mz=None, precursor_ppm=
             else:
                 start_mz += spacing
                 theo_mz += spacing
+                initial_mz += spacing
                 isotope_index += 1
         else:
-            start_mz = theo_mz
+            use_theo = True
             break
         tolerance = isotope_ppms.get(isotope_index, isotope_ppm)/1000000.0
         if isotope_index == 2 or (max_mz is not None and start >= max_mz):
@@ -853,12 +859,12 @@ def findEnvelope(df, measured_mz=None, theo_mz=None, max_mz=None, precursor_ppm=
     # we reset the isotope_index back to 1 here, so on the subsequent steps we aren't looking
     isotope_index += isotope_offset
     # find the com
-    start = findMicro(df, find_nearest_index(df.index.values, start), ppm=tolerance, start_mz=start_mz, quant_method=quant_method)
+    start = findMicro(df, find_nearest_index(df.index.values, start), ppm=tolerance, start_mz=start_mz, calc_start_mz=theo_mz, quant_method=quant_method)
     start_error = start['error']
 
     if 'params' in start:
         if start['error'] > tolerance:
-            start = last_precursor if last_precursor is not None else start_mz
+            start = last_precursor if last_precursor is not None else theo_mz if use_theo else start_mz
         else:
             start = start['params'][1]
     else:
@@ -924,7 +930,7 @@ def findEnvelope(df, measured_mz=None, theo_mz=None, max_mz=None, precursor_ppm=
         isotope_tolerance = isotope_ppms.get(isotope_index, isotope_ppm)/1000000.0
         precursor_tolerance = isotope_ppms.get(0, precursor_ppm)/1000000.0
         micro_bounds = findMicro(df, micro_index, ppm=precursor_tolerance if isotope_index == 0 else isotope_tolerance,
-                                 calc_start_mz=start_mz, start_mz=start, isotope=isotope_index, spacing=spacing, quant_method=quant_method)
+                                 calc_start_mz=start, start_mz=start_mz, isotope=isotope_index, spacing=spacing, quant_method=quant_method)
         if isotope_index == 0:
             micro_bounds['error'] = start_error
 

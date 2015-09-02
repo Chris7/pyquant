@@ -336,6 +336,10 @@ class Worker(Process):
                     all_x = sorted(isotopes_chosen.index.get_level_values('MZ').drop_duplicates())
                     for counter, (index, row) in enumerate(isotopes_chosen.groupby('RT')):
                         ax = fig.add_subplot(subplots, 1, counter+1)
+                        try:
+                            ax.set_title('Scan {} RT {}'.format(self.msn_rt_map[self.msn_rt_map==index].index[0], index))
+                        except:
+                            pass
                         colors = 'bmrk'
                         for group, color in zip(precursors.keys(), colors):
                             label_df = row[row['label'] == group]
@@ -1003,7 +1007,7 @@ def main():
                 continue
             charge = int(charge)
 
-            lightest_precursor = target_scan['mass']
+            mass_shift = 0
 
             if mods is not None:
                 shift = 0
@@ -1012,12 +1016,13 @@ def main():
                     mass = float('{0:0.5f}'.format(float(mass)))
                     if aa in silac_shifts.get(mass, {}):
                         shift += mass
-                lightest_precursor -= (float(shift)/float(charge))
+                mass_shift += (float(shift)/float(charge))
             else:
                 # assume we are the light version, include all the labels we are looking for here
                 pass
 
-            target_scan['precursor'] = lightest_precursor
+            target_scan['theor_mass'] = target_scan.get('theor_mass', target_scan.get('mass'))-mass_shift
+            target_scan['precursor'] = target_scan['mass']-mass_shift
 
             key = (quant_scan.get('id'), v.get('mod_peptide', 'mass'), v.get('charge'))
             if resume:
