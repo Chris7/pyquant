@@ -40,7 +40,8 @@ from scipy import integrate
 
 from pythomics.templates import CustomParser
 from pythomics.proteomics.parsers import GuessIterator
-from pythomics.proteomics import config, peaks
+from pythomics.proteomics import config
+import peaks
 
 RESULT_ORDER = [('peptide', 'Peptide'), ('modifications', 'Modifications'),
                 ('charge', 'Charge'), ('ms1', 'MS1 Spectrum ID'), ('scan', 'MS2 Spectrum ID'), ('rt', 'Retention Time')]
@@ -240,7 +241,12 @@ class Worker(Process):
             isotope_labels = {}
             isotopes_chosen = {}
             last_precursors = {-1: {}, 1: {}}
-            base_rt = self.msn_rt_map.searchsorted(rt, side='left' if delta == -1 else 'right')[0]
+            base_rt = self.msn_rt_map[self.msn_rt_map == rt]
+            if base_rt.empty:
+                # we subtract one because we are not an exact scan, and the precursor is the previous scan
+                base_rt = self.msn_rt_map.searchsorted(rt, side='left')[0]-1
+            else:
+                base_rt = base_rt.index[0]
             while True:
                 if len(finished) == len(precursors.keys()):
                     break
