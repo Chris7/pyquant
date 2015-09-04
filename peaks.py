@@ -373,42 +373,45 @@ def fixedMeanFit(values, peak_index=None, debug=False):
     ydata = values.fillna(0).values.astype(float)
 
     ydata /= ydata.max()
+
     rel_peak = ydata[peak_index]
+    print ydata
     # ydata = gaussian_filter1d(ydata, 1, mode='constant')
-    # fill the zeros with the average of their left/right
-    # gaussian boost
-    gauss_boost = gaussian_filter1d(ydata, 0.2, mode='constant')
-    ydata_original = np.copy(ydata)
-    for i,v in enumerate(ydata):
-        if v <= gauss_boost[i]:
-            boosted = gauss_boost[i]
-            interp = (ydata_original[i-1]+ydata_original[i+1])/2 if i >= 1 and i < len(ydata)-1 else 0
-            ydata[i] = interp if interp > boosted else boosted
-    # print ydata_original.tolist()
-    peak_left, peak_right = findPeak(gaussian_filter1d(savgol_filter(ydata, 5, 3), 2, mode='constant'), peak_index)
+    # first we want to determine if we should filter the data
+    left, right = peak_index-4, peak_index+5
+    left = left if left >=0 else 0
+    right = right if right < len(ydata) and (right-left) >= 8 else -1
+    kurtosis = []#ss.normaltest(ydata)[1] if len(ydata) > 8 else 0.5]
+    if len(ydata[left:right]) >= 8:
+        kurtosis.append(ss.normaltest(ydata[left:right])[1])
+    if kurtosis is not None and any(filter(lambda x: x<0.1 or x>0.9, kurtosis)):
+        # fill the zeros with the average of their left/right
+        # gaussian boost
+        gauss_boost = gaussian_filter1d(ydata, 0.2, mode='constant')
+        ydata_original = np.copy(ydata)
+        for i,v in enumerate(ydata):
+            if v > 0 and v <= gauss_boost[i]:
+                boosted = gauss_boost[i]
+                interp = (ydata_original[i-1]+ydata_original[i+1])/2 if i >= 1 and i < len(ydata)-1 else 0
+                ydata[i] = interp if interp > boosted else boosted
+        if len(ydata) >= 5:
+            peak_left, peak_right = findPeak(gaussian_filter1d(savgol_filter(ydata, 5, 3), 2, mode='constant'), peak_index)
+        else:
+            peak_left, peak_right = findPeak(gaussian_filter1d(ydata, 2, mode='constant'), peak_index)
+    else:
+        peak_left, peak_right = findPeak(ydata, peak_index)
     peaks = xdata[peak_left:peak_right]
     peak_min, peak_max = xdata[0], xdata[-1]
     bnds = [(rel_peak*0.75, 1), (peak_min, peak_max), (0, xdata[peak_index]-peak_min), (0, peak_max-xdata[peak_index])]
     # reset the fitting data to our bounds
-    if debug:
-        print xdata.tolist(), ydata.tolist(), peak_left, peak_index, peak_right
     if peak_index == peak_right:
         peak_index -= peak_left-1
     else:
         peak_index -= peak_left
     xdata = xdata[peak_left:peak_right]
     ydata = ydata[peak_left:peak_right]
-    # top_indices = ydata>np.percentile(ydata, 80)
-    # print top_indices
-    # ydata = ydata[top_indices]
-    # xdata = xdata[top_indices]
-    # if values.name > 729.36 and values.name < 731:
-    if debug:
-        print xdata.tolist(), ydata.tolist(), peak_left, peak_index, peak_right
     if ydata.sum() == 0:
         return None
-    if debug:
-        print peak_left, peak_right, xdata, ydata, values
     average = np.average(xdata, weights=ydata)
     variance = np.sqrt(np.average((xdata-average)**2, weights=ydata))
     if variance == 0:
@@ -420,27 +423,23 @@ def fixedMeanFit(values, peak_index=None, debug=False):
         else:
             # we have only 1 data point, most RT's fall into this width
             variance = 0.05
-    else:
-        variance = 0.05
     if variance > xdata[peak_index]-peak_min or variance > peak_max-xdata[peak_index]:
         variance = xdata[peak_index]-peak_min
     guess = [rel_peak, xdata[peak_index], variance, variance]
     # if values.name > 729.36 and values.name < 731:
     #     print guess, bnds
     args = (xdata, ydata)
-    opts = {'maxiter': 1000}
+    opts = {'maxiter': 1000, 'maxfev': 1000}
     routines = ['SLSQP', 'TNC', 'L-BFGS-B']
-    routine = routines.pop()
-    results = [optimize.minimize(bigauss_func, guess, args, method=routine, bounds=bnds, options=opts, tol=1e-10)]#, jac=gauss_jac)]
+    routine = routines.pop(0)
+    results = [optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, tol=1e-10)]#, jac=gauss_jac)]
     # if values.name > 729.36 and values.name < 731:
-    if debug:
-        print results[-1]
     while not results[-1].success and routines:
         # if values.name > 729.36 and values.name < 731:
         if debug:
             print results[-1]
-        routine = routines.pop()
-        results.append(optimize.minimize(bigauss_func, guess, args, method=routine, bounds=bnds, options=opts))#, jac=gauss_jac)
+        routine = routines.pop(0)
+        results.append(optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, tol=1e-10))#, jac=gauss_jac)
     n = len(xdata)
     if not results[-1].success:
         res = sorted(results, key=lambda x: x.fun)[0]
@@ -559,10 +558,10 @@ def findAllPeaks(values, min_dist=0, filter=False, bigauss_fit=False):
         opts = {'maxiter': 1000}
         fit_func = bigauss_func if bigauss_fit else gauss_func
         routines = ['SLSQP', 'TNC', 'L-BFGS-B', 'SLSQP']
-        routine = routines.pop()
+        routine = routines.pop(0)
         res = optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts)#, jac=gauss_jac)
         while not res.success and routines:
-            routine = routines.pop()
+            routine = routines.pop(0)
             res = optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts)#, jac=gauss_jac)
         n = len(xdata)
         k = len(res.x)

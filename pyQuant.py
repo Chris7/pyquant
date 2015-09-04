@@ -318,9 +318,11 @@ class Worker(Process):
                 ms_index += delta
 
             if isotope_labels:
-                # bookend with zeros, do the right end first because pandas will by default append there
-                combined_data[self.msn_rt_map.index[self.msn_rt_map.index.searchsorted(combined_data.columns[-1])+1]] = 0
-                combined_data[self.msn_rt_map.index[self.msn_rt_map.index.searchsorted(combined_data.columns[0])-1]] = 0
+                # bookend with zeros if there aren't any, do the right end first because pandas will by default append there
+                if combined_data.iloc[:,-1].sum() != 0:
+                    combined_data[self.msn_rt_map.index[self.msn_rt_map.index.searchsorted(combined_data.columns[-1])+1]] = 0
+                if combined_data.iloc[:,0].sum() != 0:
+                    combined_data[self.msn_rt_map.index[self.msn_rt_map.index.searchsorted(combined_data.columns[0])-1]] = 0
                 combined_data = combined_data[sorted(combined_data.columns)]
 
                 combined_data = combined_data.sort(axis='index').sort(axis='columns')
@@ -496,7 +498,8 @@ class Worker(Process):
                             peak_info[quant_label].update({'amp': amp, 'std': std, 'std2': std2, 'mean_diff': mean_diff})
                         if self.html:
                             ax = fig.add_subplot(subplot_rows, subplot_columns, fig_map.get(index))
-                            ax.plot(xdata, peaks.bigauss(xdata, *peak_params), '{}o-'.format(gc), alpha=0.7)
+                            ax.set_title('AUC: {}'.format(int(int_val)))
+                            ax.plot(xr[::25], peaks.bigauss(xr[::25], *peak_params), '{}o-'.format(gc), alpha=0.7)
                             ax.plot([start_rt, start_rt], ax.get_ylim(),'k-')
                             ax.set_ylim(0,combined_data.max().max())
                             # ax.set_ylim(0, amp)
