@@ -328,7 +328,7 @@ cdef tuple findPeak(np.ndarray[FLOAT_t, ndim=1] y, int srt):
             peak = highest_val
     return left, right
 
-cdef float get_ppm(float theoretical, float observed):
+def get_ppm(float theoretical, float observed):
     return np.abs(theoretical-observed)/theoretical
 
 def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, pos, ppm=None,
