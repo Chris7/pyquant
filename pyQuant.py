@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#!/usr/bin/env python
+# cython: linetrace=True
 from __future__ import division, unicode_literals
 
 # TODO: Threading for single files. Since much time is spent in fetching m/z records, it may be pointless
@@ -28,8 +28,8 @@ from mpl_toolkits.mplot3d import Axes3D
 from multiprocessing import Process, Queue, Manager, Array
 import ctypes
 try:
-    #from profilestats import profile
-    from memory_profiler import profile
+    from profilestats import profile
+    # from memory_profiler import profile
 except ImportError:
     pass
 from Queue import Empty
@@ -194,6 +194,7 @@ class Worker(Process):
         scan = self.reader_out.get()
         return self.convertScan(scan)
 
+    @profile(print_stats=20, sort_stats='tottime')
     def run_thing(self, params):
         try:
             html_images = {}
@@ -430,7 +431,7 @@ class Worker(Process):
                     xdata = values.index.values.astype(float)
                     ydata = values.fillna(0).values.astype(float)
                     if ydata.any():
-                        res, all_peaks = peaks.findAllPeaks(values, filter=True, bigauss_fit=True)
+                        res, all_peaks = peaks.findAllPeaks(xdata, ydata, filter=True, bigauss_fit=True)
                         # res2, all_peaks2 = peaks.findAllPeaks2(values, filter=True)
                         # if len(res.x) > 4:
                         #     print res

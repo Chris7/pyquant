@@ -1,61 +1,80 @@
+# cython: linetrace=True
 import pyximport; pyximport.install()
 import numpy as np
 cimport numpy as np
+cimport cython
+from libc.math cimport isnan
 ctypedef np.float_t FLOAT_t
+from scipy import optimize, integrate
+from scipy.ndimage.filters import gaussian_filter1d
+from scipy.signal import argrelmax, argrelmin
+from operator import itemgetter
 
-def gauss(np.array[FLOAT_t, ndim=1]x, float amp, float mu, float std):
-    return amp*np.exp(-(x - mu)**2/(2*std**2))
+cdef int within_bounds(res, bnds):
+    for i,j in zip(res.x, bnds):
+        if j[0] is not None and i < j[0]:
+            return False
+        if j[1] is not None and i > j[1]:
+            return False
+    return True
 
-def gauss_ndim(np.array[FLOAT_t, ndim=1] xdata, *args):
+def gauss(np.ndarray[FLOAT_t, ndim=1] x, float amp, float mu, float std):
+    cdef np.ndarray[FLOAT_t, ndim=1] y = amp*np.exp(-(x - mu)**2/(2*std**2))
+    return y
+
+def gauss_ndim(np.ndarray[FLOAT_t, ndim=1] xdata, *args):
     amps, mus, sigmas = args[::3], args[1::3], args[2::3]
-    data = np.zeros(len(xdata))
+    cdef np.ndarray[FLOAT_t, ndim=1] data = np.zeros(len(xdata))
     for amp, mu, sigma in zip(amps, mus, sigmas):
         data += gauss(xdata, amp, mu, sigma)
     return data
 
-def gauss_func(guess, *args):
-    xdata, ydata = args
-    data = gauss_ndim(xdata, *guess)
+def gauss_func(guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata):
+    cdef np.ndarray[FLOAT_t, ndim=1] data = gauss_ndim(xdata, *guess)
     # absolute deviation as our distance metric. Empirically found to give better results than
     # residual sum of squares for this data.
-    return sum(np.abs(ydata-data)**2)
+    cdef float residual = sum(np.abs(ydata-data)**2)
+    return residual
 
-def bigauss(np.array[FLOAT_t, ndim=1] x, float amp, float mu, float stdl, float stdr):
-    float sigma1 = stdl/1.177
-    float m1 = np.sqrt(2*np.pi)*sigma1*amp
-    float sigma2 = stdr/1.177
-    float m2 = np.sqrt(2*np.pi)*sigma2*amp
+def bigauss(np.ndarray[FLOAT_t, ndim=1] x, float amp, float mu, float stdl, float stdr):
+    cdef float sigma1 = stdl/1.177
+    cdef float m1 = np.sqrt(2*np.pi)*sigma1*amp
+    cdef float sigma2 = stdr/1.177
+    cdef float m2 = np.sqrt(2*np.pi)*sigma2*amp
     #left side
     if isinstance(x, float):
-        x = np.array([x])
-    lx = x[x<=mu]
-    int left = m1/(np.sqrt(2*np.pi)*sigma1)*np.exp(-(lx-mu)**2/(2*sigma1**2))
-    rx = x[x>mu]
-    int right = m2/(np.sqrt(2*np.pi)*sigma2)*np.exp(-(rx-mu)**2/(2*sigma2**2))
-    return np.concatenate([left, right], axis=1)
+        x = np.ndarray([x])
+    cdef np.ndarray[FLOAT_t, ndim=1] lx = x[x<=mu]
+    cdef np.ndarray[FLOAT_t, ndim=1] left = m1/(np.sqrt(2*np.pi)*sigma1)*np.exp(-(lx-mu)**2/(2*sigma1**2))
+    cdef np.ndarray[FLOAT_t, ndim=1] rx = x[x>mu]
+    cdef np.ndarray[FLOAT_t, ndim=1] right = m2/(np.sqrt(2*np.pi)*sigma2)*np.exp(-(rx-mu)**2/(2*sigma2**2))
+    cdef np.ndarray[FLOAT_t, ndim=1] y = np.concatenate([left, right], axis=1)
+    return y
 
-def bigauss_ndim(np.array[FLOAT_t, ndim=1] xdata, *args):
+def bigauss_ndim(np.ndarray[FLOAT_t, ndim=1] xdata, *args):
     amps, mus, sigmasl, sigmasr = args[::4], args[1::4], args[2::4], args[3::4]
-    data = np.zeros(len(xdata))
+    cdef np.ndarray[FLOAT_t, ndim=1] data = np.zeros(len(xdata))
     for amp, mu, sigma1, sigma2 in zip(amps, mus, sigmasl, sigmasr):
         data += bigauss(xdata, amp, mu, sigma1, sigma2)
     return data
 
 def bigauss_func(guess, *args):
-    xdata, ydata = args
-    if any([pd.isnull(i) for i in guess]):
+    cdef np.ndarray[FLOAT_t, ndim=1] xdata = args[0]
+    cdef np.ndarray[FLOAT_t, ndim=1] ydata = args[1]
+    if any([isnan(i) for i in guess]):
         return np.inf
-    data = bigauss_ndim(xdata, *guess)
+    cdef np.ndarray[FLOAT_t, ndim=1] data = bigauss_ndim(xdata, *guess)
     # absolute deviation as our distance metric. Empirically found to give better results than
     # residual sum of squares for this data.
-    return sum(np.abs(ydata-data)**2)
+    cdef float residual = sum(np.abs(ydata-data)**2)
+    return residual
 
-def fixedMeanFit(np.array[FLOAT_t, ndim=1] xdata, np.array[FLOAT_t, ndim=1] ydata, peak_index=None, debug=False):
+def fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, peak_index=None, debug=False):
 
     ydata /= ydata.max()
 
-    rel_peak = ydata[peak_index]
-    peak_loc = xdata[peak_index]
+    cdef float rel_peak = ydata[peak_index]
+    cdef float peak_loc = xdata[peak_index]
     # print xdata.tolist()
     # print ydata.tolist()
 
@@ -74,9 +93,9 @@ def fixedMeanFit(np.array[FLOAT_t, ndim=1] xdata, np.array[FLOAT_t, ndim=1] ydat
     ydata = ydata[peak_left:peak_right]
     if ydata.sum() == 0:
         return None
-    bnds = [(rel_peak*0.75, 1) if rel_peak > 0 else (0, 1), (xdata[0], xdata[-1]), (0, peak_loc-xdata[0]), (0, xdata[-1]-peak_loc)]
-    average = np.average(xdata, weights=ydata)
-    variance = np.sqrt(np.average((xdata-average)**2, weights=ydata))
+    bnds = [(rel_peak*0.75, 1.0) if rel_peak > 0 else (0.0, 1.0), (xdata[0], xdata[-1]), (0.0, peak_loc-xdata[0]), (0.0, xdata[-1]-peak_loc)]
+    cdef float average = np.average(xdata, weights=ydata)
+    cdef float variance = np.sqrt(np.average((xdata-average)**2, weights=ydata))
     if variance == 0:
         # we have a singular peak if variance == 0, so set the variance to half of the x/y spacing
         if peak_index >= 1:
@@ -115,10 +134,7 @@ def fixedMeanFit(np.array[FLOAT_t, ndim=1] xdata, np.array[FLOAT_t, ndim=1] ydat
     res.bic = bic
     return res
 
-def findAllPeaks(values, min_dist=0, filter=False, bigauss_fit=False):
-    xdata = values.index.values.astype(float)
-    ydata = values.fillna(0).values.astype(float)
-
+def findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, min_dist=0, filter=False, bigauss_fit=False):
     ydata /= ydata.max()
     ydata_peaks = np.copy(ydata)
     if filter:
@@ -143,7 +159,7 @@ def findAllPeaks(values, min_dist=0, filter=False, bigauss_fit=False):
             continue
         smaller_peaks, smaller_minima = peaks_found[peak_width]['peaks'],peaks_found[peak_width]['minima']
         larger_peaks, larger_minima = peaks_found[peak_width+1]['peaks'],peaks_found[peak_width+1]['minima']
-        if np.array_equal(smaller_peaks, larger_peaks) and np.array_equal(smaller_minima, larger_minima):
+        if set(smaller_peaks) == set(larger_peaks) and set(smaller_minima) ==  set(larger_minima):
             final_peaks[peak_width+1] = peaks_found[peak_width+1]
             if peak_width in final_peaks:
                 del final_peaks[peak_width]
@@ -237,14 +253,14 @@ def findAllPeaks(values, min_dist=0, filter=False, bigauss_fit=False):
     best_fits = sorted(fit_accuracy, key=itemgetter(1,0), reverse=True)
     return best_fits[0][2:]
 
-def findPeak(y, srt):
+cdef tuple findPeak(np.ndarray[FLOAT_t, ndim=1] y, int srt):
     # check our SNR, if it's low, lessen our window
-    left_offset = 1
-    right_offset = 2
-    lsrt = srt-left_offset if srt-left_offset > 0 else 0
-    rsrt = srt+right_offset if srt+right_offset < len(y) else len(y)
-    peak = y[srt]
-    left = 0
+    cdef int left_offset = 1
+    cdef int right_offset = 2
+    cdef int lsrt = srt-left_offset if srt-left_offset > 0 else 0
+    cdef int rsrt = srt+right_offset if srt+right_offset < len(y) else len(y)
+    cdef float peak = y[srt]
+    cdef int left = 0
     grad = y[lsrt:rsrt]
     try:
         shift = sum(np.sign(np.gradient(grad)))
@@ -311,3 +327,66 @@ def findPeak(y, srt):
             shift = None
             peak = highest_val
     return left, right
+
+cdef float get_ppm(float theoretical, float observed):
+    return np.abs(theoretical-observed)/theoretical
+
+def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, pos, ppm=None,
+              start_mz=None, calc_start_mz=None, isotope=0, spacing=0, quant_method='integrate'):
+    """
+        We want to find the boundaries of our isotopic clusters. Basically we search until our gradient
+        changes, this assumes it's roughly gaussian and there is little interference
+    """
+    # find the edges within our tolerance
+    tolerance = ppm
+    cdef float offset = spacing*isotope
+    cdef np.ndarray[FLOAT_t, ndim=1] df_empty_index = xdata[ydata==0]
+    cdef int right = np.searchsorted(df_empty_index, xdata[pos])
+    cdef int left = right-1
+    left, right = (np.searchsorted(xdata, df_empty_index[left], side='left'),
+            np.searchsorted(xdata, df_empty_index[right]))
+    right += 1
+    cdef np.ndarray[FLOAT_t, ndim=1] new_x = xdata[left:right]
+    cdef np.ndarray[FLOAT_t, ndim=1] new_y = ydata[left:right]
+    peaks, peak_centers = findAllPeaks(new_x, new_y, min_dist=(new_x[1]-new_x[0])*2)
+    if start_mz is None:
+        start_mz = xdata[pos]
+
+    # new logic is nm
+    sorted_peaks = sorted([(peaks.x[i*3:(i+1)*3], get_ppm(start_mz+offset, v)) for i,v in enumerate(peaks.x[1::3])], key=lambda x: x[1])
+    fit = True
+
+    if not filter(lambda x: x[1]<tolerance, sorted_peaks):
+        if calc_start_mz is not None:
+            sorted_peaks2 = sorted([(peaks.x[i*3:(i+1)*3], get_ppm(calc_start_mz+offset, v)) for i,v in enumerate(peaks.x[1::3])], key=lambda x: x[1])
+            if filter(lambda x: x[1]<tolerance, sorted_peaks2):
+                sorted_peaks = sorted_peaks2
+            else:
+                fit = False
+        else:
+            fit = False
+
+    peak = sorted_peaks[0][0]
+    # interpolate our mean/std to a linear range
+    from scipy.interpolate import interp1d
+    mapper = interp1d(new_x, range(len(new_x)))
+    try:
+        mu = mapper(peak[1])
+    except:
+        print 'mu', sorted_peaks, peak, new_x
+        return {'int': 0, 'error': np.inf}
+    try:
+        std = mapper(new_x[0]+np.abs(peak[2]))-mapper(new_x[0])
+    except:
+        print 'std', sorted_peaks, peak, new_x
+        return {'int': 0, 'error': np.inf}
+    peak_gauss = (peak[0]*new_y.max(), mu, std)
+    peak[0] *= new_y.max()
+
+    cdef np.ndarray[FLOAT_t, ndim=1] lr = np.linspace(peak_gauss[1]-peak_gauss[2]*4, peak_gauss[1]+peak_gauss[2]*4, 1000)
+    left_peak, right_peak = peak[1]-peak[2]*2, peak[1]+peak[2]*2
+    cdef float int_val = integrate.simps(gauss(lr, *peak_gauss), x=lr)# if quant_method == 'integrate' else y[(y.index > left_peak) & (y.index < right_peak)].sum()
+    if not fit:
+        pass
+
+    return {'int': int_val if fit else 0, 'bounds': (left, right), 'params': peak, 'error': sorted_peaks[0][1]}
