@@ -29,7 +29,7 @@ def gauss_ndim(np.ndarray[FLOAT_t, ndim=1] xdata, *args):
         data += gauss(xdata, amp, mu, sigma)
     return data
 
-def gauss_func(guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata):
+def gauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata):
     cdef np.ndarray[FLOAT_t, ndim=1] data = gauss_ndim(xdata, *guess)
     # absolute deviation as our distance metric. Empirically found to give better results than
     # residual sum of squares for this data.

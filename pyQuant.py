@@ -194,6 +194,7 @@ class Worker(Process):
         scan = self.reader_out.get()
         return self.convertScan(scan)
 
+    @profile(print_stats=20)
     def run_thing(self, params):
         try:
             html_images = {}
