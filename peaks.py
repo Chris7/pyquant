@@ -368,6 +368,14 @@ def bigauss_func( guess, *args):
     # residual sum of squares for this data.
     return sum(np.abs(ydata-data)**2)
 
+def within_bounds(res, bnds):
+    for i,j in zip(res.x, bnds):
+        if j[0] is not None and i < j[0]:
+            return False
+        if j[1] is not None and i > j[1]:
+            return False
+    return True
+
 def fixedMeanFit(values, peak_index=None, debug=False):
     xdata = values.index.values.astype(float)
     ydata = values.fillna(0).values.astype(float)
@@ -375,34 +383,16 @@ def fixedMeanFit(values, peak_index=None, debug=False):
     ydata /= ydata.max()
 
     rel_peak = ydata[peak_index]
-    print ydata
-    # ydata = gaussian_filter1d(ydata, 1, mode='constant')
-    # first we want to determine if we should filter the data
-    left, right = peak_index-4, peak_index+5
-    left = left if left >=0 else 0
-    right = right if right < len(ydata) and (right-left) >= 8 else -1
-    kurtosis = []#ss.normaltest(ydata)[1] if len(ydata) > 8 else 0.5]
-    if len(ydata[left:right]) >= 8:
-        kurtosis.append(ss.normaltest(ydata[left:right])[1])
-    if kurtosis is not None and any(filter(lambda x: x<0.1 or x>0.9, kurtosis)):
-        # fill the zeros with the average of their left/right
-        # gaussian boost
-        gauss_boost = gaussian_filter1d(ydata, 0.2, mode='constant')
-        ydata_original = np.copy(ydata)
-        for i,v in enumerate(ydata):
-            if v > 0 and v <= gauss_boost[i]:
-                boosted = gauss_boost[i]
-                interp = (ydata_original[i-1]+ydata_original[i+1])/2 if i >= 1 and i < len(ydata)-1 else 0
-                ydata[i] = interp if interp > boosted else boosted
-        if len(ydata) >= 5:
-            peak_left, peak_right = findPeak(gaussian_filter1d(savgol_filter(ydata, 5, 3), 2, mode='constant'), peak_index)
-        else:
-            peak_left, peak_right = findPeak(gaussian_filter1d(ydata, 2, mode='constant'), peak_index)
-    else:
-        peak_left, peak_right = findPeak(ydata, peak_index)
-    peaks = xdata[peak_left:peak_right]
+    peak_loc = xdata[peak_index]
+    # print xdata.tolist()
+    # print ydata.tolist()
+
+    from scipy.signal import convolve, bartlett, hamming, kaiser
+    peak_left, peak_right = findPeak(convolve(ydata, kaiser(10, 14), mode='same'), peak_index)
+    #print peak_left, peak_right
+    #print xdata.tolist()
+    #print ydata.tolist()
     peak_min, peak_max = xdata[0], xdata[-1]
-    bnds = [(rel_peak*0.75, 1), (peak_min, peak_max), (0, xdata[peak_index]-peak_min), (0, peak_max-xdata[peak_index])]
     # reset the fitting data to our bounds
     if peak_index == peak_right:
         peak_index -= peak_left-1
@@ -412,39 +402,42 @@ def fixedMeanFit(values, peak_index=None, debug=False):
     ydata = ydata[peak_left:peak_right]
     if ydata.sum() == 0:
         return None
+    bnds = [(rel_peak*0.75, 1) if rel_peak > 0 else (0, 1), (xdata[0], xdata[-1]), (0, peak_loc-xdata[0]), (0, xdata[-1]-peak_loc)]
     average = np.average(xdata, weights=ydata)
     variance = np.sqrt(np.average((xdata-average)**2, weights=ydata))
     if variance == 0:
         # we have a singular peak if variance == 0, so set the variance to half of the x/y spacing
         if peak_index >= 1:
-            variance = np.abs(xdata[peak_index]-xdata[peak_index-1])
+            variance = np.abs(peak_loc-xdata[peak_index-1])
         elif peak_index < len(xdata):
-            variance = np.abs(xdata[peak_index+1]-xdata[peak_index])
+            variance = np.abs(xdata[peak_index+1]-peak_loc)
         else:
             # we have only 1 data point, most RT's fall into this width
             variance = 0.05
     if variance > xdata[peak_index]-peak_min or variance > peak_max-xdata[peak_index]:
         variance = xdata[peak_index]-peak_min
-    guess = [rel_peak, xdata[peak_index], variance, variance]
+    guess = [rel_peak, peak_loc, variance, variance]
+    #print guess
+    #print bnds
     # if values.name > 729.36 and values.name < 731:
     #     print guess, bnds
     args = (xdata, ydata)
-    opts = {'maxiter': 1000, 'maxfev': 1000}
-    routines = ['SLSQP', 'TNC', 'L-BFGS-B']
-    routine = routines.pop(0)
-    results = [optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, tol=1e-10)]#, jac=gauss_jac)]
+    base_opts = {'maxiter': 1000, 'ftol': 1e-20}
+    routines = [('SLSQP', base_opts), ('TNC', base_opts), ('L-BFGS-B', base_opts)]
+    routine, opts = routines.pop(0)
+    results = [optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, tol=1e-20)]#, jac=gauss_jac)]
     # if values.name > 729.36 and values.name < 731:
-    while not results[-1].success and routines:
+    while routines:
         # if values.name > 729.36 and values.name < 731:
-        if debug:
-            print results[-1]
-        routine = routines.pop(0)
-        results.append(optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, tol=1e-10))#, jac=gauss_jac)
+        # if debug:
+        #     print results[-1]
+        routine, opts = routines.pop(0)
+        results.append(optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, tol=1e-20))#, jac=gauss_jac)
     n = len(xdata)
-    if not results[-1].success:
-        res = sorted(results, key=lambda x: x.fun)[0]
-    else:
-        res = results[-1]
+    # if not results[-1].success:
+    res = sorted([i for i in results if within_bounds(i, bnds)], key=lambda x: x.fun)[0]
+    # else:
+    #     res = results[-1]
     k = len(res.x)
     bic = n*np.log(res.fun/n)+k+np.log(n)
     res.bic = bic
@@ -591,7 +584,10 @@ def findPeak(y, srt):
     peak = y[srt]
     left = 0
     grad = y[lsrt:rsrt]
-    shift = sum(np.sign(np.gradient(grad)))
+    try:
+        shift = sum(np.sign(np.gradient(grad)))
+    except ValueError:
+        return 0, len(y)
     shift = 'left' if shift < 0 else 'right'
     ishift = shift
     slope_shifts = 0
@@ -855,9 +851,8 @@ def findEnvelope(df, measured_mz=None, theo_mz=None, max_mz=None, precursor_ppm=
         if isotope_index == 2 or (max_mz is not None and start >= max_mz):
             return empty_dict
 
-    # we reset the isotope_index back to 1 here, so on the subsequent steps we aren't looking
     isotope_index += isotope_offset
-    # find the com
+    # find the center
     start = findMicro(df, find_nearest_index(df.index.values, start), ppm=tolerance, start_mz=start_mz, calc_start_mz=theo_mz, quant_method=quant_method)
     start_error = start['error']
 
@@ -936,6 +931,9 @@ def findEnvelope(df, measured_mz=None, theo_mz=None, max_mz=None, precursor_ppm=
         micro_dict[isotope_index] = micro_bounds
         env_dict[isotope_index] = micro_index
         ppm_dict[isotope_index] = micro_bounds.get('error')
+
+    # if label == 'Heavy':
+    #     print micro_dict
 
 
     # in all cases, the envelope is going to be either monotonically decreasing, or a parabola (-x^2)

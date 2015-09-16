@@ -37,6 +37,7 @@ from Queue import Empty
 import argparse
 from datetime import datetime, timedelta
 from scipy import integrate
+from scipy.interpolate import UnivariateSpline
 
 from pythomics.templates import CustomParser
 from pythomics.proteomics.parsers import GuessIterator
@@ -99,27 +100,37 @@ output_group.add_argument('-o', '--out', nargs='?', help='The prefix for the fil
 
 
 class Reader(Process):
-    def __init__(self, incoming, outgoing, raw_file=None):
+    def __init__(self, incoming, outgoing, raw_file=None, spline=None):
         super(Reader, self).__init__()
         self.incoming = incoming
         self.outgoing = outgoing
         self.scan_dict = {}
         self.access_times = {}
         self.raw = raw_file
+        self.spline = spline
 
     def run(self):
         for scan_request in iter(self.incoming.get, None):
-            thread, scan_id = scan_request
+            thread, scan_id, mz_start, mz_end = scan_request
             d = self.scan_dict.get(scan_id)
             if not d:
                 scan = self.raw.getScan(scan_id)
                 scan_vals = np.array(scan.scans)
+                if self.spline:
+                    scan_vals[:,0] = scan_vals[:,0]/(1-self.spline(scan_vals[:,0])/1e6)
                 # add to our database
                 d = {'vals': scan_vals, 'rt': scan.rt, 'title': int(scan.title)}
                 self.scan_dict[scan_id] = d
                 # the scan has been stored, delete it
                 del scan
-            self.outgoing[thread].put(d)
+            if mz_start is not None or mz_end is not None:
+                out = copy.deepcopy(d)
+                mz_start = 0 if mz_start is None else mz_start
+                mz_end = out['vals'][-1,0]+1 if mz_end is None else mz_end
+                out['vals'] = out['vals'][np.where((out['vals'][:,0]>=mz_start) & (out['vals'][:,0]<=mz_end))]
+                self.outgoing[thread].put(out)
+            else:
+                self.outgoing[thread].put(d)
             now = datetime.now()
             self.access_times[scan_id] = now
             # evict scans we have not accessed in over 5 minutes
@@ -136,7 +147,8 @@ class Reader(Process):
 class Worker(Process):
     def __init__(self, queue=None, results=None, precision=6, raw_name=None, silac_labels=None, isotope_ppms=None,
                  debug=False, html=False, mono=False, precursor_ppm=5.0, isotope_ppm=2.5, quant_method='integrate',
-                 reader_in=None, reader_out=None, thread=None, fitting_run=False, msn_rt_map=None, reporter_mode=False):
+                 reader_in=None, reader_out=None, thread=None, fitting_run=False, msn_rt_map=None, reporter_mode=False,
+                 spline=None):
         super(Worker, self).__init__()
         self.precision = precision
         self.precursor_ppm = precursor_ppm
@@ -159,6 +171,10 @@ class Worker(Process):
         self.isotope_ppms = isotope_ppms
         self.quant_method = quant_method
         self.reporter_mode = reporter_mode
+        self.spline = spline
+
+    def get_calibrated_mass(self, mass):
+        return mass/(1-self.spline(mass)/1e6) if self.spline else mass
 
     def convertScan(self, scan):
         import numpy as np
@@ -167,11 +183,14 @@ class Worker(Process):
         del scan_vals
         # due to precision, we have multiple m/z values at the same place. We can eliminate this by grouping them and summing them.
         # Summation is the correct choice here because we are combining values of a precision higher than we care about.
-        return res.groupby(level=0).sum()
+        try:
+            return res.groupby(level=0).sum()
+        except:
+            sys.stderr.write('Error on {}\n'.format(scan))
 
-    def getScan(self, ms1):
+    def getScan(self, ms1, start=None, end=None):
         ms1 = int(ms1)
-        self.reader_in.put((self.thread, ms1))
+        self.reader_in.put((self.thread, ms1, start, end))
         scan = self.reader_out.get()
         return self.convertScan(scan)
 
@@ -186,7 +205,8 @@ class Worker(Process):
             charge = target_scan['charge']
 
             precursor = target_scan['precursor']
-            theor_mass = target_scan.get('theor_mass', precursor)
+            calibrated_precursor = self.get_calibrated_mass(precursor)
+            theor_mass = target_scan.get('theor_mass', calibrated_precursor)
             rt = target_scan['rt'] # this will be the RT of the target_scan, which is not always equal to the RT of the quant_scan
 
             peptide = target_scan.get('peptide')
@@ -199,6 +219,7 @@ class Worker(Process):
             data = OrderedDict()
             data['Light'] = copy.deepcopy(silac_dict)
             combined_data = pd.DataFrame()
+            highest_shift = 20
             for silac_label, silac_masses in self.silac_labels.items():
                 silac_shift=0
                 global_mass = None
@@ -223,6 +244,8 @@ class Worker(Process):
                     silac_shift += sum([global_mass for mod_aa in peptide if mod_aa not in added_residues])
                 silac_shift += cterm_mass+nterm_mass
                 # get the non-specific ones
+                if silac_shift > highest_shift:
+                    highest_shift = silac_shift
                 precursors[silac_label] = silac_shift
                 data[silac_label] = copy.deepcopy(silac_dict)
             if not precursors:
@@ -236,7 +259,7 @@ class Worker(Process):
                            'modifications': target_scan.get('modifications'), 'rt': rt}
             ms_index = 0
             delta = -1
-            theo_dist = peaks.calculate_theoretical_distribution(peptide.upper()) if peptide else None
+            theo_dist = peaks.calculate_theoretical_distribution(peptide.upper()) if peptide and self.mono else None
             spacing = config.NEUTRON/float(charge)
             isotope_labels = {}
             isotopes_chosen = {}
@@ -252,7 +275,7 @@ class Worker(Process):
                     break
                 if base_rt+ms_index == len(self.msn_rt_map) or base_rt+ms_index < 0:
                     break
-                df = self.getScan(self.msn_rt_map.index[base_rt+ms_index])
+                df = self.getScan(self.msn_rt_map.index[base_rt+ms_index], start=precursor-5, end=precursor+highest_shift)
                 found = False
                 if df is not None:
                     for precursor_label, precursor_shift in precursors.items():
@@ -260,13 +283,16 @@ class Worker(Process):
                             continue
                         if self.reporter_mode:
                             measured_precursor = precursor_shift
+                            uncalibrated_precursor = precursor_shift
                             theoretical_precursor = precursor_shift
                         else:
-                            measured_precursor = precursor+precursor_shift/float(charge)
+                            uncalibrated_precursor = precursor+precursor_shift/float(charge)
+                            measured_precursor = self.get_calibrated_mass(uncalibrated_precursor)
                             theoretical_precursor = theor_mass+precursor_shift/float(charge)
-                        data[precursor_label]['precursor'] = measured_precursor
+                        data[precursor_label]['calibrated_precursor'] = measured_precursor
+                        data[precursor_label]['precursor'] = uncalibrated_precursor
                         shift_max = shift_maxes.get(precursor_label)
-                        shift_max = precursor+shift_max/float(charge) if shift_max is not None else None
+                        shift_max = self.get_calibrated_mass(precursor+shift_max/float(charge)) if shift_max is not None else None
                         envelope = peaks.findEnvelope(df, measured_mz=measured_precursor, theo_mz=theoretical_precursor, max_mz=shift_max,
                                                       charge=charge, precursor_ppm=self.precursor_ppm, isotope_ppm=self.isotope_ppm, reporter_mode=self.reporter_mode,
                                                       isotope_ppms=self.isotope_ppms if self.fitting_run else None, quant_method=self.quant_method,
@@ -285,7 +311,7 @@ class Worker(Process):
                             if isotope in finished_isotopes[precursor_label]:
                                 continue
                             if vals.get('int') == 0:
-                                finished_isotopes[precursor_label].add(isotope)
+                                # finished_isotopes[precursor_label].add(isotope)
                                 continue
                             else:
                                 found = True
@@ -319,10 +345,19 @@ class Worker(Process):
 
             if isotope_labels:
                 # bookend with zeros if there aren't any, do the right end first because pandas will by default append there
-                if combined_data.iloc[:,-1].sum() != 0:
-                    combined_data[self.msn_rt_map.index[self.msn_rt_map.index.searchsorted(combined_data.columns[-1])+1]] = 0
-                if combined_data.iloc[:,0].sum() != 0:
-                    combined_data[self.msn_rt_map.index[self.msn_rt_map.index.searchsorted(combined_data.columns[0])-1]] = 0
+                # if combined_data.iloc[:,-1].sum() != 0:
+                combined_data = combined_data.sort(axis='index').sort(axis='columns')
+                if len(combined_data.columns) == 1:
+                    new_col = self.msn_rt_map.index[self.msn_rt_map.index.searchsorted(combined_data.columns[-1])+1]
+                else:
+                    new_col = combined_data.columns[-1]+(combined_data.columns[-2]-combined_data.columns[-1])
+                combined_data[new_col] = 0
+                # if combined_data.iloc[:,0].sum() != 0:
+                if len(combined_data.columns) == 1:
+                    new_col = self.msn_rt_map.index[self.msn_rt_map.index.searchsorted(combined_data.columns[0])-1]
+                else:
+                    new_col = combined_data.columns[0]-(combined_data.columns[1]-combined_data.columns[0])
+                combined_data[new_col] = 0
                 combined_data = combined_data[sorted(combined_data.columns)]
 
                 combined_data = combined_data.sort(axis='index').sort(axis='columns')
@@ -334,6 +369,7 @@ class Worker(Process):
 
                 isotopes_chosen = pd.DataFrame(isotopes_chosen).T
                 isotopes_chosen.index.names = ['RT', 'MZ']
+                # print isotopes_chosen.to_dict()
 
                 if self.html:
                     # make the figure of our isotopes selected
@@ -455,7 +491,7 @@ class Worker(Process):
                             continue
                         rt_values = combined_data.loc[index]
                         xdata = rt_values.index.values.astype(float)
-                        ydata = rt_values.fillna(0)
+                        ydata = rt_values.fillna(0).values.astype(float)
                         # pick the biggest within a rt cutoff of 0.2, otherwise pick closest
                         # closest_rts = sorted([(i, i['amp']) for i in values if np.abs(i['peak']-common_peak) < 0.2], key=operator.itemgetter(1), reverse=True)
                         # if not closest_rts:
@@ -463,7 +499,9 @@ class Worker(Process):
                         closest_rt = closest_rts[0][0]
                         # if we move more than a # of ms1 to the dominant peak, update to our known peak
                         gc = 'k'
-                        peak_loc = np.where(xdata == closest_rt['peak'])[0][0]
+                        pos_x = xdata[ydata>0]
+                        nearest = peaks.find_nearest_index(pos_x, closest_rt['peak'])
+                        peak_loc = np.where(xdata==pos_x[nearest])[0][0]
                         mean = closest_rt['mean']
                         amp = closest_rt['amp']
                         mean_diff = mean-xdata[common_loc]
@@ -475,7 +513,9 @@ class Worker(Process):
                             if self.debug:
                                 print quant_label, index
                                 print common_loc, peak_loc
-                            res = peaks.fixedMeanFit(rt_values, peak_index=common_loc-1, debug=self.debug)
+                            nearest = peaks.find_nearest_index(pos_x, mean)
+                            nearest_index = np.where(xdata==pos_x[nearest])[0][0]
+                            res = peaks.fixedMeanFit(xdata, ydata, peak_index=nearest_index, debug=self.debug)
                             if res is None:
                                 continue
                             amp, mean, std, std2 = res.x
@@ -486,20 +526,33 @@ class Worker(Process):
                         # int_args = (res.x[rt_index]*mval, res.x[rt_index+1], res.x[rt_index+2])
                         left, right = xdata[0]-4*std, xdata[-1]+4*std2
                         xr = np.linspace(left, right, 1000)
-                        int_val = integrate.simps(peaks.bigauss(xr, *peak_params), x=xr) if self.quant_method == 'integrate' else ydata[(ydata.index > left) & (ydata.index < right)].sum()
+                        try:
+                            int_val = integrate.simps(peaks.bigauss(xr, *peak_params), x=xr) if self.quant_method == 'integrate' else ydata[(ydata.index > left) & (ydata.index < right)].sum()
+                        except:
+                            print peptide
+                            print xdata.tolist()
+                            print ydata.tolist()
+                            print xr, peak_params
+                            continue
+                        # if int_val > 100000:
+                        #     print int_val, peak_params, left, right
                         isotope_index = isotope_labels.loc[index, 'isotope_index']
 
                         if int_val and not pd.isnull(int_val) and gc != 'c':
                             try:
                                 quant_vals[quant_label][isotope_index] += int_val
                             except KeyError:
-                                quant_vals[quant_label][isotope_index] =  int_val
+                                quant_vals[quant_label][isotope_index] = int_val
                         if peak_info.get(quant_label, {}).get('amp', -1) < amp:
                             peak_info[quant_label].update({'amp': amp, 'std': std, 'std2': std2, 'mean_diff': mean_diff})
                         if self.html:
                             ax = fig.add_subplot(subplot_rows, subplot_columns, fig_map.get(index))
-                            ax.set_title('AUC: {}'.format(int(int_val)))
-                            ax.plot(xr[::25], peaks.bigauss(xr[::25], *peak_params), '{}o-'.format(gc), alpha=0.7)
+                            try:
+                                ax.set_title('{0:0.2f} AUC: {1}'.format(index, int(int_val)))
+                            except:
+                                ax.set_title('{0:0.2f} AUC: {1}'.format(index, 'NA'))
+                            plot_points = np.linspace(xdata[0], xdata[-1], 100)
+                            ax.plot(plot_points, peaks.bigauss(plot_points, *peak_params), '{}o-'.format(gc), alpha=0.7)
                             ax.plot([start_rt, start_rt], ax.get_ylim(),'k-')
                             ax.set_ylim(0,combined_data.max().max())
                             # ax.set_ylim(0, amp)
@@ -540,7 +593,8 @@ class Worker(Process):
                 del combined_peaks
             for silac_label, silac_data in data.iteritems():
                 result_dict.update({
-                    '{}_precursor'.format(silac_label): silac_data['precursor']
+                    '{}_precursor'.format(silac_label): silac_data['precursor'],
+                    '{}_calibrated_precursor'.format(silac_label): silac_data['calibrated_precursor']
                 })
             self.results.put(result_dict)
             del result_dict
@@ -702,12 +756,16 @@ def main():
                 # print 'repeat of', mass_key, vars(scan)
                 # print found_scans[mass_key]
                 continue
+            # if str(specId) != '10479':
+            #     continue
             d = {
                 'file': fname, 'quant_scan': {'id': scan.ms1_scan.title}, 'id_scan': {
                     'id': specId, 'theor_mass': scan.getTheorMass(), 'peptide': peptide, 'mod_peptide': scan.modifiedPeptide, 'rt': scan.rt,
                     'charge': scan.charge, 'modifications': scan.getModifications(), 'mass': float(scan.mass)
                 }
              }
+            if peptide.upper() == 'SDNDELQQIAHLR':
+                print vars(scan)
             found_scans[mass_key] = d#.add(mass_key)
 
             fname = os.path.splitext(fname)[0]
@@ -738,13 +796,13 @@ def main():
     else:
         sys.stderr.write('No valid input entered. PyQuant requires at least a raw file or a processed dataset.')
         return 1
-
     sys.stderr.write('\nScans loaded.\n')
 
     labels = silac_labels.keys()
     for silac_label in labels:
         RESULT_ORDER.extend([('{}_intensity'.format(silac_label), '{} Intensity'.format(silac_label)),
                              ('{}_precursor'.format(silac_label), '{} Precursor'.format(silac_label)),
+                             ('{}_calibrated_precursor'.format(silac_label), '{} Calibrated Precursor'.format(silac_label)),
                              ('{}_rt_width'.format(silac_label), '{} RT Width'.format(silac_label)),
                              ('{}_isotopes'.format(silac_label), '{} Isotopes Found'.format(silac_label)),
                              ('{}_mean_diff'.format(silac_label), '{} Mean Offset'.format(silac_label))
@@ -762,7 +820,7 @@ def main():
     sys.stderr.write('Beginning SILAC quantification.\n')
     scan_count = len(found_scans)
     headers = ['Raw File']+[i[1] for i in RESULT_ORDER]
-    if resume:
+    if resume and os.path.exists(out):
         if not out:
             sys.stderr.write('You may only resume runs with a file output.\n')
             return -1
@@ -861,15 +919,17 @@ def main():
             )
 
     skip_map = set([])
+    all_results = []
     if resume:
         key = None
-        for entry in csv.reader(open(out.name, 'rb'), delimiter='\t'):
-            # key is filename, peptide, modifications, charge, ms2 id
-            key = (entry[0], entry[1], entry[5], entry[6], entry[8])
+        for index, entry in enumerate(csv.reader(open(out.name, 'rb'), delimiter=str('\t'))):
+            if index == 0:
+                continue
+            # key is filename, peptide, charge, target scan id, modifications
+            key = (entry[0], entry[1], entry[3], entry[5], entry[2])
+            all_results.append(entry)
             skip_map.add(key)
-        skip_map.discard(key)
 
-    all_results = []
     html_results = []
 
     silac_shifts = {}
@@ -974,14 +1034,35 @@ def main():
             scan_count = len(ion_search_list)
             raw_scans = [i[1] for i in sorted(ion_search_list, key=operator.itemgetter(0))]
 
-        reader = Reader(reader_in, reader_outs, raw_file=raw)
+        # figure out the splines for mass accuracy correction
+        spline_x = []
+        spline_y = []
+        for scan_index, v in enumerate(raw_scans):
+            target_scan = v['id_scan']
+            theor_mass = target_scan.get('theor_mass', target_scan.get('mass'))
+            observed_mass = target_scan['mass']
+            mass_error = (theor_mass-observed_mass)/theor_mass*1e6
+            spline_x.append(observed_mass)
+            spline_y.append(mass_error)
+
+        spline_df = pd.DataFrame(zip(spline_x, spline_y), columns=['Observed', 'Error'])
+        spline_df = spline_df[(spline_df['Error']<25) & (spline_df['Error']>-25)].dropna()
+        spline_df.sort('Observed', inplace=True)
+        spline_df.drop_duplicates('Observed', inplace=True)
+        if len(spline_df) > 10:
+            spline = UnivariateSpline(spline_df['Observed'].astype(float).values, spline_df['Error'].astype(float).values, s=1e6)
+        else:
+            spline = None
+
+        reader = Reader(reader_in, reader_outs, raw_file=raw, spline=spline)
         reader.start()
 
         for i in xrange(threads):
             worker = Worker(queue=in_queue, results=result_queue, raw_name=filepath, silac_labels=silac_labels,
                             debug=args.debug, html=html, mono=not args.spread, precursor_ppm=args.precursor_ppm,
                             isotope_ppm=args.isotope_ppm, isotope_ppms=None, msn_rt_map=msn_rt_map, reporter_mode=ion_compare,
-                            reader_in=reader_in, reader_out=reader_outs[i], thread=i, quant_method=args.quant_method)
+                            reader_in=reader_in, reader_out=reader_outs[i], thread=i, quant_method=args.quant_method,
+                            spline=spline)
             workers.append(worker)
             worker.start()
 
@@ -1032,10 +1113,10 @@ def main():
 
             target_scan['theor_mass'] = target_scan.get('theor_mass', target_scan.get('mass'))-mass_shift
             target_scan['precursor'] = target_scan['mass']-mass_shift
-
-            key = (quant_scan.get('id'), v.get('mod_peptide', 'mass'), v.get('charge'))
+            # key is filename, peptide, charge, target scan id, modifications
+            key = (filename, target_scan.get('peptide', ''), target_scan.get('charge'), target_scan.get('id'), target_scan.get('modifications'),)
             if resume:
-                if key in skip_map:
+                if tuple(map(str, key)) in skip_map:
                     completed += 1
                     continue
 
@@ -1126,9 +1207,11 @@ def main():
                 data[mixed_rt_diff_p] = stats.norm.cdf((data[mixed_rt_diff] - data[mixed_rt_diff].mean())/data[mixed_rt_diff].std(ddof=0))
                 data[mixed_mean_p] = stats.norm.cdf((data[mixed_mean] - data[mixed_mean].mean())/data[mixed_mean].std(ddof=0))
 
+                data[label2_hif] = data[label2_hif].astype(float)
                 data[label2_hifp] = np.log2(data[label2_hif]).replace([np.inf, -np.inf], np.nan)
                 data[label2_hifp] = stats.norm.cdf((data[label2_hifp]-data[label2_hifp].median())/data[label2_hifp].std())
 
+                data[label1_hif] = data[label1_hif].astype(float)
                 data[label1_hifp] = np.log2(data[label1_hif]).replace([np.inf, -np.inf], np.nan)
                 data[label1_hifp] = stats.norm.cdf((data[label1_hifp]-data[label1_hifp].median())/data[label2_hifp].std())
 
