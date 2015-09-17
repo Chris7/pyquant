@@ -1,7 +1,6 @@
 #!/usr/bin/env python
-# cython: linetrace=True
 from __future__ import division, unicode_literals
-
+import pyximport; pyximport.install()
 # TODO: Threading for single files. Since much time is spent in fetching m/z records, it may be pointless
 # because I/O is limiting. If so, create a thread just for I/O for processing requests the other threads
 # interface with
@@ -194,7 +193,6 @@ class Worker(Process):
         scan = self.reader_out.get()
         return self.convertScan(scan)
 
-    @profile(print_stats=20)
     def run_thing(self, params):
         try:
             html_images = {}
@@ -294,7 +292,9 @@ class Worker(Process):
                         data[precursor_label]['precursor'] = uncalibrated_precursor
                         shift_max = shift_maxes.get(precursor_label)
                         shift_max = self.get_calibrated_mass(precursor+shift_max/float(charge)) if shift_max is not None else None
-                        envelope = peaks.findEnvelope(df, measured_mz=measured_precursor, theo_mz=theoretical_precursor, max_mz=shift_max,
+                        xdata = df.index.values.astype(float)
+                        ydata = df.fillna(0).values.astype(float)
+                        envelope = peaks.findEnvelope(xdata, ydata, measured_mz=measured_precursor, theo_mz=theoretical_precursor, max_mz=shift_max,
                                                       charge=charge, precursor_ppm=self.precursor_ppm, isotope_ppm=self.isotope_ppm, reporter_mode=self.reporter_mode,
                                                       isotope_ppms=self.isotope_ppms if self.fitting_run else None, quant_method=self.quant_method,
                                                       theo_dist=theo_dist, label=precursor_label, skip_isotopes=finished_isotopes[precursor_label],
@@ -343,7 +343,6 @@ class Worker(Process):
                 if self.reporter_mode:
                     break
                 ms_index += delta
-
             if isotope_labels:
                 # bookend with zeros if there aren't any, do the right end first because pandas will by default append there
                 # if combined_data.iloc[:,-1].sum() != 0:
@@ -430,6 +429,7 @@ class Worker(Process):
 
                     xdata = values.index.values.astype(float)
                     ydata = values.fillna(0).values.astype(float)
+                    # print ydata
                     if ydata.any():
                         res, all_peaks = peaks.findAllPeaks(xdata, ydata, filter=True, bigauss_fit=True)
                         # res2, all_peaks2 = peaks.findAllPeaks2(values, filter=True)
@@ -439,17 +439,17 @@ class Worker(Process):
                         #print res1.success, res2.success, res1.fun, res2.fun, res1.bic, res2.bic
                         # res, all_peaks = (res, all_peaks) if res.bic < res2.bic else (res2, all_peaks2)
                         mval = ydata.max()
-                        rt_means = res.x[1::4]
-                        rt_amps = res.x[::4]
-                        rt_std = res.x[2::4]
-                        rt_std2 = res.x[3::4]
+                        rt_means = res[1::4]
+                        rt_amps = res[::4]
+                        rt_std = res[2::4]
+                        rt_std2 = res[3::4]
                         combined_peaks[quant_label][index] = [{'mean': i, 'amp': j*mval, 'std': l, 'std2': k, 'peak': m, 'total': values.sum()}
                                                               for i, j, l, k, m in zip(rt_means, rt_amps, rt_std, rt_std2, all_peaks)]
                     if self.html:
                         ax = fig.add_subplot(subplot_rows, subplot_columns, fig_index)
                         ax.plot(xdata, ydata, 'bo-', alpha=0.7)
                         if ydata.any():
-                            ax.plot(xdata, peaks.bigauss_ndim(xdata, *res.x)*mval, color='r')
+                            ax.plot(xdata, peaks.bigauss_ndim(xdata, res)*mval, color='r')
                         # if labely:
                         #     labely = False
                         # else:
@@ -486,6 +486,7 @@ class Worker(Process):
                 common_peak_info = [peak for i, values in combined_peaks.items() for index, value_peaks in values.iteritems() for peak in value_peaks if peak['peak'] == common_peak]
                 common_loc = np.where(xdata==common_peak)[0][0]
                 peak_info = {i: {'amp': -1, 'var': 0} for i in data.keys()}
+
                 for quant_label, quan_values in combined_peaks.items():
                     for index, values in quan_values.items():
                         if not values:
@@ -519,22 +520,22 @@ class Worker(Process):
                             res = peaks.fixedMeanFit(xdata, ydata, peak_index=nearest_index, debug=self.debug)
                             if res is None:
                                 continue
-                            amp, mean, std, std2 = res.x
+                            amp, mean, std, std2 = res
                             amp *= ydata.max()
                             gc = 'g'
                         #var_rat = closest_rt['var']/common_var
-                        peak_params = (amp,  mean, std, std2)
+                        peak_params = np.array([amp,  mean, std, std2])
                         # int_args = (res.x[rt_index]*mval, res.x[rt_index+1], res.x[rt_index+2])
                         left, right = xdata[0]-4*std, xdata[-1]+4*std2
                         xr = np.linspace(left, right, 1000)
-                        try:
-                            int_val = integrate.simps(peaks.bigauss(xr, *peak_params), x=xr) if self.quant_method == 'integrate' else ydata[(ydata.index > left) & (ydata.index < right)].sum()
-                        except:
-                            print peptide
-                            print xdata.tolist()
-                            print ydata.tolist()
-                            print xr, peak_params
-                            continue
+                        # try:
+                        int_val = integrate.simps(peaks.bigauss_ndim(xr, peak_params), x=xr) if self.quant_method == 'integrate' else ydata[(ydata.index > left) & (ydata.index < right)].sum()
+                        # except:
+                        #     print peptide
+                        #     print xdata.tolist()
+                        #     print ydata.tolist()
+                        #     print xr, peak_params
+                        #     continue
                         # if int_val > 100000:
                         #     print int_val, peak_params, left, right
                         isotope_index = isotope_labels.loc[index, 'isotope_index']
@@ -553,7 +554,7 @@ class Worker(Process):
                             except:
                                 ax.set_title('{0:0.2f} AUC: {1}'.format(index, 'NA'))
                             plot_points = np.linspace(xdata[0], xdata[-1], 100)
-                            ax.plot(plot_points, peaks.bigauss(plot_points, *peak_params), '{}o-'.format(gc), alpha=0.7)
+                            ax.plot(plot_points, peaks.bigauss_ndim(plot_points, peak_params), '{}o-'.format(gc), alpha=0.7)
                             ax.plot([start_rt, start_rt], ax.get_ylim(),'k-')
                             ax.set_ylim(0,combined_data.max().max())
                             # ax.set_ylim(0, amp)
@@ -597,6 +598,7 @@ class Worker(Process):
                     '{}_precursor'.format(silac_label): silac_data['precursor'],
                     '{}_calibrated_precursor'.format(silac_label): silac_data['calibrated_precursor']
                 })
+            result_dict.update({'ions_found': target_scan.get('ions_found')})
             self.results.put(result_dict)
             del result_dict
             del data
@@ -785,6 +787,7 @@ def main():
     elif scan_filemap:
         # determine if we want to do ms1 ion detection, ms2 ion detection, all ms2 of each file
         if args.msn_ion or args.msn_peaklist:
+            RESULT_ORDER.extend([('ions_found', 'Ions Found')])
             ion_search = True
             ions_selected = args.msn_ion if args.msn_ion else [float(i.strip()) for i in args.msn_peaklist if i]
             d = {'ions': ions_selected}
@@ -818,7 +821,7 @@ def main():
 
     workers = []
     completed = 0
-    sys.stderr.write('Beginning SILAC quantification.\n')
+    sys.stderr.write('Beginning quantification.\n')
     scan_count = len(found_scans)
     headers = ['Raw File']+[i[1] for i in RESULT_ORDER]
     if resume and os.path.exists(out):
@@ -994,10 +997,9 @@ def main():
                     }
                     ion_search_list.append((spectra_to_quant, d))
             del scan
-
         if ion_search:
+            ions = raw_scans['ions']
             for scan_id in scans_to_fetch:
-                ions = raw_scans['ions']
                 scan = raw.getScan(scan_id)
                 scan_mzs = np.array(scan.scans)
                 scan_mzs = scan_mzs[scan_mzs[:, 1] > 0][:, 0]
@@ -1005,31 +1007,37 @@ def main():
                     continue
                 mass, charge, rt = scan.mass, scan.charge, scan.rt
                 del scan
+                ions_found = []
                 for ion in ions:
                     # ion_precision = np.abs(decimal.Decimal(str(ion)).as_tuple().exponent)
                     nearest_mz = peaks.find_nearest(scan_mzs, ion)
                     if peaks.get_ppm(ion, nearest_mz) < ion_tolerance:
-                        # we have two options here. If we are quantifying a preceeding scan or the ion itself per scan
-                        if msn_for_quant == msn_for_id:
-                            spectra_to_quant = scan_id
-                            # we are quantifying the ion itself
-                            d = {
-                                'quant_scan': {'id': scan_id},
-                                'id_scan': {
-                                    'id': scan_id, 'theor_mass': ion, 'rt': rt,
-                                    'charge': charge, 'mass': float(nearest_mz)
-                                },
-                            }
-                        else:
-                            # we are identifying the ion in a particular scan, and quantifying a preceeding scan
-                            quant_msns = msn_map[msn_for_quant]
-                            # find the closest scan to this, which will be the parent scan
-                            spectra_to_quant = quant_msns.searchsorted(scan_id)
-                            d = {
-                                'quant_scan': {'id': spectra_to_quant},
-                                'id_scan': {'id': scan_id, 'rt': rt, 'charge': charge, 'mass': float(mass)},
-                            }
-                        ion_search_list.append((spectra_to_quant, d))
+                        ions_found.append('{}({})'.format(ion, nearest_mz))
+                if ions_found:
+                # we have two options here. If we are quantifying a preceeding scan or the ion itself per scan
+                    if msn_for_quant == msn_for_id:
+                        spectra_to_quant = scan_id
+                        # we are quantifying the ion itself
+                        d = {
+                            'quant_scan': {'id': scan_id},
+                            'id_scan': {
+                                'id': scan_id, 'theor_mass': ion, 'rt': rt,
+                                'charge': charge, 'mass': float(nearest_mz), 'ions_found': ';'.join(map(str, ions_found)),
+                            },
+                        }
+                    else:
+                        # we are identifying the ion in a particular scan, and quantifying a preceeding scan
+                        quant_msns = msn_map[msn_for_quant]
+                        # find the closest scan to this, which will be the parent scan
+                        spectra_to_quant = quant_msns[np.searchsorted(quant_msns, scan_id)-1]
+                        d = {
+                            'quant_scan': {'id': spectra_to_quant},
+                            'id_scan': {
+                                'id': scan_id, 'rt': rt, 'charge': charge,
+                                'mass': float(mass), 'ions_found': ';'.join(map(str, ions_found))
+                            },
+                        }
+                    ion_search_list.append((spectra_to_quant, d))
 
         if ion_search or all_msn:
             scan_count = len(ion_search_list)
@@ -1082,7 +1090,7 @@ def main():
                 # figure out the ms-1 from the ms level we are at
                 quant_msns = msn_map[msn_for_quant]
                 # find the closest scan to this, which will be the parent scan
-                msn_to_quant = quant_msns.searchsorted(scanId)
+                msn_to_quant = quant_msns[np.searchsorted(quant_msns, scanId)-1]
                 quant_scan['id'] = msn_to_quant
 
             rt = target_scan.get('rt', scan_rt_map.get(scanId))
