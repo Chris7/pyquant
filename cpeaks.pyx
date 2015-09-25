@@ -39,7 +39,7 @@ cpdef float gauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, nd
     cdef float residual = sum(np.abs(ydata-data)**2)
     return residual
 
-cpdef np.ndarray[FLOAT_t, ndim=1] bigauss(np.ndarray[FLOAT_t, ndim=1] x, float amp, float mu, float stdl, float stdr):
+cdef np.ndarray[FLOAT_t, ndim=1] bigauss(np.ndarray[FLOAT_t, ndim=1] x, float amp, float mu, float stdl, float stdr):
     cdef float sigma1 = stdl/1.177
     cdef float m1 = np.sqrt(2*np.pi)*sigma1*amp
     cdef float sigma2 = stdr/1.177
@@ -73,8 +73,6 @@ cpdef float bigauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, 
 
 cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata,
                                        int peak_index=1, debug=False):
-
-
     cdef float rel_peak = ydata[peak_index]
     cdef float peak_loc = xdata[peak_index]
     cdef int peak_left, peak_right

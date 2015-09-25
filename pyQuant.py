@@ -253,7 +253,7 @@ class Worker(Process):
             shift_maxes = {i: j for i,j in zip(precursors.keys(), precursors.values()[1:])}
             finished = set([])
             finished_isotopes = {i: set([]) for i in precursors.keys()}
-            result_dict = {'peptide': scan_info.get('mod_peptide', peptide),
+            result_dict = {'peptide': target_scan.get('mod_peptide', peptide),
                            'scan': scanId, 'ms1': ms1, 'charge': charge,
                            'modifications': target_scan.get('modifications'), 'rt': rt}
             ms_index = 0
@@ -370,6 +370,7 @@ class Worker(Process):
                 isotopes_chosen = pd.DataFrame(isotopes_chosen).T
                 isotopes_chosen.index.names = ['RT', 'MZ']
                 # print isotopes_chosen.to_dict()
+                label_fig_row = {v: i+1 for i,v in enumerate(precursors.keys())}
 
                 if self.html:
                     # make the figure of our isotopes selected
@@ -400,12 +401,21 @@ class Worker(Process):
                     subplot_rows = len(precursors.keys())+1
                     subplot_columns = pd.Series(isotope_labels['label']).value_counts().iloc[0]+1
                     fig = plt.figure(figsize=(subplot_columns*3 if subplot_columns*3 < 300 else 300, subplot_rows*4 if subplot_rows*4 < 300 else 300))
-                    ax = fig.add_subplot(subplot_rows, subplot_columns, 1, projection='3d')
-                    X=combined_data.columns.astype(float).values
-                    Y=combined_data.index.astype(float).values
-                    Z=combined_data.fillna(0).values
-                    Xi,Yi = np.meshgrid(X, Y)
-                    ax.plot_wireframe(Yi, Xi, Z, cmap=plt.cm.coolwarm)
+                    combined_ax = fig.add_subplot(subplot_rows, subplot_columns, 1, projection='3d')
+                    for group, values in isotope_labels.groupby('label'):
+                        X=combined_data.loc[values.index].columns.astype(float).values
+                        Y=combined_data.loc[values.index].index.astype(float).values
+                        Z=combined_data.loc[values.index].fillna(0).values
+                        Xi,Yi = np.meshgrid(X, Y)
+                        combined_ax.plot_wireframe(Yi, Xi, Z, cmap=plt.cm.coolwarm)
+                        ax = fig.add_subplot(subplot_rows, subplot_columns, label_fig_row.get(group)*subplot_columns+1, projection='3d')
+                        for i in values.index:
+                            Y = combined_data.loc[i].name.astype(float)
+                            X = combined_data.loc[i].index.astype(float).values
+                            Z = combined_data.loc[i].fillna(0).values
+                            Xi,Yi = np.meshgrid(X, Y)
+                            ax.plot_wireframe(Yi, Xi, Z, cmap=plt.cm.coolwarm)
+                        plt.xticks(values.index.values, ['{0:0.2f}'.format(i) for i in values.index])
 
                 combined_peaks = defaultdict(dict)
                 plot_index = {}
@@ -414,7 +424,7 @@ class Worker(Process):
                     fig_nums[label].append(mz)
                 labelx = False
                 labely = False
-                label_fig_row = {v: i+1 for i,v in enumerate(precursors.keys())}
+
                 for row_num, (index, values) in enumerate(combined_data.iterrows()):
                     quant_label = isotope_labels.loc[index, 'label']
                     if self.html:
@@ -528,16 +538,7 @@ class Worker(Process):
                         # int_args = (res.x[rt_index]*mval, res.x[rt_index+1], res.x[rt_index+2])
                         left, right = xdata[0]-4*std, xdata[-1]+4*std2
                         xr = np.linspace(left, right, 1000)
-                        # try:
                         int_val = integrate.simps(peaks.bigauss_ndim(xr, peak_params), x=xr) if self.quant_method == 'integrate' else ydata[(ydata.index > left) & (ydata.index < right)].sum()
-                        # except:
-                        #     print peptide
-                        #     print xdata.tolist()
-                        #     print ydata.tolist()
-                        #     print xr, peak_params
-                        #     continue
-                        # if int_val > 100000:
-                        #     print int_val, peak_params, left, right
                         isotope_index = isotope_labels.loc[index, 'isotope_index']
 
                         if int_val and not pd.isnull(int_val) and gc != 'c':
@@ -767,8 +768,6 @@ def main():
                     'charge': scan.charge, 'modifications': scan.getModifications(), 'mass': float(scan.mass)
                 }
              }
-            if peptide.upper() == 'SDNDELQQIAHLR':
-                print vars(scan)
             found_scans[mass_key] = d#.add(mass_key)
 
             fname = os.path.splitext(fname)[0]
