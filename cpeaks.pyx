@@ -439,7 +439,7 @@ def find_nearest_index(np.ndarray[FLOAT_t, ndim=1] array, value):
         return idx
 
 def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, measured_mz=None, theo_mz=None, max_mz=None, precursor_ppm=5, isotope_ppm=2.5, isotope_ppms=None, charge=2, debug=False,
-                 isotope_offset=0, theo_dist=None, label=None, skip_isotopes=None, last_precursor=None, quant_method='integrate', reporter_mode=False):
+                 isotope_offset=0, isotopologue_limit=-1, theo_dist=None, label=None, skip_isotopes=None, last_precursor=None, quant_method='integrate', reporter_mode=False):
     # returns the envelope of isotopic peaks as well as micro envelopes  of each individual cluster
     cdef float spacing = NEUTRON/float(charge)
     start_mz = measured_mz if isotope_offset == 0 else measured_mz+isotope_offset*NEUTRON/float(charge)
@@ -507,7 +507,7 @@ def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] 
     valid_locations2 = OrderedDict()
     valid_locations2[isotope_index] = [(0, start, find_nearest_index(non_empty, start))]
 
-    if not reporter_mode:
+    if not reporter_mode and (isotopologue_limit == -1 or len(valid_locations2) < isotopologue_limit):
         isotope_index += 1
         pos = find_nearest_index(non_empty, start)+1
         offset = isotope_index*spacing
@@ -538,6 +538,8 @@ def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] 
                 offset = spacing*isotope_index
                 displacement = get_ppm(start+offset, current_loc)
                 valid_locations = []
+                if len(valid_locations2) >= isotopologue_limit:
+                    break
             elif last_displacement is not None and displacement > last_displacement and not valid_locations:
                 break
             last_displacement = displacement

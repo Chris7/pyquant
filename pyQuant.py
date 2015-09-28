@@ -58,8 +58,6 @@ raw_group.add_argument('--spread', help="Assume there is spread of the isotopic 
 
 search_group = parser.add_argument_group("Search Information")
 parser.add_processed_ms(group=search_group, required=False)
-search_group.add_argument('--filemap', help="By default, the mzML file is assumed to be a derivation of the scan filename. " \
-                                     "If this is not true, this file provides a correct mapping.")
 search_group.add_argument('--skip', help="If true, skip scans with missing files in the mapping.", action='store_true')
 search_group.add_argument('--peptide', help="The peptide(s) to limit quantification to.", type=str, nargs='*')
 
@@ -88,6 +86,10 @@ ion_search_group.add_argument('--msn-quant-from', help='The ms level to quantify
 quant_parameters = parser.add_argument_group('Quantification Parameters')
 quant_parameters.add_argument('--quant-method', help='The process to use for quantification. Default: Integrate for ms1, sum for ms2+.', choices=['integrate', 'sum'], default='integrate')
 quant_parameters.add_argument('--reporter-ion', help='We are quantifying from reporter ions. As such, we only analyze a single scan.', action='store_true')
+quant_parameters.add_argument('--isotopologue-limit', help='How many isotopologues to quantify', type=int, default=-1)
+quant_parameters.add_argument('--overlapping-mz', help='This declares the mz values will overlap. It is useful for data such as neucode, but not needed for only SILAC labeling.', action='store_true')
+quant_parameters.add_argument('--labels-needed', help='How many labels need to be detected to quantify a scan (ie if you have a 2 state experiment and set this to 2, it will only quantify scans where both occur.', default=1, type=int)
+quant_parameters.add_argument('--min-resolution', help='The minimal resolving power of a scan to consider for quantification. Useful for skipping low-res scans', default=0, type=float)
 
 output_group = parser.add_argument_group("Output Options")
 output_group.add_argument('--debug', help="This will output debug information and graphs.", action='store_true')
@@ -96,6 +98,10 @@ output_group.add_argument('--resume', help="Will resume from the last run. Only 
 output_group.add_argument('--sample', help="How much of the data to sample. Enter as a decimal (ie 1.0 for everything, 0.1 for 10%%)", type=float, default=1.0)
 output_group.add_argument('--disable-stats', help="Disable confidence statistics on data.", action='store_true')
 output_group.add_argument('-o', '--out', nargs='?', help='The prefix for the file output', type=str)
+
+convenience_group = parser.add_argument_group('Convenience Parameters')
+convenience_group.add_argument('--neucode', help='This will select parameters specific for neucode. Note: You still must define a labeling scheme.')
+convenience_group.add_argument('--isobaric-tags', help='This will select parameters specific for isobaric tag based labeling (TMT/iTRAQ).')
 
 
 class Reader(Process):
@@ -147,7 +153,7 @@ class Worker(Process):
     def __init__(self, queue=None, results=None, precision=6, raw_name=None, silac_labels=None, isotope_ppms=None,
                  debug=False, html=False, mono=False, precursor_ppm=5.0, isotope_ppm=2.5, quant_method='integrate',
                  reader_in=None, reader_out=None, thread=None, fitting_run=False, msn_rt_map=None, reporter_mode=False,
-                 spline=None):
+                 spline=None, isotopologue_limit=-1, labels_needed=1, overlapping_mz=False, min_resolution=0):
         super(Worker, self).__init__()
         self.precision = precision
         self.precursor_ppm = precursor_ppm
@@ -171,6 +177,10 @@ class Worker(Process):
         self.quant_method = quant_method
         self.reporter_mode = reporter_mode
         self.spline = spline
+        self.isotopologue_limit = isotopologue_limit
+        self.labels_needed = labels_needed
+        self.overlapping_mz = overlapping_mz
+        self.min_resolution = min_resolution
 
     def get_calibrated_mass(self, mass):
         return mass/(1-self.spline(mass)/1e6) if self.spline else mass
@@ -183,9 +193,9 @@ class Worker(Process):
         # due to precision, we have multiple m/z values at the same place. We can eliminate this by grouping them and summing them.
         # Summation is the correct choice here because we are combining values of a precision higher than we care about.
         try:
-            return res.groupby(level=0).sum()
+            return res.groupby(level=0).sum() if not res.empty else None
         except:
-            sys.stderr.write('Error on {}\n'.format(scan))
+            sys.stderr.write('Converting scan error {}\n{}\n{}\n'.format(traceback.format_exc(), res, scan))
 
     def getScan(self, ms1, start=None, end=None):
         ms1 = int(ms1)
@@ -263,20 +273,39 @@ class Worker(Process):
             isotope_labels = {}
             isotopes_chosen = {}
             last_precursors = {-1: {}, 1: {}}
+            # our rt might sometimes be an approximation, such as from X!Tandem which requires some transformations
             base_rt = self.msn_rt_map[self.msn_rt_map == rt]
             if base_rt.empty:
                 # we subtract one because we are not an exact scan, and the precursor is the previous scan
-                base_rt = self.msn_rt_map.searchsorted(rt, side='left')[0]-1
+                base_rt = np.searchsorted(self.msn_rt_map.values, rt)-1
             else:
-                base_rt = base_rt.index[0]
+                base_rt = np.where(self.msn_rt_map.index==base_rt.index[0])[0][0]
+            scans_to_skip = set([])
             while True:
                 if len(finished) == len(precursors.keys()):
                     break
                 if base_rt+ms_index == len(self.msn_rt_map) or base_rt+ms_index < 0:
                     break
-                df = self.getScan(self.msn_rt_map.index[base_rt+ms_index], start=precursor-5, end=precursor+highest_shift)
+                next_scan = base_rt+ms_index
+                if next_scan in scans_to_skip:
+                    ms_index += delta
+                    continue
+                else:
+                    try:
+                        df = self.getScan(self.msn_rt_map.index[next_scan], start=precursor-5, end=precursor+highest_shift)
+                    except:
+                        pass
+                    # check if it's a low res scan, if so skip it
+                    if self.min_resolution and df is not None:
+                        scan_resolution = np.average(df.index[1:]/np.array([df.index[i]-df.index[i-1] for i in xrange(1,len(df))]))
+                        # print self.msn_rt_map.index[next_scan], self.min_resolution, scan_resolution
+                        if scan_resolution < self.min_resolution:
+                            scans_to_skip.add(next_scan)
+                            ms_index += delta
+                            continue
                 found = False
                 if df is not None:
+                    labels_found = set([])
                     for precursor_label, precursor_shift in precursors.items():
                         if precursor_label in finished:
                             continue
@@ -291,14 +320,14 @@ class Worker(Process):
                         data[precursor_label]['calibrated_precursor'] = measured_precursor
                         data[precursor_label]['precursor'] = uncalibrated_precursor
                         shift_max = shift_maxes.get(precursor_label)
-                        shift_max = self.get_calibrated_mass(precursor+shift_max/float(charge)) if shift_max is not None else None
+                        shift_max = self.get_calibrated_mass(precursor+shift_max/float(charge)) if shift_max is not None and self.overlapping_mz is False else None
                         xdata = df.index.values.astype(float)
                         ydata = df.fillna(0).values.astype(float)
                         envelope = peaks.findEnvelope(xdata, ydata, measured_mz=measured_precursor, theo_mz=theoretical_precursor, max_mz=shift_max,
                                                       charge=charge, precursor_ppm=self.precursor_ppm, isotope_ppm=self.isotope_ppm, reporter_mode=self.reporter_mode,
                                                       isotope_ppms=self.isotope_ppms if self.fitting_run else None, quant_method=self.quant_method,
                                                       theo_dist=theo_dist, label=precursor_label, skip_isotopes=finished_isotopes[precursor_label],
-                                                      last_precursor=last_precursors[delta].get(precursor_label, measured_precursor))
+                                                      last_precursor=last_precursors[delta].get(precursor_label, measured_precursor), isotopologue_limit=self.isotopologue_limit)
                         if not envelope['envelope']:
                             finished.add(precursor_label)
                             continue
@@ -316,6 +345,7 @@ class Worker(Process):
                                 continue
                             else:
                                 found = True
+                                labels_found.add(precursor_label)
                             selected[measured_precursor+isotope*spacing] = vals.get('int')
                             vals['isotope'] = isotope
                             isotope_labels[measured_precursor+isotope*spacing] = {'label': precursor_label, 'isotope_index': isotope}
@@ -329,6 +359,13 @@ class Worker(Process):
                             combined_data = pd.concat([combined_data, selected], axis=1).fillna(0)
                         del envelope
                         del selected
+                    if len(labels_found) < self.labels_needed:
+                        found = False
+                        if df is not None and df.name in combined_data.columns:
+                            del combined_data[df.name]
+                            for i in isotopes_chosen.keys():
+                                if i[0] == df.name:
+                                    del isotopes_chosen[i]
                 if found is False or np.abs(ms_index) > 75:
                     # the 75 check is in case we're in something crazy. We should already have the elution profile of the ion
                     # of interest, else we're in an LC contaminant that will never end.
@@ -343,18 +380,18 @@ class Worker(Process):
                 if self.reporter_mode:
                     break
                 ms_index += delta
-            if isotope_labels:
+            if isotope_labels and not combined_data.empty:
                 # bookend with zeros if there aren't any, do the right end first because pandas will by default append there
                 # if combined_data.iloc[:,-1].sum() != 0:
                 combined_data = combined_data.sort(axis='index').sort(axis='columns')
                 if len(combined_data.columns) == 1:
-                    new_col = self.msn_rt_map.index[self.msn_rt_map.index.searchsorted(combined_data.columns[-1])+1]
+                    new_col = self.msn_rt_map.iloc[self.msn_rt_map.searchsorted(combined_data.columns[-1])+1].values[0]
                 else:
                     new_col = combined_data.columns[-1]+(combined_data.columns[-2]-combined_data.columns[-1])
                 combined_data[new_col] = 0
                 # if combined_data.iloc[:,0].sum() != 0:
                 if len(combined_data.columns) == 1:
-                    new_col = self.msn_rt_map.index[self.msn_rt_map.index.searchsorted(combined_data.columns[0])-1]
+                    new_col = self.msn_rt_map.iloc[self.msn_rt_map.searchsorted(combined_data.columns[0])-1].values[0]
                 else:
                     new_col = combined_data.columns[0]-(combined_data.columns[1]-combined_data.columns[0])
                 combined_data[new_col] = 0
@@ -379,6 +416,7 @@ class Worker(Process):
                     subplots = len(isotopes_chosen.index.get_level_values('RT').drop_duplicates())
                     fig = plt.figure(figsize=(10, subplots*3 if subplots*3 < 300 else 300))
                     all_x = sorted(isotopes_chosen.index.get_level_values('MZ').drop_duplicates())
+                    x_spacing = (min([all_x[i]-all_x[i-1] for i in xrange(1, len(all_x))]) if len(all_x) > 2 else spacing)/4.0
                     for counter, (index, row) in enumerate(isotopes_chosen.groupby('RT')):
                         ax = fig.add_subplot(subplots, 1, counter+1)
                         try:
@@ -389,7 +427,7 @@ class Worker(Process):
                         for group, color in zip(precursors.keys(), colors):
                             label_df = row[row['label'] == group]
                             x = label_df['amplitude'].index.get_level_values('MZ')
-                            ax.bar(x, label_df['amplitude'], width=spacing/4.0, facecolor=color, align='center')
+                            ax.bar(x, label_df['amplitude'], width=x_spacing, facecolor=color, align='center')
                         ax.set_xticks(all_x)
                         ax.set_xticklabels([])
                         ax.set_xlim([all_x[0]-0.5, all_x[-1]+0.5])
@@ -403,11 +441,6 @@ class Worker(Process):
                     fig = plt.figure(figsize=(subplot_columns*3 if subplot_columns*3 < 300 else 300, subplot_rows*4 if subplot_rows*4 < 300 else 300))
                     combined_ax = fig.add_subplot(subplot_rows, subplot_columns, 1, projection='3d')
                     for group, values in isotope_labels.groupby('label'):
-                        X=combined_data.loc[values.index].columns.astype(float).values
-                        Y=combined_data.loc[values.index].index.astype(float).values
-                        Z=combined_data.loc[values.index].fillna(0).values
-                        Xi,Yi = np.meshgrid(X, Y)
-                        combined_ax.plot_wireframe(Yi, Xi, Z, cmap=plt.cm.coolwarm)
                         ax = fig.add_subplot(subplot_rows, subplot_columns, label_fig_row.get(group)*subplot_columns+1, projection='3d')
                         for i in values.index:
                             Y = combined_data.loc[i].name.astype(float)
@@ -415,6 +448,7 @@ class Worker(Process):
                             Z = combined_data.loc[i].fillna(0).values
                             Xi,Yi = np.meshgrid(X, Y)
                             ax.plot_wireframe(Yi, Xi, Z, cmap=plt.cm.coolwarm)
+                            combined_ax.plot_wireframe(Yi, Xi, Z, cmap=plt.cm.coolwarm)
                         plt.xticks(values.index.values, ['{0:0.2f}'.format(i) for i in values.index])
 
                 combined_peaks = defaultdict(dict)
@@ -457,8 +491,8 @@ class Worker(Process):
                                                               for i, j, l, k, m in zip(rt_means, rt_amps, rt_std, rt_std2, all_peaks)]
                     if self.html:
                         ax = fig.add_subplot(subplot_rows, subplot_columns, fig_index)
-                        ax.plot(xdata, ydata, 'bo-', alpha=0.7)
-                        if ydata.any():
+                        if ydata.any() and self.quant_method == 'integrate':
+                            ax.plot(xdata, ydata, 'bo-', alpha=0.7)
                             ax.plot(xdata, peaks.bigauss_ndim(xdata, res)*mval, color='r')
                         # if labely:
                         #     labely = False
@@ -466,8 +500,6 @@ class Worker(Process):
                         #     ax.set_yticklabels([])
                         # if labelx:
                         #     labelx = False
-                        ax.set_xticks(xdata[::int(len(xdata)/5)+1])
-                        ax.set_xticklabels(['{0:.2f} '.format(i) for i in xdata[::int(len(xdata)/5)+1]], rotation=45, ha='right')
                         # else:
                         #     ax.set_xticklabels([])
                 # get two most common peak, pick the closest to our RT
@@ -492,7 +524,11 @@ class Worker(Process):
 
                 common_peaks = new_common if new_common.any() else common_peaks
                 common_peaks_deltas = sorted([(i, np.abs(i-start_rt)) for i in common_peaks.index], key=operator.itemgetter(1))
-                common_peak = common_peaks_deltas[0][0]
+                try:
+                    common_peak = common_peaks_deltas[0][0]
+                except:
+                    print common_peaks
+                    common_peak = common_peaks_deltas[0][0]
                 common_peak_info = [peak for i, values in combined_peaks.items() for index, value_peaks in values.iteritems() for peak in value_peaks if peak['peak'] == common_peak]
                 common_loc = np.where(xdata==common_peak)[0][0]
                 peak_info = {i: {'amp': -1, 'var': 0} for i in data.keys()}
@@ -538,7 +574,7 @@ class Worker(Process):
                         # int_args = (res.x[rt_index]*mval, res.x[rt_index+1], res.x[rt_index+2])
                         left, right = xdata[0]-4*std, xdata[-1]+4*std2
                         xr = np.linspace(left, right, 1000)
-                        int_val = integrate.simps(peaks.bigauss_ndim(xr, peak_params), x=xr) if self.quant_method == 'integrate' else ydata[(ydata.index > left) & (ydata.index < right)].sum()
+                        int_val = integrate.simps(peaks.bigauss_ndim(xr, peak_params), x=xr) if self.quant_method == 'integrate' else ydata[(xdata > left) & (xdata < right)].sum()
                         isotope_index = isotope_labels.loc[index, 'isotope_index']
 
                         if int_val and not pd.isnull(int_val) and gc != 'c':
@@ -555,9 +591,14 @@ class Worker(Process):
                             except:
                                 ax.set_title('{0:0.2f} AUC: {1}'.format(index, 'NA'))
                             plot_points = np.linspace(xdata[0], xdata[-1], 100)
-                            ax.plot(plot_points, peaks.bigauss_ndim(plot_points, peak_params), '{}o-'.format(gc), alpha=0.7)
+                            if self.quant_method == 'integrate':
+                                ax.plot(plot_points, peaks.bigauss_ndim(plot_points, peak_params), '{}o-'.format(gc), alpha=0.7)
+                            else:
+                                ax.bar(xdata, ydata, width=((xdata[1]-xdata[0]) if len(xdata) > 1 else 1)/4, alpha=0.7)
                             ax.plot([start_rt, start_rt], ax.get_ylim(),'k-')
                             ax.set_ylim(0,combined_data.max().max())
+                            ax.set_xticks(xdata[::int(len(xdata)/5)+1])
+                            ax.set_xticklabels(['{0:.2f} '.format(i) for i in xdata[::int(len(xdata)/5)+1]], rotation=45, ha='right')
                             # ax.set_ylim(0, amp)
 
                 for silac_label1 in data.keys():
@@ -597,7 +638,7 @@ class Worker(Process):
             for silac_label, silac_data in data.iteritems():
                 result_dict.update({
                     '{}_precursor'.format(silac_label): silac_data['precursor'],
-                    '{}_calibrated_precursor'.format(silac_label): silac_data['calibrated_precursor']
+                    '{}_calibrated_precursor'.format(silac_label): silac_data.get('calibrated_precursor', silac_data['precursor'])
                 })
             result_dict.update({'ions_found': target_scan.get('ions_found')})
             self.results.put(result_dict)
@@ -617,6 +658,10 @@ class Worker(Process):
 def main():
     args = parser.parse_args()
     source = args.processed.name if args.processed else None
+    isotopologue_limit = args.isotopologue_limit
+    isotopologue_limit = isotopologue_limit if isotopologue_limit else None
+    labels_needed = args.labels_needed
+    overlapping_mz = args.overlapping_mz
     threads = args.p
     skip = args.skip
     out = args.out
@@ -654,6 +699,7 @@ def main():
     name_mapping = {}
 
     if args.label_scheme:
+        silac_labels = {}
         label_info = pd.read_table(args.label_scheme.name, sep='\t', header=None, dtype='str')
         try:
             label_info.columns = ['Label', 'AA', 'Mass', 'UserName']
@@ -682,18 +728,18 @@ def main():
     all_msn = False # we just have a raw file
     ion_search = False # we have an ion we want to find
 
-    if args.tsv:
-        dat = pd.read_table(source, sep='\t')
+    input_found = None
+    try:
+        results = GuessIterator(source, full=True, store=False, peptide=args.peptide)
+        input_found = 'ms'
+    except AttributeError:
+        try:
+            results = pd.read_table(source, sep='\t')
+            input_found = 'tsv'
+        except:
+            pass
 
-        # tsv_group.add_argument('--tsv', help='Indicate the procesed argument is a delimited file.', action='store_true')
-        # tsv_group.add_argument('--label', help='The column indicating the label state of the peptide. If not found, entry assumed to be light variant.', default='Labeling State')
-        # tsv_group.add_argument('--peptide-col', help='The column indicating the peptide.', default='Sequence')
-        # tsv_group.add_argument('--rt', help='The column indicating the retention time.', default='Retention time')
-        # tsv_group.add_argument('--mz', help='The column indicating the MZ value of the precursor ion. This is not the MH+.', default='m/z')
-        # tsv_group.add_argument('--scan-col', help='The column indicating the scan corresponding to the ion.', default='MS/MS Scan Number')
-        # tsv_group.add_argument('--charge', help='The column indicating the charge state of the ion.', default='Charge')
-        # tsv_group.add_argument('--source', help='The column indicating the raw file the scan is contained in. If absent, defauts to data file', default='Raw file')
-
+    if input_found == 'tsv':
         peptide_col = args.peptide_col
         scan_col = args.scan_col
         precursor_col = args.mz
@@ -701,7 +747,7 @@ def main():
         charge_col = args.charge
         file_col = args.source
         label_col = args.label
-        for index, row in enumerate(dat.iterrows()):
+        for index, row in enumerate(results.iterrows()):
             if index%1000 == 0:
                 sys.stderr.write('.')
             row_index, i = row
@@ -717,7 +763,7 @@ def main():
                 if fname not in scan_filemap:
                     if skip:
                         continue
-                    sys.stderr.write('{0} not found in filemap. Filemap is {1}.'.format(fname, scan_filemap))
+                    sys.stderr.write('{0} not found in filemap. Filemap is {1}. If you wish to ignore this message, add --skip to your input arguments.'.format(fname, scan_filemap))
                     return 1
             mass_key = (specId, fname)
             if mass_key in found_scans:
@@ -738,8 +784,7 @@ def main():
                 raw_files[i[file_col]].append(d)
             except:
                 raw_files[i[file_col]] = [d]
-    elif source:
-        results = GuessIterator(source, full=True, store=False, peptide=args.peptide)
+    elif input_found == 'ms':
         if not (args.label_scheme or args.label_method):
             silac_labels.update(results.getSILACLabels())
 
@@ -762,8 +807,10 @@ def main():
                 continue
             # if str(specId) != '10479':
             #     continue
+            # sometimes we have no ms1 scan
+            ms1_scan = scan.ms1_scan.title if hasattr(scan, 'ms1_scan') else None
             d = {
-                'file': fname, 'quant_scan': {'id': scan.ms1_scan.title}, 'id_scan': {
+                'file': fname, 'quant_scan': {'id': ms1_scan}, 'id_scan': {
                     'id': specId, 'theor_mass': scan.getTheorMass(), 'peptide': peptide, 'mod_peptide': scan.modifiedPeptide, 'rt': scan.rt,
                     'charge': scan.charge, 'modifications': scan.getModifications(), 'mass': float(scan.mass)
                 }
@@ -783,7 +830,7 @@ def main():
             except KeyError:
                 raw_files[fname] = [d]
             del scan
-    elif scan_filemap:
+    if scan_filemap and not args.processed:
         # determine if we want to do ms1 ion detection, ms2 ion detection, all ms2 of each file
         if args.msn_ion or args.msn_peaklist:
             RESULT_ORDER.extend([('ions_found', 'Ions Found')])
@@ -796,7 +843,7 @@ def main():
             all_msn = True
             for i in scan_filemap:
                 raw_files[i] = [1]
-    else:
+    if not scan_filemap and input_found is None:
         sys.stderr.write('No valid input entered. PyQuant requires at least a raw file or a processed dataset.')
         return 1
     sys.stderr.write('\nScans loaded.\n')
@@ -971,7 +1018,7 @@ def main():
                 sys.stderr.write('.')
             if scan is None:
                 break
-            scan_id = int(scan.id)
+            scan_id = int(scan.title)
             try:
                 msn_map[scan.ms_level] = np.append(msn_map[scan.ms_level], scan_id)
             except KeyError:
@@ -1070,7 +1117,8 @@ def main():
                             debug=args.debug, html=html, mono=not args.spread, precursor_ppm=args.precursor_ppm,
                             isotope_ppm=args.isotope_ppm, isotope_ppms=None, msn_rt_map=msn_rt_map, reporter_mode=ion_compare,
                             reader_in=reader_in, reader_out=reader_outs[i], thread=i, quant_method=args.quant_method,
-                            spline=spline)
+                            spline=spline, isotopologue_limit=isotopologue_limit, labels_needed=labels_needed,
+                            overlapping_mz=overlapping_mz, min_resolution=args.min_resolution)
             workers.append(worker)
             worker.start()
 
@@ -1079,6 +1127,7 @@ def main():
         # peptides -- we want to use those masses before calculating where it should be). This may not
         # be possible for all types of input though, figure this out.
         quant_map = {}
+        msn_rt_map_series = pd.Series(msn_rt_map)
         scans_to_submit = []
         for scan_index, v in enumerate(raw_scans):
             target_scan = v['id_scan']
@@ -1094,7 +1143,7 @@ def main():
 
             rt = target_scan.get('rt', scan_rt_map.get(scanId))
             if rt is None:
-                rt = float(rt)
+                rt = float(msn_rt_map[msn_to_quant])
                 target_scan['rt'] = rt
 
             mods = target_scan.get('modifications')
