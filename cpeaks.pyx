@@ -372,57 +372,66 @@ def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] yda
     # find the edges within our tolerance
     cdef float tolerance
     tolerance = ppm
-    cdef float offset = spacing*isotope
+    cdef float offset, int_val
+    offset = spacing*isotope
     cdef np.ndarray[FLOAT_t, ndim=1] df_empty_index = xdata[ydata==0]
-    cdef int right = np.searchsorted(df_empty_index, xdata[pos])
-    cdef int left = right-1
-    left, right = (np.searchsorted(xdata, df_empty_index[left], side='left'),
-            np.searchsorted(xdata, df_empty_index[right]))
-    right += 1
-    cdef np.ndarray[FLOAT_t, ndim=1] new_x = xdata[left:right]
-    cdef np.ndarray[FLOAT_t, ndim=1] new_y = ydata[left:right]
-    peaks, peak_centers = findAllPeaks(new_x, new_y, min_dist=(new_x[1]-new_x[0])*2.0)
-    if start_mz is None:
-        start_mz = xdata[pos]
+    cdef int right, left
+    cdef np.ndarray[FLOAT_t, ndim=1] new_x, new_y, lr
+    if len(df_empty_index) == 0:
+        right = pos+1
+        left = pos
+        peak = (ydata[pos], xdata[pos], 0.01)
+        ret_dict = {'int': ydata[pos], 'bounds': (left, right), 'params': peak, 'error': 0}
+    else:
+        right = np.searchsorted(df_empty_index, xdata[pos])
+        left = right-1
+        left, right = (np.searchsorted(xdata, df_empty_index[left], side='left'),
+                np.searchsorted(xdata, df_empty_index[right]))
+        right += 1
+        new_x = xdata[left:right]
+        new_y = ydata[left:right]
+        peaks, peak_centers = findAllPeaks(new_x, new_y, min_dist=(new_x[1]-new_x[0])*2.0)
+        if start_mz is None:
+            start_mz = xdata[pos]
 
-    # new logic is nm
-    sorted_peaks = sorted([(peaks[i*3:(i+1)*3], get_ppm(start_mz+offset, v)) for i,v in enumerate(peaks[1::3])], key=itemgetter(1))
-    fit = True
+        sorted_peaks = sorted([(peaks[i*3:(i+1)*3], get_ppm(start_mz+offset, v)) for i,v in enumerate(peaks[1::3])], key=itemgetter(1))
+        fit = True
 
-    if not within_tolerance(sorted_peaks, tolerance):
-        if calc_start_mz is not None:
-            sorted_peaks2 = sorted([(peaks[i*3:(i+1)*3], get_ppm(calc_start_mz+offset, v)) for i,v in enumerate(peaks[1::3])], key=itemgetter(1))
-            if filter(lambda x: x[1]<tolerance, sorted_peaks2):
-                sorted_peaks = sorted_peaks2
+        if not within_tolerance(sorted_peaks, tolerance):
+            if calc_start_mz is not None:
+                sorted_peaks2 = sorted([(peaks[i*3:(i+1)*3], get_ppm(calc_start_mz+offset, v)) for i,v in enumerate(peaks[1::3])], key=itemgetter(1))
+                if filter(lambda x: x[1]<tolerance, sorted_peaks2):
+                    sorted_peaks = sorted_peaks2
+                else:
+                    fit = False
             else:
                 fit = False
-        else:
-            fit = False
 
-    peak = sorted_peaks[0][0]
-    # interpolate our mean/std to a linear range
-    from scipy.interpolate import interp1d
-    mapper = interp1d(new_x, range(len(new_x)))
-    try:
-        mu = mapper(peak[1])
-    except:
-        print 'mu', sorted_peaks, peak, new_x
-        return {'int': 0, 'error': np.inf}
-    try:
-        std = mapper(new_x[0]+np.abs(peak[2]))-mapper(new_x[0])
-    except:
-        print 'std', sorted_peaks, peak, new_x
-        return {'int': 0, 'error': np.inf}
-    peak_gauss = (peak[0]*new_y.max(), mu, std)
-    peak[0] *= new_y.max()
+        peak = sorted_peaks[0][0]
+        # interpolate our mean/std to a linear range
+        from scipy.interpolate import interp1d
+        mapper = interp1d(new_x, range(len(new_x)))
+        try:
+            mu = mapper(peak[1])
+        except:
+            print 'mu', sorted_peaks, peak, new_x
+            return {'int': 0, 'error': np.inf}
+        try:
+            std = mapper(new_x[0]+np.abs(peak[2]))-mapper(new_x[0])
+        except:
+            print 'std', sorted_peaks, peak, new_x
+            return {'int': 0, 'error': np.inf}
+        peak_gauss = (peak[0]*new_y.max(), mu, std)
+        peak[0] *= new_y.max()
 
-    cdef np.ndarray[FLOAT_t, ndim=1] lr = np.linspace(peak_gauss[1]-peak_gauss[2]*4, peak_gauss[1]+peak_gauss[2]*4, 1000)
-    left_peak, right_peak = peak[1]-peak[2]*2, peak[1]+peak[2]*2
-    cdef float int_val = integrate.simps(gauss(lr, peak_gauss[0], peak_gauss[1], peak_gauss[2]), x=lr)# if quant_method == 'integrate' else y[(y.index > left_peak) & (y.index < right_peak)].sum()
-    if not fit:
-        pass
+        lr = np.linspace(peak_gauss[1]-peak_gauss[2]*4, peak_gauss[1]+peak_gauss[2]*4, 1000)
+        left_peak, right_peak = peak[1]-peak[2]*2, peak[1]+peak[2]*2
+        int_val = integrate.simps(gauss(lr, peak_gauss[0], peak_gauss[1], peak_gauss[2]), x=lr) if quant_method == 'integrate' else ydata[(xdata > left_peak) & (xdata < right_peak)].sum()
+        if not fit:
+            pass
+        ret_dict = {'int': int_val if fit else 0, 'bounds': (left, right), 'params': peak, 'error': sorted_peaks[0][1]}
 
-    return {'int': int_val if fit else 0, 'bounds': (left, right), 'params': peak, 'error': sorted_peaks[0][1]}
+    return ret_dict
 
 def find_nearest(np.ndarray[FLOAT_t, ndim=1] array, value):
     return array[find_nearest_index(array, value)]

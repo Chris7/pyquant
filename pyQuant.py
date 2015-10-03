@@ -84,7 +84,7 @@ ion_search_group.add_argument('--msn-ppm', help='The error tolerance for identif
 ion_search_group.add_argument('--msn-quant-from', help='The ms level to quantify values from. i.e. if we are identifying an ion in ms2, we can quantify it in ms1 (or ms2). Default: msn value-1', type=int, default=None)
 
 quant_parameters = parser.add_argument_group('Quantification Parameters')
-quant_parameters.add_argument('--quant-method', help='The process to use for quantification. Default: Integrate for ms1, sum for ms2+.', choices=['integrate', 'sum'], default='integrate')
+quant_parameters.add_argument('--quant-method', help='The process to use for quantification. Default: Integrate for ms1, sum for ms2+.', choices=['integrate', 'sum'], default=None)
 quant_parameters.add_argument('--reporter-ion', help='We are quantifying from reporter ions. As such, we only analyze a single scan.', action='store_true')
 quant_parameters.add_argument('--isotopologue-limit', help='How many isotopologues to quantify', type=int, default=-1)
 quant_parameters.add_argument('--overlapping-mz', help='This declares the mz values will overlap. It is useful for data such as neucode, but not needed for only SILAC labeling.', action='store_true')
@@ -674,6 +674,11 @@ def main():
     msn_for_quant = args.msn_quant_from if args.msn_quant_from else msn_for_id-1
     ion_compare = args.reporter_ion
     msn_ppm = args.msn_ppm
+    quant_method = args.quant_method
+    if msn_for_quant == 1 and quant_method is None:
+        quant_method = 'integrate'
+    elif msn_for_quant > 1 and quant_method is None:
+        quant_method = 'sum'
 
     scan_filemap = {}
 
@@ -732,7 +737,7 @@ def main():
     try:
         results = GuessIterator(source, full=True, store=False, peptide=args.peptide)
         input_found = 'ms'
-    except AttributeError:
+    except (AttributeError, TypeError):
         try:
             results = pd.read_table(source, sep='\t')
             input_found = 'tsv'
@@ -1116,7 +1121,7 @@ def main():
             worker = Worker(queue=in_queue, results=result_queue, raw_name=filepath, silac_labels=silac_labels,
                             debug=args.debug, html=html, mono=not args.spread, precursor_ppm=args.precursor_ppm,
                             isotope_ppm=args.isotope_ppm, isotope_ppms=None, msn_rt_map=msn_rt_map, reporter_mode=ion_compare,
-                            reader_in=reader_in, reader_out=reader_outs[i], thread=i, quant_method=args.quant_method,
+                            reader_in=reader_in, reader_out=reader_outs[i], thread=i, quant_method=quant_method,
                             spline=spline, isotopologue_limit=isotopologue_limit, labels_needed=labels_needed,
                             overlapping_mz=overlapping_mz, min_resolution=args.min_resolution)
             workers.append(worker)
@@ -1129,6 +1134,8 @@ def main():
         quant_map = {}
         msn_rt_map_series = pd.Series(msn_rt_map)
         scans_to_submit = []
+
+        lowest_label = min([j for i,v in silac_labels.items() for j in v])
         for scan_index, v in enumerate(raw_scans):
             target_scan = v['id_scan']
             quant_scan = v['quant_scan']
@@ -1154,22 +1161,26 @@ def main():
                 continue
             charge = int(charge)
 
-            mass_shift = 0
-
-            if mods is not None:
-                shift = 0
-                for mod in filter(lambda x: x, mods.split('|')):
-                    aa, pos, mass, type = mod.split(',', 3)
-                    mass = float('{0:0.5f}'.format(float(mass)))
-                    if aa in silac_shifts.get(mass, {}):
-                        shift += mass
-                mass_shift += (float(shift)/float(charge))
+            if msn_for_quant != 1:
+                target_scan['theor_mass'] = lowest_label
+                target_scan['precursor'] = lowest_label
             else:
-                # assume we are the light version, include all the labels we are looking for here
-                pass
+                mass_shift = 0
 
-            target_scan['theor_mass'] = target_scan.get('theor_mass', target_scan.get('mass'))-mass_shift
-            target_scan['precursor'] = target_scan['mass']-mass_shift
+                if mods is not None:
+                    shift = 0
+                    for mod in filter(lambda x: x, mods.split('|')):
+                        aa, pos, mass, type = mod.split(',', 3)
+                        mass = float('{0:0.5f}'.format(float(mass)))
+                        if aa in silac_shifts.get(mass, {}):
+                            shift += mass
+                    mass_shift += (float(shift)/float(charge))
+                else:
+                    # assume we are the light version, include all the labels we are looking for here
+                    pass
+
+                target_scan['theor_mass'] = target_scan.get('theor_mass', target_scan.get('mass'))-mass_shift
+                target_scan['precursor'] = target_scan['mass']-mass_shift
             # key is filename, peptide, charge, target scan id, modifications
             key = (filename, target_scan.get('peptide', ''), target_scan.get('charge'), target_scan.get('id'), target_scan.get('modifications'),)
             if resume:
