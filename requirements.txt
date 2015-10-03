@@ -2,3 +2,4 @@ git+git://github.com/pandeylab/pythomics.git
 pandas
 matplotlib
 scipy
+cython
