@@ -37,6 +37,8 @@ from Queue import Empty
 import argparse
 from datetime import datetime, timedelta
 from scipy import integrate
+from scipy.stats import linregress
+from scipy.interpolate import interp1d
 from scipy.interpolate import UnivariateSpline
 
 from pythomics.templates import CustomParser
@@ -156,12 +158,13 @@ class Reader(Process):
                 del self.access_times[i]
         sys.stderr.write('reader done\n')
 
+
 class Worker(Process):
     def __init__(self, queue=None, results=None, precision=6, raw_name=None, silac_labels=None, isotope_ppms=None,
                  debug=False, html=False, mono=False, precursor_ppm=5.0, isotope_ppm=2.5, quant_method='integrate',
                  reader_in=None, reader_out=None, thread=None, fitting_run=False, msn_rt_map=None, reporter_mode=False,
                  spline=None, isotopologue_limit=-1, labels_needed=1, overlapping_mz=False, min_resolution=0, min_scans=3,
-                 quant_msn_map=None, mrm=True, mrm_pair_info=None):
+                 quant_msn_map=None, mrm=False, mrm_pair_info=None):
         super(Worker, self).__init__()
         self.precision = precision
         self.precursor_ppm = precursor_ppm
@@ -169,6 +172,7 @@ class Worker(Process):
         self.queue=queue
         self.reader_in, self.reader_out = reader_in, reader_out
         self.msn_rt_map = pd.Series(msn_rt_map)
+        self.msn_rt_map.sort()
         self.results = results
         self.silac_labels = {'Light': {}} if silac_labels is None else silac_labels
         self.shifts = {0: "Light"}
@@ -196,9 +200,52 @@ class Worker(Process):
         if mrm:
             self.quant_mrm_map = {label: list(group) for label, group in groupby(self.quant_msn_map, key=operator.itemgetter(0))}
 
-
     def get_calibrated_mass(self, mass):
         return mass/(1-self.spline(mass)/1e6) if self.spline else mass
+
+    def replaceOutliers(self, common_peaks):
+        x = []
+        y = []
+        keys = []
+        y2 = []
+        for i,v in common_peaks.items():
+            for isotope, peaks in v.items():
+                for peak_index, peak in enumerate(peaks):
+                    keys.append((i,isotope,peak_index))
+                    x.append(peak['mean'])
+                    y.append(peak['std'])
+                    y2.append(peak['std2'])
+        from sklearn.covariance import EllipticEnvelope
+        classifier = EllipticEnvelope(contamination=0.4)
+        data = np.array([x,y]).T
+        try:
+            classifier.fit(data)
+        except ValueError:
+            # singular matrix
+            x1_mean, x1_std = data[0,0], data[0,1]
+        else:
+            x1_outliers = [i for i,v in enumerate(classifier.decision_function(data)) if v < 0]
+            # print x1_outliers, [keys[i] for i in x1_outliers]
+            x1_mean, x1_std = classifier.location_
+            for index in x1_outliers:
+                indexer = keys[index]
+                #print indexer
+                common_peaks[indexer[0]][indexer[1]][indexer[2]]['mean'] = x1_mean
+                common_peaks[indexer[0]][indexer[1]][indexer[2]]['std'] = x1_std
+        data = np.array([x, y2]).T
+        try:
+            classifier.fit(data)
+        except ValueError:
+            pass
+        else:
+            x2_outliers = [i for i,v in enumerate(classifier.decision_function(data)) if v < 0]
+            # print x2_outliers, [keys[i] for i in x2_outliers]
+            x2_mean, x2_std = classifier.location_
+            for index in x2_outliers:
+                indexer = keys[index]
+                common_peaks[indexer[0]][indexer[1]][indexer[2]]['mean'] = x2_mean
+                common_peaks[indexer[0]][indexer[1]][indexer[2]]['std2'] = x2_std
+        return x1_mean
 
     def convertScan(self, scan):
         import numpy as np
@@ -296,19 +343,22 @@ class Worker(Process):
             last_precursors = {-1: {}, 1: {}}
             # our rt might sometimes be an approximation, such as from X!Tandem which requires some transformations
             initial_scan = find_scan(self.quant_msn_map, ms1)
-            current_scan = initial_scan
+            current_scan = None
             scans_to_skip = set([])
             not_found = 0
             if self.mrm:
                 mrm_label = mrm_labels.pop() if mrm_info is not None else 'Light'
                 mass = mass if mrm_info is None else mrm_info[mrm_label]
+            last_peak_height = {i: defaultdict(int) for i in precursors.keys()}
             while True:
-                if len(finished) == len(precursors.keys()):
+                if len(finished) == len(precursors.keys()) and delta != -1:
                     break
                 map_to_search = self.quant_mrm_map[mass] if self.mrm else self.quant_msn_map
-                print mrm_label, mass
-                current_scan = find_prior_scan(map_to_search, current_scan) if delta == -1 else find_next_scan(map_to_search, current_scan)
-                found = False
+                if current_scan is None:
+                    current_scan = initial_scan
+                else:
+                    current_scan = find_prior_scan(map_to_search, current_scan) if delta == -1 else find_next_scan(map_to_search, current_scan)
+                found = set([])
                 if current_scan is not None:
                     if current_scan in scans_to_skip:
                         continue
@@ -321,7 +371,6 @@ class Worker(Process):
                             if scan_resolution < self.min_resolution:
                                 scans_to_skip.add(current_scan)
                                 continue
-                    last_peak_height = {i: 0.0 for i in precursors.keys()}
                     if df is not None:
                         labels_found = set([])
                         xdata = df.index.values.astype(float)
@@ -363,19 +412,18 @@ class Worker(Process):
                                     if ms_index == 0:
                                         last_precursors[delta*-1][precursor_label] = envelope['micro_envelopes'][0]['params'][1]
                                     last_precursors[delta][precursor_label] = envelope['micro_envelopes'][0]['params'][1]
-                                current_peak_height = 0
                                 added_keys = []
                                 for isotope, vals in envelope['micro_envelopes'].iteritems():
                                     if isotope in finished_isotopes[precursor_label]:
                                         continue
                                     peak_intensity = vals.get('int')
-                                    if peak_intensity == 0:
+                                    if peak_intensity == 0 or peak_intensity < last_peak_height[precursor_label][isotope]*0.10:
                                         # finished_isotopes[precursor_label].add(isotope)
                                         continue
                                     else:
-                                        found = True
+                                        found.add(precursor_label)
                                         labels_found.add(precursor_label)
-                                    current_peak_height += peak_intensity
+                                    last_peak_height[precursor_label][isotope] = peak_intensity
                                     selected[measured_precursor+isotope*spacing] = peak_intensity
                                     vals['isotope'] = isotope
                                     isotope_labels[measured_precursor+isotope*spacing] = {'label': precursor_label, 'isotope_index': isotope}
@@ -383,11 +431,6 @@ class Worker(Process):
                                     added_keys.append(key)
                                     isotopes_chosen[key] = {'label': precursor_label, 'isotope_index': isotope, 'amplitude': peak_intensity}
                                 del envelope
-                                if current_peak_height < last_peak_height[precursor_label]*0.10:
-                                    finished.add(precursor_label)
-                                    for i in added_keys:
-                                        del isotopes_chosen[i]
-                                    continue
                             selected = pd.Series(selected, name=df.name).to_frame()
                             if df.name in combined_data.columns:
                                 combined_data = combined_data.add(selected, axis='index', fill_value=0)
@@ -395,20 +438,22 @@ class Worker(Process):
                                 combined_data = pd.concat([combined_data, selected], axis=1).fillna(0)
                             del selected
                         if not self.mrm and len(labels_found) < self.labels_needed:
-                            found = False
+                            found.discard(precursor_label)
                             if df is not None and df.name in combined_data.columns:
                                 del combined_data[df.name]
                                 for i in isotopes_chosen.keys():
                                     if i[0] == df.name:
                                         del isotopes_chosen[i]
                         del df
-                if found is False or np.abs(ms_index) > 75:
-                    not_found += 1
+                if not found or np.abs(ms_index) > 75:
+                    not_found += 2
                     # the 75 check is in case we're in something crazy. We should already have the elution profile of the ion
                     # of interest, else we're in an LC contaminant that will never end.
                     if not_found >= 2:
+                        not_found = 0
                         if delta == -1:
                             delta = 1
+                            last_peak_height = {i: defaultdict(int) for i in precursors.keys()}
                             current_scan = initial_scan
                             finished = set([])
                             finished_isotopes = {i: set([]) for i in precursors.keys()}
@@ -419,6 +464,7 @@ class Worker(Process):
                                     mass = mass if mrm_info is None else mrm_info[mrm_label]
                                     delta = -1
                                     current_scan = self.quant_mrm_map[mass][0][1]
+                                    last_peak_height = {i: defaultdict(int) for i in precursors.keys()}
                                     initial_scan = current_scan
                                     finished = set([])
                                     finished_isotopes = {i: set([]) for i in precursors.keys()}
@@ -436,21 +482,21 @@ class Worker(Process):
                 # bookend with zeros if there aren't any, do the right end first because pandas will by default append there
                 # if combined_data.iloc[:,-1].sum() != 0:
                 combined_data = combined_data.sort(axis='index').sort(axis='columns')
+                start_rt = rt
                 if len(combined_data.columns) == 1:
-                    new_col = self.msn_rt_map.iloc[self.msn_rt_map.searchsorted(combined_data.columns[-1])+1].values[0]
+                    try:
+                        new_col = self.msn_rt_map.iloc[self.msn_rt_map.searchsorted(combined_data.columns[-1])+1].values[0]
+                    except:
+                        print combined_data.columns
+                        print self.msn_rt_map
                 else:
-                    new_col = combined_data.columns[-1]+(combined_data.columns[-2]-combined_data.columns[-1])
+                    new_col = combined_data.columns[-1]+(combined_data.columns[-1]-combined_data.columns[-2])
                 combined_data[new_col] = 0
-                # if combined_data.iloc[:,0].sum() != 0:
-                if len(combined_data.columns) == 1:
-                    new_col = self.msn_rt_map.iloc[self.msn_rt_map.searchsorted(combined_data.columns[0])-1].values[0]
-                else:
-                    new_col = combined_data.columns[0]-(combined_data.columns[1]-combined_data.columns[0])
+                new_col = combined_data.columns[0]-(combined_data.columns[1]-combined_data.columns[0])
                 combined_data[new_col] = 0
                 combined_data = combined_data[sorted(combined_data.columns)]
 
                 combined_data = combined_data.sort(axis='index').sort(axis='columns')
-                start_rt = rt
                 quant_vals = defaultdict(dict)
                 isotope_labels = pd.DataFrame(isotope_labels).T
 
@@ -501,6 +547,10 @@ class Worker(Process):
                             ax.plot_wireframe(Yi, Xi, Z, cmap=plt.cm.coolwarm)
                             combined_ax.plot_wireframe(Yi, Xi, Z, cmap=plt.cm.coolwarm)
                         plt.xticks(values.index.values, ['{0:0.2f}'.format(i) for i in values.index])
+                    if peptide:
+                        plt.suptitle(peptide)
+                    elif mass:
+                        plt.suptitle(mass)
 
                 combined_peaks = defaultdict(dict)
                 plot_index = {}
@@ -524,9 +574,11 @@ class Worker(Process):
 
                     xdata = values.index.values.astype(float)
                     ydata = values.fillna(0).values.astype(float)
+                    mapper = interp1d(xdata, ydata)
+                    rt_peak = mapper(start_rt)
                     # print ydata
                     if sum(ydata>0) >= self.min_scans:
-                        res, all_peaks = peaks.findAllPeaks(xdata, ydata, filter=True, bigauss_fit=True)
+                        res, all_peaks = peaks.findAllPeaks(xdata, ydata, filter=True, bigauss_fit=True, rt_peak=rt_peak)
                         # res2, all_peaks2 = peaks.findAllPeaks2(values, filter=True)
                         # if len(res.x) > 4:
                         #     print res
@@ -555,36 +607,40 @@ class Worker(Process):
                         #     ax.set_xticklabels([])
                 # get two most common peak, pick the closest to our RT
                 # we may need to add a check for a minimal # of in for max distance from the RT as well here.
-                if self.mrm:
-                    common_peaks = pd.Series([sorted(value_peaks, key=lambda x: x['amp'], reverse=True)[0]['peak'] for i, values in combined_peaks.items() for index, value_peaks in values.iteritems()]).value_counts()
-                else:
-                    common_peaks = pd.Series([peak['peak'] for i, values in combined_peaks.items() for index, value_peaks in values.iteritems() for peak in value_peaks]).value_counts()
-                common_peaks = common_peaks.sort_index()
-                tcommon_peaks = common_peaks[common_peaks>=4]
-
-                # combine peaks that are separated by a single scan
-                spillover_peaks = tcommon_peaks.index.to_series().apply(lambda x: np.where(xdata==x)[0][0])
-                spillover_peaks = spillover_peaks.sort_index()
-                spillover = defaultdict(list)
-                for index, value in spillover_peaks.iteritems():
-                    spillover_matches = spillover_peaks==(value+1)
-                    if spillover_matches.any():
-                        spillover[spillover_peaks[spillover_matches].index[0]].extend(spillover.get(index, [index]))
-                    else:
-                        spillover[index].extend([index])
-                new_common = pd.Series(0, index=spillover.keys())
-                for i,v in spillover.iteritems():
-                    new_common[i] += sum([tcommon_peaks[val] for val in v])
-
-                common_peaks = new_common if new_common.any() else common_peaks
-                common_peaks_deltas = sorted([(i, np.abs(i-start_rt)) for i in common_peaks.index], key=operator.itemgetter(1))
-                try:
-                    common_peak = common_peaks_deltas[0][0]
-                except:
-                    print common_peaks
-                    common_peak = common_peaks_deltas[0][0]
-                common_peak_info = [peak for i, values in combined_peaks.items() for index, value_peaks in values.iteritems() for peak in value_peaks if peak['peak'] == common_peak]
-                common_loc = np.where(xdata==common_peak)[0][0]
+                #print combined_peaks
+                common_peak = self.replaceOutliers(combined_peaks)
+                #print combined_peaks
+                # if self.mrm:
+                #     common_peaks = pd.Series([sorted(value_peaks, key=lambda x: x['amp'], reverse=True)[0]['peak'] for i, values in combined_peaks.items() for index, value_peaks in values.iteritems()]).value_counts()
+                # else:
+                #     common_peaks = pd.Series([peak['peak'] for i, values in combined_peaks.items() for index, value_peaks in values.iteritems() for peak in value_peaks]).value_counts()
+                # print combined_peaks
+                # common_peaks = common_peaks.sort_index()
+                # tcommon_peaks = common_peaks[common_peaks>=4]
+                #
+                # # combine peaks that are separated by a single scan
+                # spillover_peaks = tcommon_peaks.index.to_series().apply(lambda x: np.where(xdata==x)[0][0])
+                # spillover_peaks = spillover_peaks.sort_index()
+                # spillover = defaultdict(list)
+                # for index, value in spillover_peaks.iteritems():
+                #     spillover_matches = spillover_peaks==(value+1)
+                #     if spillover_matches.any():
+                #         spillover[spillover_peaks[spillover_matches].index[0]].extend(spillover.get(index, [index]))
+                #     else:
+                #         spillover[index].extend([index])
+                # new_common = pd.Series(0, index=spillover.keys())
+                # for i,v in spillover.iteritems():
+                #     new_common[i] += sum([tcommon_peaks[val] for val in v])
+                #
+                # common_peaks = new_common if new_common.any() else common_peaks
+                # common_peaks_deltas = sorted([(i, np.abs(i-start_rt)) for i in common_peaks.index], key=operator.itemgetter(1))
+                # try:
+                #     common_peak = common_peaks_deltas[0][0]
+                # except:
+                #     print common_peaks
+                #     common_peak = common_peaks_deltas[0][0]
+                # common_peak_info = [peak for i, values in combined_peaks.items() for index, value_peaks in values.iteritems() for peak in value_peaks if peak['peak'] == common_peak]
+                common_loc = peaks.find_nearest_index(xdata, common_peak)#np.where(xdata==common_peak)[0][0]
                 peak_info = {i: {'amp': -1, 'var': 0} for i in self.mrm_pair_info.columns} if self.mrm else {i: {'amp': -1, 'var': 0} for i in data.keys()}
 
                 for quant_label, quan_values in combined_peaks.items():
@@ -610,7 +666,7 @@ class Worker(Process):
                         mean_diff = np.abs(mean_diff/closest_rt['std'] if mean_diff < 0 else mean_diff/closest_rt['std2'])
                         std = closest_rt['std']
                         std2 = closest_rt['std2']
-                        if len(xdata) >= 3 and (mean_diff > 2 or (np.abs(peak_loc-common_loc) > 2 and mean_diff > 2)):
+                        if False and len(xdata) >= 3 and (mean_diff > 2 or (np.abs(peak_loc-common_loc) > 2 and mean_diff > 2)):
                             # fixed mean fit
                             if self.debug:
                                 print quant_label, index
@@ -666,11 +722,25 @@ class Worker(Process):
                         if qv1 is not None and qv2 is not None:
                             if self.mono:
                                 common_isotopes = set(qv1.keys()).intersection(qv2.keys())
+                                x = []
+                                y = []
+                                for i in common_isotopes:
+                                    q1 = qv1.get(i)
+                                    q2 = qv2.get(i)
+                                    if q1 > 100 and q2 > 100:
+                                        x.append(i)
+                                        y.append(q1/q2)
+                                # fit it and take the intercept
+                                if len(x) > 3:
+                                    slope, intercept, r_value, p_value, std_err = linregress(x,y)
+                                    ratio = intercept
+                                else:
+                                    ratio = np.array(y).mean()
                             else:
                                 common_isotopes = set(qv1.keys()).union(qv2.keys())
-                            quant1 = sum([qv1.get(i, 0) for i in common_isotopes])
-                            quant2 = sum([qv2.get(i, 0) for i in common_isotopes])
-                            ratio = quant1/quant2 if quant1 and quant2 else 'NA'
+                                quant1 = sum([qv1.get(i, 0) for i in common_isotopes])
+                                quant2 = sum([qv2.get(i, 0) for i in common_isotopes])
+                                ratio = quant1/quant2 if quant1 and quant2 else 'NA'
                         result_dict.update({'{}_{}_ratio'.format(silac_label1, silac_label2): ratio})
 
                 if self.html:
@@ -1199,7 +1269,7 @@ def main():
                             isotope_ppm=args.isotope_ppm, isotope_ppms=None, msn_rt_map=msn_rt_map, reporter_mode=ion_compare,
                             reader_in=reader_in, reader_out=reader_outs[i], thread=i, quant_method=quant_method,
                             spline=spline, isotopologue_limit=isotopologue_limit, labels_needed=labels_needed,
-                            quant_msn_map=filter(lambda x: x[0] == msn_for_quant, msn_map) if not args.msn else msn_map,
+                            quant_msn_map=filter(lambda x: x[0] == msn_for_quant, msn_map) if not args.mrm else msn_map,
                             overlapping_mz=overlapping_mz, min_resolution=args.min_resolution, min_scans=args.min_scans,
                             mrm_pair_info=mrm_pair_info)
             workers.append(worker)
@@ -1215,7 +1285,7 @@ def main():
 
         lowest_label = min([j for i,v in silac_labels.items() for j in v])
         mrm_added = set([])
-        exclusion_masses = mrm_pair_info.loc[:,[i for i in mrm_pair_info.columns if i.lower() not in ('light', 'retention time')]].values.flatten()
+        exclusion_masses = mrm_pair_info.loc[:,[i for i in mrm_pair_info.columns if i.lower() not in ('light', 'retention time')]].values.flatten() if args.mrm else set([])
         for scan_index, v in enumerate(raw_scans):
             target_scan = v['id_scan']
             quant_scan = v['quant_scan']
