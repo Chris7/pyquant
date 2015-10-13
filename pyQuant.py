@@ -1319,6 +1319,7 @@ def main():
                 <script type="text/javascript" src="http://code.jquery.com/jquery-1.11.1.min.js"></script>
                 <script type="text/javascript" src="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/js/bootstrap.min.js"></script>
                 <script type="text/javascript" src="http://cdn.datatables.net/1.10.5/js/jquery.dataTables.min.js"></script>
+                <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/Chart.js/1.0.2/Chart.js"></script>
                 <script>
                     $(document).ready(function() {
                         $('#raw-table').DataTable({
@@ -1360,6 +1361,27 @@ def main():
                         var initDataViewer = function(){
                             $('[data-toggle="popover"]').click(function(event){
                                 $active_window.find('.viewer-content').html($(this).data('content'));
+                            });
+                             $('[data-chart]').click(function(event){
+                                var chart_type;
+                                var $this = $(this);
+                                var base_attrs = {
+                                    fillColor: "rgba(172,194,132,0.4)",
+                                    strokeColor: "#ACC26D",
+                                    pointColor: "#fff",
+                                    pointStrokeColor: "#9DB86D",
+                                };
+                                var chart_data = $this.data('chart-data');
+                                for(var i=0;i<chart_data['datasets'].length;i++){
+                                    jQuery.extend(chart_data['datasets'][i], base_attrs);
+                                }
+                                var ctx = document.getElementById("myChart").getContext("2d");
+                                var chart_type = $this.data('chart');
+                                if(chart_type === "bar")
+                                    new Chart(ctx).Bar(chart_data);
+                                else if(chart_type === "line")
+                                    new Chart(ctx).Line(chart_data);
+
                             });
                         }
                         initDataViewer();
