@@ -203,7 +203,7 @@ class Worker(Process):
     def get_calibrated_mass(self, mass):
         return mass/(1-self.spline(mass)/1e6) if self.spline else mass
 
-    def replaceOutliers(self, common_peaks):
+    def replaceOutliers(self, common_peaks, combined_data):
         x = []
         y = []
         keys = []
@@ -224,12 +224,21 @@ class Worker(Process):
             # singular matrix
             x1_mean, x1_std = data[0,0], data[0,1]
         else:
-            x1_outliers = [i for i,v in enumerate(classifier.decision_function(data)) if v < 0]
+            classes = classifier.predict(data)
+            x1_outliers = [i for i,v in enumerate(classes) if v is False or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate')]
+            x1_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v is True])
             # print x1_outliers, [keys[i] for i in x1_outliers]
             x1_mean, x1_std = classifier.location_
             for index in x1_outliers:
                 indexer = keys[index]
-                #print indexer
+                if indexer[:2] in x1_inliers:
+                    continue
+
+                mz = indexer[1]
+                row_data = combined_data.loc[mz, :]
+                mapper = interp1d(row_data.index.values, row_data.values)
+                common_peaks[indexer[0]][indexer[1]][indexer[2]]['amp'] = mapper(x1_mean)
+                common_peaks[indexer[0]][indexer[1]][indexer[2]]['peak'] = x1_mean
                 common_peaks[indexer[0]][indexer[1]][indexer[2]]['mean'] = x1_mean
                 common_peaks[indexer[0]][indexer[1]][indexer[2]]['std'] = x1_std
         data = np.array([x, y2]).T
@@ -238,11 +247,20 @@ class Worker(Process):
         except ValueError:
             pass
         else:
-            x2_outliers = [i for i,v in enumerate(classifier.decision_function(data)) if v < 0]
+            classes = classifier.predict(data)
+            x2_outliers = [i for i,v in enumerate(classes) if v is False or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate')]
+            x2_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v is True])
             # print x2_outliers, [keys[i] for i in x2_outliers]
             x2_mean, x2_std = classifier.location_
             for index in x2_outliers:
                 indexer = keys[index]
+                if indexer[:2] in x2_inliers:
+                    continue
+                mz = indexer[1]
+                row_data = combined_data.loc[mz, :]
+                mapper = interp1d(row_data.index.values, row_data.values)
+                common_peaks[indexer[0]][indexer[1]][indexer[2]]['amp'] = mapper(x2_mean)
+                common_peaks[indexer[0]][indexer[1]][indexer[2]]['peak'] = x2_mean
                 common_peaks[indexer[0]][indexer[1]][indexer[2]]['mean'] = x2_mean
                 common_peaks[indexer[0]][indexer[1]][indexer[2]]['std2'] = x2_std
         return x1_mean
@@ -417,7 +435,7 @@ class Worker(Process):
                                     if isotope in finished_isotopes[precursor_label]:
                                         continue
                                     peak_intensity = vals.get('int')
-                                    if peak_intensity == 0 or peak_intensity < last_peak_height[precursor_label][isotope]*0.10:
+                                    if False:#peak_intensity == 0 or peak_intensity < last_peak_height[precursor_label][isotope]*0.10:
                                         # finished_isotopes[precursor_label].add(isotope)
                                         continue
                                     else:
@@ -574,11 +592,8 @@ class Worker(Process):
 
                     xdata = values.index.values.astype(float)
                     ydata = values.fillna(0).values.astype(float)
-                    mapper = interp1d(xdata, ydata)
-                    rt_peak = mapper(start_rt)
-                    # print ydata
                     if sum(ydata>0) >= self.min_scans:
-                        res, all_peaks = peaks.findAllPeaks(xdata, ydata, filter=True, bigauss_fit=True, rt_peak=rt_peak)
+                        res, all_peaks = peaks.findAllPeaks(xdata, ydata, filter=True, bigauss_fit=True, rt_peak=0 if self.mrm else start_rt)
                         # res2, all_peaks2 = peaks.findAllPeaks2(values, filter=True)
                         # if len(res.x) > 4:
                         #     print res
@@ -590,8 +605,30 @@ class Worker(Process):
                         rt_amps = res[::4]
                         rt_std = res[2::4]
                         rt_std2 = res[3::4]
-                        combined_peaks[quant_label][index] = [{'mean': i, 'amp': j*mval, 'std': l, 'std2': k, 'peak': m, 'total': values.sum()}
-                                                              for i, j, l, k, m in zip(rt_means, rt_amps, rt_std, rt_std2, all_peaks)]
+                        valid_peaks = [{'mean': i, 'amp': j*mval, 'std': l, 'std2': k, 'peak': m, 'total': values.sum()}
+                                        for i, j, l, k, m in zip(rt_means, rt_amps, rt_std, rt_std2, all_peaks)]
+                        # if we have a peaks containing our retention time, keep them and throw out ones not containing it
+                        to_remove = []
+                        to_keep = []
+                        for i,v in enumerate(valid_peaks):
+                            mu = v['mean']
+                            s1 = v['std']
+                            s2 = v['std2']
+                            if mu-s1*2 < start_rt < mu+s2*2:
+                                v['valid'] = True
+                                to_keep.append(i)
+                            else:
+                                to_remove.append(i)
+                        # kick out peaks not containing our RT
+                        valid_peak = None
+                        if not to_keep:
+                            # we have no peaks with our RT, there are contaminating peaks, remove all the noise but the closest to our RT
+                            valid_peak = sorted([(i, np.abs(i['mean']-start_rt)) for i in valid_peaks], key=operator.itemgetter(1))[0][0]
+                            valid_peak['interpolate'] = True
+                        else:
+                            for i in reversed(to_remove):
+                                del valid_peaks[i]
+                        combined_peaks[quant_label][index] = valid_peaks if valid_peak is None else [valid_peak]
                     if self.html:
                         ax = fig.add_subplot(subplot_rows, subplot_columns, fig_index)
                         if ydata.any() and self.quant_method == 'integrate':
@@ -607,9 +644,9 @@ class Worker(Process):
                         #     ax.set_xticklabels([])
                 # get two most common peak, pick the closest to our RT
                 # we may need to add a check for a minimal # of in for max distance from the RT as well here.
-                #print combined_peaks
-                common_peak = self.replaceOutliers(combined_peaks)
-                #print combined_peaks
+                # print combined_peaks
+                common_peak = self.replaceOutliers(combined_peaks, combined_data)
+                # print combined_peaks
                 # if self.mrm:
                 #     common_peaks = pd.Series([sorted(value_peaks, key=lambda x: x['amp'], reverse=True)[0]['peak'] for i, values in combined_peaks.items() for index, value_peaks in values.iteritems()]).value_counts()
                 # else:
@@ -708,7 +745,7 @@ class Worker(Process):
                             ax.plot([start_rt, start_rt], ax.get_ylim(),'k-')
                             ax.set_ylim(0,combined_data.max().max())
                             x_for_plot = xdata[::int(len(xdata)/5)+1]
-                            ax.set_xlim(x_for_plot[0], x_for_plot[-1])
+                            ax.set_xlim(xdata[0], xdata[-1])
                             ax.set_xticks(x_for_plot)
                             ax.set_xticklabels(['{0:.2f} '.format(i) for i in x_for_plot], rotation=45, ha='right')
 
@@ -956,6 +993,8 @@ def main():
             if not args.peptide and (sample != 1.0 and random.random() > sample):
                 continue
             specId = scan.id
+            # if specId not in ('1955', '1956'):
+            #     continue
             fname = scan.file
             mass_key = (fname, specId, peptide)
             if mass_key in found_scans:
@@ -1103,6 +1142,9 @@ def main():
                                 display: inline;
                             }}
                             #raw-table_wrapper {{
+                            }}
+                            .selected {{
+                                background-color: #d9edf7 !important;
                             }}
                         </style>
                     </head>
@@ -1271,7 +1313,7 @@ def main():
                             spline=spline, isotopologue_limit=isotopologue_limit, labels_needed=labels_needed,
                             quant_msn_map=filter(lambda x: x[0] == msn_for_quant, msn_map) if not args.mrm else msn_map,
                             overlapping_mz=overlapping_mz, min_resolution=args.min_resolution, min_scans=args.min_scans,
-                            mrm_pair_info=mrm_pair_info)
+                            mrm_pair_info=mrm_pair_info, mrm=args.mrm)
             workers.append(worker)
             worker.start()
 
@@ -1517,16 +1559,19 @@ def main():
                             $('[data-toggle="popover"]').click(function(event){
                                 $active_window.find('.viewer-content').html($(this).data('content'));
                             });
+                            $('#raw-table').delegate('tr > td[data-toggle]', 'click', function(event) {
+                             $('.selected').removeClass('selected'); $(this).addClass('selected');
+                            });
                         }
                         initDataViewer();
                         $('#raw-table').on( 'page.dt search.dt init.dt order.dt length.dt', function () {
-                        	reload = true;
+                            reload = true;
                         });
                         $('#raw-table').on( 'draw.dt', function () {
-                        	if(reload){
-                        		initDataViewer();
-                        		reload = false;
-                        	}
+                            if(reload){
+                                initDataViewer();
+                                reload = false;
+                            }
                         });
                     });
                 </script>
