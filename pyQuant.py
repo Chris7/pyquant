@@ -10,6 +10,7 @@ This will quantify labeled peaks (such as SILAC) in ms1 spectra. It relies solel
  which can correct for errors due to amino acid conversions.
 """
 import sys
+import json
 import decimal
 import csv
 import math
@@ -95,6 +96,7 @@ quant_parameters.add_argument('--labels-needed', help='How many labels need to b
 quant_parameters.add_argument('--min-scans', help='How many quantification scans are needed to quantify a scan.', default=1, type=int)
 quant_parameters.add_argument('--min-resolution', help='The minimal resolving power of a scan to consider for quantification. Useful for skipping low-res scans', default=0, type=float)
 quant_parameters.add_argument('--no-mass-accuracy-correction', help='Disables the mass accuracy correction.', action='store_true')
+quant_parameters.add_argument('--peak-cutoff', help='The threshold from the initial retention time a peak can fall by before being discarded', type=float, default=0.05)
 
 mrm_parameters = parser.add_argument_group('SRM/MRM Parameters')
 mrm_parameters.add_argument('--mrm-map', help='A file indicating light and heavy peptide pairs, and optionally the known elution time.', type=argparse.FileType('r'))
@@ -164,7 +166,7 @@ class Worker(Process):
                  debug=False, html=False, mono=False, precursor_ppm=5.0, isotope_ppm=2.5, quant_method='integrate',
                  reader_in=None, reader_out=None, thread=None, fitting_run=False, msn_rt_map=None, reporter_mode=False,
                  spline=None, isotopologue_limit=-1, labels_needed=1, overlapping_mz=False, min_resolution=0, min_scans=3,
-                 quant_msn_map=None, mrm=False, mrm_pair_info=None):
+                 quant_msn_map=None, mrm=False, mrm_pair_info=None, peak_cutoff=0.05):
         super(Worker, self).__init__()
         self.precision = precision
         self.precursor_ppm = precursor_ppm
@@ -197,6 +199,7 @@ class Worker(Process):
         self.quant_msn_map = quant_msn_map
         self.mrm = mrm
         self.mrm_pair_info = mrm_pair_info
+        self.peak_cutoff = peak_cutoff
         if mrm:
             self.quant_mrm_map = {label: list(group) for label, group in groupby(self.quant_msn_map, key=operator.itemgetter(0))}
 
@@ -368,6 +371,7 @@ class Worker(Process):
                 mrm_label = mrm_labels.pop() if mrm_info is not None else 'Light'
                 mass = mass if mrm_info is None else mrm_info[mrm_label]
             last_peak_height = {i: defaultdict(int) for i in precursors.keys()}
+            low_int_isotopes = defaultdict(int)
             while True:
                 if len(finished) == len(precursors.keys()) and delta != -1:
                     break
@@ -435,13 +439,19 @@ class Worker(Process):
                                     if isotope in finished_isotopes[precursor_label]:
                                         continue
                                     peak_intensity = vals.get('int')
-                                    if False:#peak_intensity == 0 or peak_intensity < last_peak_height[precursor_label][isotope]*0.10:
-                                        # finished_isotopes[precursor_label].add(isotope)
+                                    # if precursor_label == 'Medium':
+                                    #     print peak_intensity, last_peak_height[precursor_label][isotope]
+                                    if peak_intensity == 0 or (self.peak_cutoff and peak_intensity < last_peak_height[precursor_label][isotope]*self.peak_cutoff):
+                                        low_int_isotopes[(precursor_label, isotope)] += 1
+                                        if low_int_isotopes[(precursor_label, isotope)] >= 2:
+                                            finished_isotopes[precursor_label].add(isotope)
                                         continue
                                     else:
+                                        low_int_isotopes[(precursor_label, isotope)] = 0
                                         found.add(precursor_label)
                                         labels_found.add(precursor_label)
-                                    last_peak_height[precursor_label][isotope] = peak_intensity
+                                    if current_scan == initial_scan or last_peak_height[precursor_label][isotope] == 0:
+                                        last_peak_height[precursor_label][isotope] = peak_intensity
                                     selected[measured_precursor+isotope*spacing] = peak_intensity
                                     vals['isotope'] = isotope
                                     isotope_labels[measured_precursor+isotope*spacing] = {'label': precursor_label, 'isotope_index': isotope}
@@ -464,14 +474,13 @@ class Worker(Process):
                                         del isotopes_chosen[i]
                         del df
                 if not found or np.abs(ms_index) > 75:
-                    not_found += 2
+                    not_found += 1
                     # the 75 check is in case we're in something crazy. We should already have the elution profile of the ion
                     # of interest, else we're in an LC contaminant that will never end.
                     if not_found >= 2:
                         not_found = 0
                         if delta == -1:
                             delta = 1
-                            last_peak_height = {i: defaultdict(int) for i in precursors.keys()}
                             current_scan = initial_scan
                             finished = set([])
                             finished_isotopes = {i: set([]) for i in precursors.keys()}
@@ -526,49 +535,60 @@ class Worker(Process):
 
                 if self.html:
                     # make the figure of our isotopes selected
-                    isotope_figure = '{2}_{0}_{1}_{3}_isotopes.png'.format(peptide, ms1, self.filename, scanId)
-                    isotopes_chosen['RT'] = isotopes_chosen.index.get_level_values('RT')
-                    subplots = len(isotopes_chosen.index.get_level_values('RT').drop_duplicates())
-                    fig = plt.figure(figsize=(10, subplots*3 if subplots*3 < 300 else 300))
                     all_x = sorted(isotopes_chosen.index.get_level_values('MZ').drop_duplicates())
-                    x_spacing = (min([all_x[i]-all_x[i-1] for i in xrange(1, len(all_x))]) if len(all_x) > 2 else spacing)/4.0
-                    for counter, (index, row) in enumerate(isotopes_chosen.groupby('RT')):
-                        ax = fig.add_subplot(subplots, 1, counter+1)
-                        try:
-                            ax.set_title('Scan {} RT {}'.format(self.msn_rt_map[self.msn_rt_map==index].index[0], index))
-                        except:
-                            pass
-                        colors = 'bmrk'
-                        for group, color in zip(precursors.keys(), colors):
-                            label_df = row[row['label'] == group]
-                            x = label_df['amplitude'].index.get_level_values('MZ')
-                            ax.bar(x, label_df['amplitude'], width=x_spacing, facecolor=color, align='center')
-                        ax.set_xticks(all_x)
-                        ax.set_xticklabels([])
-                        ax.set_xlim([all_x[0]-0.5, all_x[-1]+0.5])
-                    ax.set_xticklabels(['{0:.1f}'.format(i) for i in all_x], rotation=45, ha='right')
-                    html_images['isotopes'] = os.path.join(self.html['full'], isotope_figure)
-                    ax.get_figure().savefig(html_images['isotopes'], format='png', dpi=100)
+                    isotopes_chosen['RT'] = isotopes_chosen.index.get_level_values('RT')
+                    isotope_group = isotopes_chosen.groupby('RT')
 
-                    fname = '{2}_{0}_{1}_{3}_clusters.png'.format(peptide, ms1, self.filename, scanId)
-                    subplot_rows = len(precursors.keys())+1
-                    subplot_columns = pd.Series(isotope_labels['label']).value_counts().iloc[0]+1
-                    fig = plt.figure(figsize=(subplot_columns*3 if subplot_columns*3 < 300 else 300, subplot_rows*4 if subplot_rows*4 < 300 else 300))
-                    combined_ax = fig.add_subplot(subplot_rows, subplot_columns, 1, projection='3d')
-                    for group, values in isotope_labels.groupby('label'):
-                        ax = fig.add_subplot(subplot_rows, subplot_columns, label_fig_row.get(group)*subplot_columns+1, projection='3d')
-                        for i in values.index:
-                            Y = combined_data.loc[i].name.astype(float)
-                            X = combined_data.loc[i].index.astype(float).values
-                            Z = combined_data.loc[i].fillna(0).values
-                            Xi,Yi = np.meshgrid(X, Y)
-                            ax.plot_wireframe(Yi, Xi, Z, cmap=plt.cm.coolwarm)
-                            combined_ax.plot_wireframe(Yi, Xi, Z, cmap=plt.cm.coolwarm)
-                        plt.xticks(values.index.values, ['{0:0.2f}'.format(i) for i in values.index])
-                    if peptide:
-                        plt.suptitle(peptide)
-                    elif mass:
-                        plt.suptitle(mass)
+                    isotope_figure = {'data': [], 'plot-multi': True, 'common-x': ['x']+all_x}
+                    isotope_figure_mapper = {}
+                    rt_figure = {
+                        'data': [],
+                        'plot-multi': True,
+                        'common-x': ['x']+map(lambda x: '{0:0.2f}'.format(x), combined_data.columns),
+                        'rows': len(precursors),
+                        'columns': isotope_labels['isotope_index'].max()+1
+                    }
+                    rt_figure_mapper = {}
+
+                    for counter, (index, row) in enumerate(isotope_group):
+                        try:
+                            title = 'Scan {} RT {}'.format(self.msn_rt_map[self.msn_rt_map==index].index[0], index)
+                        except:
+                            title = '{}'.format(index)
+                        # try:
+                        #     isotope_figure['title'] =
+                        # except:
+                        #     pass
+                        if index in isotope_figure_mapper:
+                            isotope_base = isotope_figure_mapper[index]
+                        else:
+                            isotope_base = {'data': {'x': 'x', 'columns': [], 'type': 'bar'}, 'axis': {'x': {'label': 'M/Z'}, 'y': {'label': 'Intensity', 'max': isotopes_chosen['amplitude'].max()}}}
+                            isotope_figure_mapper[index] = isotope_base
+                            isotope_figure['data'].append(isotope_base)
+                        for group in precursors.keys():
+                            label_df = row[row['label'] == group]
+                            x = label_df['amplitude'].index.get_level_values('MZ').tolist()
+                            y = label_df['amplitude'].values.tolist()
+                            isotope_base['data']['columns'].append(['{} {}'.format(title, group)]+[y[x.index(i)] if i in x else 0 for i in all_x])
+                    # fname = '{2}_{0}_{1}_{3}_clusters.png'.format(peptide, ms1, self.filename, scanId)
+                    # subplot_rows = len(precursors.keys())+1
+                    # subplot_columns = pd.Series(isotope_labels['label']).value_counts().iloc[0]+1
+                    # fig = plt.figure(figsize=(subplot_columns*3 if subplot_columns*3 < 300 else 300, subplot_rows*4 if subplot_rows*4 < 300 else 300))
+                    # combined_ax = fig.add_subplot(subplot_rows, subplot_columns, 1, projection='3d')
+                    # for group, values in isotope_labels.groupby('label'):
+                    #     ax = fig.add_subplot(subplot_rows, subplot_columns, label_fig_row.get(group)*subplot_columns+1, projection='3d')
+                    #     for i in values.index:
+                    #         Y = combined_data.loc[i].name.astype(float)
+                    #         X = combined_data.loc[i].index.astype(float).values
+                    #         Z = combined_data.loc[i].fillna(0).values
+                    #         Xi,Yi = np.meshgrid(X, Y)
+                    #         ax.plot_wireframe(Yi, Xi, Z, cmap=plt.cm.coolwarm)
+                    #         combined_ax.plot_wireframe(Yi, Xi, Z, cmap=plt.cm.coolwarm)
+                    #     plt.xticks(values.index.values, ['{0:0.2f}'.format(i) for i in values.index])
+                    # if peptide:
+                    #     plt.suptitle(peptide)
+                    # elif mass:
+                    #     plt.suptitle(mass)
 
                 combined_peaks = defaultdict(dict)
                 plot_index = {}
@@ -580,15 +600,15 @@ class Worker(Process):
 
                 for row_num, (index, values) in enumerate(combined_data.iterrows()):
                     quant_label = isotope_labels.loc[index, 'label']
-                    if self.html:
-                        fig_index = label_fig_row.get(quant_label)*subplot_columns+fig_nums[quant_label].index(index)+2
-                        current_row = int(fig_index/subplot_columns+1)
-                        if (fig_index-2)%subplot_columns == 0:
-                            labely = True
-                        if current_row == subplot_rows:
-                            labelx = True
-                        fig_map[index] = fig_index
-                        plot_index[index, quant_label] = row_num
+                    # if self.html:
+                        # fig_index = label_fig_row.get(quant_label)*subplot_columns+fig_nums[quant_label].index(index)+2
+                        # current_row = int(fig_index/subplot_columns+1)
+                        # if (fig_index-2)%subplot_columns == 0:
+                        #     labely = True
+                        # if current_row == subplot_rows:
+                        #     labelx = True
+                        # fig_map[index] = fig_index
+                        # plot_index[index, quant_label] = row_num
 
                     xdata = values.index.values.astype(float)
                     ydata = values.fillna(0).values.astype(float)
@@ -630,10 +650,15 @@ class Worker(Process):
                                 del valid_peaks[i]
                         combined_peaks[quant_label][index] = valid_peaks if valid_peak is None else [valid_peak]
                     if self.html:
-                        ax = fig.add_subplot(subplot_rows, subplot_columns, fig_index)
+                        # ax = fig.add_subplot(subplot_rows, subplot_columns, fig_index)
                         if ydata.any() and self.quant_method == 'integrate':
-                            ax.plot(xdata, ydata, 'bo-', alpha=0.7)
-                            ax.plot(xdata, peaks.bigauss_ndim(xdata, res)*mval, color='r')
+                            if quant_label in rt_figure_mapper:
+                                rt_base = rt_figure_mapper[(quant_label, index)]
+                            else:
+                                rt_base = {'data': {'x': 'x', 'columns': []}, 'subchart': {'show': True}, 'axis': {'x': {'label': 'Retention Time'}, 'y': {'label': 'Intensity', 'max': combined_data.max().max()}}}
+                                rt_figure_mapper[(quant_label, index)] = rt_base
+                                rt_figure['data'].append(rt_base)
+                            rt_base['data']['columns'].append(['{0} {1} raw'.format(quant_label, index)]+ydata.tolist())
                         # if labely:
                         #     labely = False
                         # else:
@@ -732,22 +757,29 @@ class Worker(Process):
                         if peak_info.get(quant_label, {}).get('amp', -1) < amp:
                             peak_info[quant_label].update({'amp': amp, 'std': std, 'std2': std2, 'mean_diff': mean_diff})
                         if self.html:
-                            ax = fig.add_subplot(subplot_rows, subplot_columns, fig_map.get(index))
-                            try:
-                                ax.set_title('{0:0.2f} AUC: {1}'.format(index, int(int_val)))
-                            except:
-                                ax.set_title('{0:0.2f} AUC: {1}'.format(index, 'NA'))
-                            plot_points = np.linspace(xdata[0], xdata[-1], 100)
-                            if self.quant_method == 'integrate':
-                                ax.plot(plot_points, peaks.bigauss_ndim(plot_points, peak_params), '{}o-'.format(gc), alpha=0.7)
-                            else:
-                                ax.bar(xdata, ydata, width=((xdata[1]-xdata[0]) if len(xdata) > 1 else 1)/4, alpha=0.7)
-                            ax.plot([start_rt, start_rt], ax.get_ylim(),'k-')
-                            ax.set_ylim(0,combined_data.max().max())
-                            x_for_plot = xdata[::int(len(xdata)/5)+1]
-                            ax.set_xlim(xdata[0], xdata[-1])
-                            ax.set_xticks(x_for_plot)
-                            ax.set_xticklabels(['{0:.2f} '.format(i) for i in x_for_plot], rotation=45, ha='right')
+                            rt_base = rt_figure_mapper[(quant_label, index)]
+                            key = '{} {}'.format(quant_label, index)
+                            for i,v in enumerate(rt_base['data']['columns']):
+                                if key in v[0]:
+                                    break
+                            rt_base['data']['columns'].insert(i, ['{0} {1} fit'.format(quant_label, index)]+(peaks.bigauss_ndim(xdata, peak_params)).tolist())
+                            pass
+                            # ax = fig.add_subplot(subplot_rows, subplot_columns, fig_map.get(index))
+                            # try:
+                            #     ax.set_title('{0:0.2f} AUC: {1}'.format(index, int(int_val)))
+                            # except:
+                            #     ax.set_title('{0:0.2f} AUC: {1}'.format(index, 'NA'))
+                            # plot_points = np.linspace(xdata[0], xdata[-1], 100)
+                            # if self.quant_method == 'integrate':
+                            #     ax.plot(plot_points, peaks.bigauss_ndim(plot_points, peak_params), '{}o-'.format(gc), alpha=0.7)
+                            # else:
+                            #     ax.bar(xdata, ydata, width=((xdata[1]-xdata[0]) if len(xdata) > 1 else 1)/4, alpha=0.7)
+                            # ax.plot([start_rt, start_rt], ax.get_ylim(),'k-')
+                            # ax.set_ylim(0,combined_data.max().max())
+                            # x_for_plot = xdata[::int(len(xdata)/5)+1]
+                            # ax.set_xlim(xdata[0], xdata[-1])
+                            # ax.set_xticks(x_for_plot)
+                            # ax.set_xticklabels(['{0:.2f} '.format(i) for i in x_for_plot], rotation=45, ha='right')
 
                 for silac_label1 in data.keys():
                     qv1 = quant_vals.get(silac_label1)
@@ -781,9 +813,10 @@ class Worker(Process):
                         result_dict.update({'{}_{}_ratio'.format(silac_label1, silac_label2): ratio})
 
                 if self.html:
-                    plt.tight_layout()
-                    ax.get_figure().savefig(os.path.join(self.html['full'], fname), format='png', dpi=100)
-                    html_images['clusters'] = os.path.join(self.html['rel'], fname)
+                    pass
+                    # plt.tight_layout()
+                    # ax.get_figure().savefig(os.path.join(self.html['full'], fname), format='png', dpi=100)
+                    # html_images['clusters'] = os.path.join(self.html['rel'], fname)
                 if self.debug or self.html:
                     plt.close('all')
                 result_dict.update({'html_info': html_images})
@@ -802,7 +835,10 @@ class Worker(Process):
                     '{}_precursor'.format(silac_label): silac_data['precursor'],
                     '{}_calibrated_precursor'.format(silac_label): silac_data.get('calibrated_precursor', silac_data['precursor'])
                 })
-            result_dict.update({'ions_found': target_scan.get('ions_found')})
+            result_dict.update({
+                'ions_found': target_scan.get('ions_found'),
+                'html': {'peptide': rt_figure, 'rt': isotope_figure}
+            })
             self.results.put(result_dict)
             del result_dict
             del data
@@ -1097,18 +1133,15 @@ def main():
             else:
                 return res
             l = d['table']
-            images = d['images']
+            html_extra = d.get('html', {})
+            keys = d['keys']
             if res is None:
                 res = '<tr>'
             out = []
-            for i,v in zip(l.split('\t'), headers):
-                rt_format = '{}_rt'.format(v.split(' ')[0])
-                if v.endswith('Intensity') and rt_format in images:
-                    out.append("""<td data-toggle="popover" data-trigger="click" data-content='<img src="{0}">'>{1}</td>""".format(images.get(rt_format), i))
-                elif v == 'Peptide' and 'clusters' in images:
-                    out.append("""<td data-toggle="popover" data-trigger="click" data-content='<img src="{0}">'>{1}</td>""".format(images.get('clusters'), i))
-                elif v == 'Retention Time' and 'isotopes' in images:
-                    out.append("""<td data-toggle="popover" data-trigger="click" data-content='<img src="{0}">'>{1}</td>""".format(images.get('isotopes'), i))
+            for i,v in zip(l.split('\t'), keys):
+                if v in html_extra:
+                    data_attrs = "data-chart='{1}'".format(v, json.dumps(html_extra[v]))
+                    out.append("""<td {0}>{1}</td>""".format(data_attrs, i))
                 else:
                     out.append('<td>{0}</td>'.format(i))
             res += '\n'.join(out)+'</tr>'
@@ -1126,6 +1159,7 @@ def main():
                         <title>{0}</title>
                         <link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/css/bootstrap.min.css" type="text/css">
                         <link rel="stylesheet" href="http://cdn.datatables.net/1.10.5/css/jquery.dataTables.css" type="text/css">
+                        <link rel="stylesheet" href="http://cdnjs.cloudflare.com/ajax/libs/c3/0.4.10/c3.min.css" type="text/css">
                         <style>
                             html, body {{
                                 padding: 0;
@@ -1145,6 +1179,9 @@ def main():
                             }}
                             .selected {{
                                 background-color: #d9edf7 !important;
+                            }}
+                            .viewer-content > div.row > div.c3 {{
+                                display: inline-block;
                             }}
                         </style>
                     </head>
@@ -1313,7 +1350,7 @@ def main():
                             spline=spline, isotopologue_limit=isotopologue_limit, labels_needed=labels_needed,
                             quant_msn_map=filter(lambda x: x[0] == msn_for_quant, msn_map) if not args.mrm else msn_map,
                             overlapping_mz=overlapping_mz, min_resolution=args.min_resolution, min_scans=args.min_scans,
-                            mrm_pair_info=mrm_pair_info, mrm=args.mrm)
+                            mrm_pair_info=mrm_pair_info, mrm=args.mrm, peak_cutoff=args.peak_cutoff)
             workers.append(worker)
             worker.start()
 
@@ -1416,14 +1453,15 @@ def main():
                     sys.stderr.write('\r{0:2.2f}% Completed'.format(completed/scan_count*100))
                     sys.stderr.flush()
                 res_list = [filename]+[result.get(i[0], 'NA') for i in RESULT_ORDER]
+                key_order = [False]+[i[0] if i[0] in result else False for i in RESULT_ORDER]
                 if calc_stats:
                     all_results.append(res_list)
-                    html_results.append(result.get('html_info', {}))
+                    html_results.append(result.get('html', {}))
                 res = '{0}\n'.format('\t'.join(map(str, res_list)))
                 out.write(res)
                 out.flush()
                 if html and not calc_stats:
-                    html_out.write(table_rows([{'table': res.strip(), 'images': result.get('html_info', {})}]))
+                    html_out.write(table_rows([{'table': res.strip(), 'keys': key_order, 'html': result.get('html', {})}]))
                     html_out.flush()
         reader_in.put(None)
         del msn_map
@@ -1432,6 +1470,13 @@ def main():
     if calc_stats:
         from scipy import stats
         data = pd.DataFrame.from_records(all_results, columns=[i for i in headers if i != 'Confidence'])
+        header_mapping = []
+        order_names = [i[1] for i in RESULT_ORDER]
+        for i in data.columns:
+            try:
+                header_mapping.append(RESULT_ORDER[order_names.index(i)][0])
+            except ValueError:
+                header_mapping.append(False)
         data = data.replace('NA', np.nan)
         for silac_label1 in silac_labels.keys():
             label1_log = 'L{}'.format(silac_label1)
@@ -1500,7 +1545,7 @@ def main():
         if html:
             for index, (row_index, row) in enumerate(data.iterrows()):
                 res = '\t'.join(row.astype(str))
-                html_out.write(table_rows([{'table': res.strip(), 'images': html_results[index]}]))
+                html_out.write(table_rows([{'table': res.strip(), 'html': html_results[index], 'keys': header_mapping}]))
                 html_out.flush()
 
     out.flush()
@@ -1518,6 +1563,8 @@ def main():
                 <script type="text/javascript" src="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/js/bootstrap.min.js"></script>
                 <script type="text/javascript" src="http://cdn.datatables.net/1.10.5/js/jquery.dataTables.min.js"></script>
                 <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/Chart.js/1.0.2/Chart.js"></script>
+                <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/d3/3.5.6/d3.min.js"></script>
+                <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/c3/0.4.10/c3.min.js"></script>
                 <script>
                     $(document).ready(function() {
                         $('#raw-table').DataTable({
@@ -1557,28 +1604,34 @@ def main():
                         initPanel();
 
                         var initDataViewer = function(){
-                            $('[data-toggle="popover"]').click(function(event){
-                                $active_window.find('.viewer-content').html($(this).data('content'));
-                            });
-                             $('[data-chart]').click(function(event){
-                                var chart_type;
+                            $('[data-chart]').click(function(event){
                                 var $this = $(this);
-                                var base_attrs = {
-                                    fillColor: "rgba(172,194,132,0.4)",
-                                    strokeColor: "#ACC26D",
-                                    pointColor: "#fff",
-                                    pointStrokeColor: "#9DB86D",
-                                };
-                                var chart_data = $this.data('chart-data');
-                                for(var i=0;i<chart_data['datasets'].length;i++){
-                                    jQuery.extend(chart_data['datasets'][i], base_attrs);
+                                var $base_element = $active_window.find('.viewer-content');
+                                $base_element.children().remove();
+                                $element = $base_element;
+                                var chart_data = $this.data('chart');
+                                 if(chart_data['plot-multi']){
+                                     var columns = chart_data['columns'];
+                                     var common_x = chart_data['common-x'];
+                                     var plot_data = chart_data['data'];
+                                     for(var i=0;i<plot_data.length;i++){
+                                         var col_index = i;
+                                         if(columns && col_index%columns == 0){
+                                             $element = $('<div class="row"></div>').appendTo($base_element);
+                                         }
+                                         var chart_name = 'chart'+i;
+                                         var new_element = $element.append('<div id="'+chart_name+'"></div>');
+                                         plot_data[i]['bindto'] = '#'+chart_name;
+                                         if(columns){
+                                             plot_data[i]['size'] = {width: $( document ).width()/(columns+1)};
+                                         }
+                                         if(common_x){
+                                             plot_data[i]['data']['columns'].unshift(common_x);
+                                         }
+                                         c3.generate(plot_data[i]);
+
+                                     }
                                 }
-                                var ctx = document.getElementById("myChart").getContext("2d");
-                                var chart_type = $this.data('chart');
-                                if(chart_type === "bar")
-                                    new Chart(ctx).Bar(chart_data);
-                                else if(chart_type === "line")
-                                    new Chart(ctx).Line(chart_data);
 
                             });
                             $('#raw-table').delegate('tr > td[data-toggle]', 'click', function(event) {
