@@ -1198,7 +1198,7 @@ def main():
                               font-family: verdana;
                               font-size: 12px;
                               font-weight: 200;
-                                                            display: inline-block;
+                              display: inline-block;
                               background-color: #2e353d;
                               top: 0px;
                               width: 300px;
@@ -1326,6 +1326,9 @@ def main():
                             }}
                             .enabled:hover {{
                                 background-color: #4a4c4f !important;
+                            }}
+                            .c3 {{
+                                display: inline-block;
                             }}
                         </style>
                     </head>
@@ -1737,7 +1740,7 @@ def main():
                 <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/c3/0.4.10/c3.min.js"></script>
                 <script>
                     $(document).ready(function() {
-                        $('#raw-table').DataTable({
+                        var dt = $('#raw-table').DataTable({
                             "iDisplayLength": 100,
                             "sScrollY": $(window).height()*0.4,
                             "sScrollX": $(window).width(),
@@ -1761,8 +1764,9 @@ def main():
                         }
 
                         var reload = false;
-                        var empty_panel = '<div class="viewer-panel"><button class="btn btn-primary new-window">New Window</button><button class="btn btn-primary active-window">Set Active Window</button><button class="btn btn-primary close-window">Close window</button><div class="viewer-content"><canvas id="myChart" width="400" height="400"></canvas></div></div>';
-                        $('body').append(empty_panel);
+                        //var empty_panel = '<div class="viewer-panel"><button class="btn btn-primary new-window">New Window</button><button class="btn btn-primary active-window">Set Active Window</button><button class="btn btn-primary close-window">Close window</button><div class="viewer-content"><canvas id="myChart" width="400" height="400"></canvas></div></div>';
+                        var empty_panel = '<div class="viewer-panel"><div class="viewer-content"><canvas id="myChart" width="400" height="400"></canvas></div></div>';
+                        $('.display-pane').append(empty_panel);
                         var initPanel = function(){
                             $('.new-window').last().click(function(){
                                 $('body').append(empty_panel);
