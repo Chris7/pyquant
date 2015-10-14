@@ -10,6 +10,8 @@ This will quantify labeled peaks (such as SILAC) in ms1 spectra. It relies solel
  which can correct for errors due to amino acid conversions.
 """
 import sys
+import gzip
+import base64
 import json
 import decimal
 import csv
@@ -1147,8 +1149,8 @@ def main():
             out = []
             for i,v in zip(l.split('\t'), keys):
                 if v in html_extra:
-                    data_attrs = "data-chart='{1}'".format(v, json.dumps(html_extra[v]))
-                    out.append("""<td {0}>{1}</td>""".format(data_attrs, i))
+                    data_attrs = 'data-chart="{}"'.format(base64.b64encode(gzip.zlib.compress(json.dumps(html_extra[v]), 9)))
+                    out.append("<td {0}>{1}</td>".format(data_attrs, i))
                 else:
                     out.append('<td>{0}</td>'.format(i))
             res += '\n'.join(out)+'</tr>'
@@ -1345,6 +1347,7 @@ def main():
                                     </li>
                                     <ul class="sub-menu collapse" id="products">
                                         <li><a id="ratio-logger" href="#">Log Ratios</a></li>
+                                        <li><a id="ratio-logger" href="#">Confidence Filter</a></li>
                                     </ul>
 
 
@@ -1738,6 +1741,7 @@ def main():
                 <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/Chart.js/1.0.2/Chart.js"></script>
                 <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/d3/3.5.6/d3.min.js"></script>
                 <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/c3/0.4.10/c3.min.js"></script>
+                <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/pako/0.2.8/pako_inflate.min.js"></script>
                 <script>
                     $(document).ready(function() {
                         var dt = $('#raw-table').DataTable({
@@ -1799,7 +1803,8 @@ def main():
                                 var $base_element = $active_window.find('.viewer-content');
                                 $base_element.children().remove();
                                 $element = $base_element;
-                                var chart_data = $this.data('chart');
+                                //var chart_data = $this.data('chart');
+                                var chart_data = JSON.parse(pako.inflate(window.atob($this.data('chart')), { to: 'string' }));
                                  if(chart_data['plot-multi']){
                                      var columns = chart_data['columns'];
                                      var common_x = chart_data['common-x'];
