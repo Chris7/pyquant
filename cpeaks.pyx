@@ -474,7 +474,7 @@ def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] yda
         int_val = integrate.simps(gauss(lr, peak_gauss[0], peak_gauss[1], peak_gauss[2]), x=lr) if quant_method == 'integrate' else ydata[(xdata > left_peak) & (xdata < right_peak)].sum()
         if not fit:
             pass
-        ret_dict = {'int': int_val if fit else 0, 'bounds': (left, right), 'params': peak, 'error': sorted_peaks[0][1]}
+        ret_dict = {'int': int_val if fit else 0, 'int2': int_val, 'bounds': (left, right), 'params': peak, 'error': sorted_peaks[0][1]}
 
     return ret_dict
 
@@ -644,6 +644,11 @@ def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] 
         for i,(isotope_index, isotope_intensity) in enumerate(isotope_pattern):
             if isotope_index == ref_iso:
                 continue
+            # if isotope_intensity == 0 and ref_iso > 0:
+            #     print isotope_index
+            #     print ref_iso, ref_int
+            #     print theo_dist
+            #     print micro_dict[isotope_index]
             if ref_int == 0 and isotope_intensity > 0:
                 ref_iso = isotope_index
                 ref_int = isotope_intensity

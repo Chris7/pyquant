@@ -209,6 +209,17 @@ class Worker(Process):
     def get_calibrated_mass(self, mass):
         return mass/(1-self.spline(mass)/1e6) if self.spline else mass
 
+    def flat_slope(self, combined_data, delta):
+        if delta == -1:
+            # moving to the left
+            data = combined_data.sum(axis='index').iloc[:5]
+        else:
+            # moving to the right
+            data = combined_data.sum(axis='index').iloc[-5:]
+        data /= combined_data.max().max()
+        slope, intercept, r_value, p_value, std_err = linregress(xrange(len(data)),data)
+        return np.abs(slope) < 0.2
+
     def replaceOutliers(self, common_peaks, combined_data):
         x = []
         y = []
@@ -477,7 +488,8 @@ class Worker(Process):
                                     if i[0] == df.name:
                                         del isotopes_chosen[i]
                         del df
-                if not found or np.abs(ms_index) > 25:
+
+                if not found or (np.abs(ms_index) > 10 and self.flat_slope(combined_data, delta)):
                     not_found += 1
                     # the 25 check is in case we're in something crazy. We should already have the elution profile of the ion
                     # of interest, else we're in an LC contaminant that will never end.
@@ -1806,7 +1818,7 @@ def main():
                         var initDataViewer = function(){
                             $('[data-chart]').click(function(event){
                                 var $this = $(this);
-                                if(current_plot && current_plot == $this)
+                                if(current_plot && (current_plot[0] == $this[0]))
                                     return;
                                 current_plot = $this;
                                 var $base_element = $active_window.find('.viewer-content');
@@ -1843,7 +1855,7 @@ def main():
                                 }
 
                             });
-                            $('#raw-table').delegate('tr > td[data-toggle]', 'click', function(event) {
+                            $('#raw-table').delegate('tr > td[data-chart]', 'click', function(event) {
                              $('.selected').removeClass('selected'); $(this).addClass('selected');
                             });
                         }
