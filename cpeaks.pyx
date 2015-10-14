@@ -607,7 +607,6 @@ def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] 
     #valid_theor = pd.Series([theo_dist[i] for i in valid_keys])
     #valid_theor = valid_theor/valid_theor.max()
     #best_locations = sorted(looper(selected=valid_vals, df=df, theo=valid_theor), key=itemgetter(0))[0][1]
-
     best_locations = [sorted(valid_locations2[i], key=itemgetter(0))[0] for i in valid_keys]
 
     for index, isotope_index in enumerate(valid_keys):
@@ -638,47 +637,66 @@ def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] 
 
     # in all cases, the envelope is going to be either monotonically decreasing, or a parabola (-x^2)
     isotope_pattern = [(isotope_index, isotope_dict['int']) for isotope_index, isotope_dict in micro_dict.items()]
-    # are we monotonically decreasing?
-    remove = False
-    if len(isotope_pattern) > 2:
-        # check if the 2nd isotope is smaller than the first. This is a classical case looking like:
-        #
-        #  |
-        #  |  |
-        #  |  |  |
-        #  |  |  |  |
+    if theo_dist is not None and len(isotope_pattern) >= 2:
+        ref_iso = 0
+        ref_int = 0
+        theo_int = 0
+        for i,(isotope_index, isotope_intensity) in enumerate(isotope_pattern):
+            if isotope_index == ref_iso:
+                continue
+            if ref_int == 0 and isotope_intensity > 0:
+                ref_iso = isotope_index
+                ref_int = isotope_intensity
+                theo_int = theo_dist[ref_iso]
+            if isotope_intensity > 0:
+                theo_ratio = theo_int/theo_dist[isotope_index]
+                data_ratio = ref_int/isotope_intensity
+                if not (0.75 < data_ratio/theo_ratio < 1.25):
+                    env_dict.pop(isotope_index)
+                    micro_dict.pop(isotope_index)
+                    ppm_dict.pop(isotope_index)
+    else:
+        # are we monotonically decreasing?
+        remove = False
+        if len(isotope_pattern) > 2:
+            # check if the 2nd isotope is smaller than the first. This is a classical case looking like:
+            #
+            #  |
+            #  |  |
+            #  |  |  |
+            #  |  |  |  |
 
-        if isotope_pattern[1][1] < isotope_pattern[0][1]:
-            # we are, check this trend holds and remove isotopes it fails for
-            for i,j in zip(isotope_pattern, isotope_pattern[1:]):
-                if j[1]*0.9 > i[1]:
-                    # the pattern broke, remove isotopes beyond this point
-                    remove = True
-                if remove:
-                    env_dict.pop(j[0])
-                    micro_dict.pop(j[0])
-                    ppm_dict.pop(j[0])
-
-        # check if the 2nd isotope is larger than the first. This is a case looking like:
-        #
-        #
-        #     |  |
-        #     |  |
-        #  |  |  |  |
-
-        elif isotope_pattern[1][1] > isotope_pattern[0][1]:
-            shift = False
-            for i,j in zip(isotope_pattern, isotope_pattern[1:]):
-                if shift and j[1]*0.9 > i[1]:
-                    remove = True
-                elif shift is False and j[1] < i[1]*0.9:
-                    if shift:
+            if isotope_pattern[1][1] < isotope_pattern[0][1]:
+                # we are, check this trend holds and remove isotopes it fails for
+                for i,j in zip(isotope_pattern, isotope_pattern[1:]):
+                    if j[1]*0.9 > i[1]:
+                        # the pattern broke, remove isotopes beyond this point
                         remove = True
-                    else:
-                        shift = True
-                if remove:
-                    env_dict.pop(j[0])
-                    micro_dict.pop(j[0])
-                    ppm_dict.pop(j[0])
+                    if remove:
+                        env_dict.pop(j[0])
+                        micro_dict.pop(j[0])
+                        ppm_dict.pop(j[0])
+
+            # check if the 2nd isotope is larger than the first. This is a case looking like:
+            #
+            #
+            #     |  |
+            #     |  |
+            #  |  |  |  |
+
+            elif isotope_pattern[1][1] > isotope_pattern[0][1]:
+                shift = False
+                for i,j in zip(isotope_pattern, isotope_pattern[1:]):
+                    if shift and j[1]*0.9 > i[1]:
+                        remove = True
+                    elif shift is False and j[1] < i[1]*0.9:
+                        if shift:
+                            remove = True
+                        else:
+                            shift = True
+                    if remove:
+                        env_dict.pop(j[0])
+                        micro_dict.pop(j[0])
+                        ppm_dict.pop(j[0])
 
     return {'envelope': env_dict, 'micro_envelopes': micro_dict, 'ppms': ppm_dict}

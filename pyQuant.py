@@ -444,6 +444,7 @@ class Worker(Process):
                                     peak_intensity = vals.get('int')
                                     # if precursor_label == 'Medium':
                                     #     print peak_intensity, last_peak_height[precursor_label][isotope]
+                                    # check the slope to see if we're just going off endlessly
                                     if peak_intensity == 0 or (self.peak_cutoff and peak_intensity < last_peak_height[precursor_label][isotope]*self.peak_cutoff):
                                         low_int_isotopes[(precursor_label, isotope)] += 1
                                         if low_int_isotopes[(precursor_label, isotope)] >= 2:
@@ -476,9 +477,9 @@ class Worker(Process):
                                     if i[0] == df.name:
                                         del isotopes_chosen[i]
                         del df
-                if not found or np.abs(ms_index) > 75:
+                if not found or np.abs(ms_index) > 25:
                     not_found += 1
-                    # the 75 check is in case we're in something crazy. We should already have the elution profile of the ion
+                    # the 25 check is in case we're in something crazy. We should already have the elution profile of the ion
                     # of interest, else we're in an LC contaminant that will never end.
                     if not_found >= 2:
                         not_found = 0
@@ -487,6 +488,7 @@ class Worker(Process):
                             current_scan = initial_scan
                             finished = set([])
                             finished_isotopes = {i: set([]) for i in precursors.keys()}
+                            ms_index = 0
                         else:
                             if self.mrm:
                                 if mrm_info is not None and mrm_labels:
@@ -498,6 +500,7 @@ class Worker(Process):
                                     initial_scan = current_scan
                                     finished = set([])
                                     finished_isotopes = {i: set([]) for i in precursors.keys()}
+                                    ms_index = 0
                                 else:
                                     break
                             else:
@@ -506,6 +509,7 @@ class Worker(Process):
                     not_found = 0
                 if self.reporter_mode:
                     break
+                ms_index += delta
             if isotope_labels and not combined_data.empty:
                 if self.mrm:
                     combined_data = combined_data.T
@@ -658,7 +662,7 @@ class Worker(Process):
                             if quant_label in rt_figure_mapper:
                                 rt_base = rt_figure_mapper[(quant_label, index)]
                             else:
-                                rt_base = {'data': {'x': 'x', 'columns': []}, 'subchart': {'show': True}, 'axis': {'x': {'label': 'Retention Time'}, 'y': {'label': 'Intensity', 'max': combined_data.max().max()}}}
+                                rt_base = {'data': {'x': 'x', 'columns': []}, 'grid': {'x': {'lines': [{'value': rt, 'text': 'Initial RT {0:0.2f}'.format(rt), 'position': 'middle'}]}}, 'subchart': {'show': True}, 'axis': {'x': {'label': 'Retention Time'}, 'y': {'label': 'Intensity', 'max': combined_data.max().max()}}}
                                 rt_figure_mapper[(quant_label, index)] = rt_base
                                 rt_figure['data'].append(rt_base)
                             rt_base['data']['columns'].append(['{0} {1} raw'.format(quant_label, index)]+ydata.tolist())
@@ -1797,9 +1801,14 @@ def main():
                         var $active_window = $('.viewer-panel');
                         initPanel();
 
+                        var current_plot;
+
                         var initDataViewer = function(){
                             $('[data-chart]').click(function(event){
                                 var $this = $(this);
+                                if(current_plot && current_plot == $this)
+                                    return;
+                                current_plot = $this;
                                 var $base_element = $active_window.find('.viewer-content');
                                 $base_element.children().remove();
                                 $element = $base_element;
