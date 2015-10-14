@@ -1161,31 +1161,192 @@ def main():
                         <link rel="stylesheet" href="http://cdn.datatables.net/1.10.5/css/jquery.dataTables.css" type="text/css">
                         <link rel="stylesheet" href="http://cdnjs.cloudflare.com/ajax/libs/c3/0.4.10/c3.min.css" type="text/css">
                         <style>
-                            html, body {{
+                            html, body {
                                 padding: 0;
                                 margin: 0;
                                 height: 100%;
-                            }}
-                            .quant-table, .viewer-panel {{
+                            }
+                            .quant-table, .chart-display {
                                 min-height: 50%;
                                 max-height: 50%;
                                 height: 50%;
-                            }}
-                            .viewer-panel {{
+                            }
+                            .viewer-panel {
                                 overflow-y: scroll;
                                 display: inline;
-                            }}
-                            #raw-table_wrapper {{
-                            }}
-                            .selected {{
+                            }
+                            #raw-table_wrapper {
+                            }
+                            .selected {
                                 background-color: #d9edf7 !important;
-                            }}
-                            .viewer-content > div.row > div.c3 {{
+                            }
+                            .display-pane {
+                                width: calc(100% - 325px);
                                 display: inline-block;
-                            }}
+                                position: absolute;
+                                top: 5px;
+                            }
+                            .nav-side-menu {
+                              overflow: auto;
+                              font-family: verdana;
+                              font-size: 12px;
+                              font-weight: 200;
+                                                            display: inline-block;
+                              background-color: #2e353d;
+                              top: 0px;
+                              width: 300px;
+                              height: 100%;
+                              color: #e1ffff;
+                            }
+                            .nav-side-menu .brand {
+                              background-color: #23282e;
+                              line-height: 50px;
+                              display: block;
+                              text-align: center;
+                              font-size: 14px;
+                            }
+                            .nav-side-menu .toggle-btn {
+                              display: none;
+                            }
+                            .nav-side-menu ul,
+                            .nav-side-menu li {
+                              list-style: none;
+                              padding: 0px;
+                              margin: 0px;
+                              line-height: 35px;
+                              cursor: pointer;
+                            }
+                            .nav-side-menu ul :not(collapsed) .arrow:before,
+                            .nav-side-menu li :not(collapsed) .arrow:before {
+                              font-family: FontAwesome;
+                              content: "\f078";
+                              display: inline-block;
+                              padding-left: 10px;
+                              padding-right: 10px;
+                              vertical-align: middle;
+                              float: right;
+                            }
+                            .nav-side-menu ul .active,
+                            .nav-side-menu li .active {
+                              border-left: 3px solid #d19b3d;
+                              background-color: #4f5b69;
+                            }
+                            .nav-side-menu ul .sub-menu li.active,
+                            .nav-side-menu li .sub-menu li.active {
+                              color: #d19b3d;
+                            }
+                            .nav-side-menu ul .sub-menu li.active a,
+                            .nav-side-menu li .sub-menu li.active a {
+                              color: #d19b3d;
+                            }
+                            .nav-side-menu ul .sub-menu li,
+                            .nav-side-menu li .sub-menu li {
+                              background-color: #181c20;
+                              border: none;
+                              line-height: 28px;
+                              border-bottom: 1px solid #23282e;
+                              margin-left: 0px;
+                            }
+                            .nav-side-menu ul .sub-menu li:hover,
+                            .nav-side-menu li .sub-menu li:hover {
+                              background-color: #020203;
+                            }
+                            .nav-side-menu ul .sub-menu li:before,
+                            .nav-side-menu li .sub-menu li:before {
+                              font-family: FontAwesome;
+                              content: "\f105";
+                              display: inline-block;
+                              padding-left: 10px;
+                              padding-right: 10px;
+                              vertical-align: middle;
+                            }
+                            .nav-side-menu li {
+                              padding-left: 0px;
+                              border-left: 3px solid #2e353d;
+                              border-bottom: 1px solid #23282e;
+                            }
+                            .nav-side-menu li a {
+                              text-decoration: none;
+                              color: #e1ffff;
+                            }
+                            .nav-side-menu li a i {
+                              padding-left: 10px;
+                              width: 20px;
+                              padding-right: 20px;
+                            }
+                            .nav-side-menu li:hover {
+                              border-left: 3px solid #d19b3d;
+                              background-color: #4f5b69;
+                              -webkit-transition: all 1s ease;
+                              -moz-transition: all 1s ease;
+                              -o-transition: all 1s ease;
+                              -ms-transition: all 1s ease;
+                              transition: all 1s ease;
+                            }
+                            @media (max-width: 767px) {
+                              .nav-side-menu {
+                                position: relative;
+                                width: 100%;
+                                margin-bottom: 10px;
+                              }
+                              .nav-side-menu .toggle-btn {
+                                display: block;
+                                cursor: pointer;
+                                position: absolute;
+                                right: 10px;
+                                top: 10px;
+                                z-index: 10 !important;
+                                padding: 3px;
+                                background-color: #ffffff;
+                                color: #000;
+                                width: 40px;
+                                text-align: center;
+                              }
+                              .brand {
+                                text-align: left !important;
+                                font-size: 22px;
+                                padding-left: 20px;
+                                line-height: 50px !important;
+                              }
+                            }
+                            @media (min-width: 767px) {
+                              .nav-side-menu .menu-list .menu-content {
+                                display: block;
+                              }
+                            }
+                            .enabled {
+                                background-color: darkslategrey !important;
+                            }
+                            .enabled:hover {
+                                background-color: #4a4c4f !important;
+                            }
                         </style>
                     </head>
                     <body>
+                    <div class="nav-side-menu">
+                        <div class="brand">PyQuant</div>
+                        <i class="fa fa-bars fa-2x toggle-btn" data-toggle="collapse" data-target="#menu-content"></i>
+
+                            <div class="menu-list">
+
+                                <ul id="menu-content" class="menu-content collapse out">
+                                    <li  data-toggle="collapse" data-target="#products" class="collapsed active">
+                                      <a href="#"><i class="fa fa-gift fa-lg"></i> Data Manipulation <span class="arrow"></span></a>
+                                    </li>
+                                    <ul class="sub-menu collapse" id="products">
+                                        <li><a id="ratio-logger" href="#">Log Ratios</a></li>
+                                    </ul>
+
+
+                                    <li data-toggle="collapse" data-target="#columns-shown" class="collapsed">
+                                      <a href="#"><i class="fa fa-globe fa-lg"></i> Columns Displayed <span class="arrow"></span></a>
+                                    </li>
+                                    <ul class="sub-menu collapse" id="columns-shown">
+                                    </ul>
+                                </ul>
+                         </div>
+                    </div>
+                    <div class="display-pane">
                         <div class="quant-table">
                         <table id="raw-table" class="table table-striped table-bordered table-hover">
                             <thead>
@@ -1557,6 +1718,8 @@ def main():
                         </tbody>
                     </table>
                   </div>
+                  <div class="chart-display"></div>
+                </div>
                 </body>
                 <footer></footer>
                 <script type="text/javascript" src="http://code.jquery.com/jquery-1.11.1.min.js"></script>
@@ -1572,10 +1735,26 @@ def main():
                             "sScrollY": $(window).height()*0.4,
                             "sScrollX": $(window).width(),
                             "scrollCollapse": true,
-                            "bJQueryUI": true
+                            "jQueryUI": true,
+                            'search': {regex: true},
+                            'fixedHeader': {header: true},
                         });
+
+                        var columns = dt.columns().header();
+                        var col_selector = $('#columns-shown');
+                        for(var i=0;i<columns.length;i++){
+                            var toggler = $('<li class="enabled" data-col="'+i+'"><a href="#">'+dt.column(columns[i]).header().outerText+'</a></li>');
+                            col_selector.append(toggler);
+                            toggler.click(function(event){
+                                var col = dt.column($(this).data('col'));
+                                $(this).toggleClass('enabled');
+                                col.visible(!col.visible(), false);
+                                dt.draw();
+                            });
+                        }
+
                         var reload = false;
-                        var empty_panel = '<div class="viewer-panel col-xs-12"><button class="btn btn-primary new-window">New Window</button><button class="btn btn-primary active-window">Set Active Window</button><button class="btn btn-primary close-window">Close window</button><div class="viewer-content"></div></div>';
+                        var empty_panel = '<div class="viewer-panel"><button class="btn btn-primary new-window">New Window</button><button class="btn btn-primary active-window">Set Active Window</button><button class="btn btn-primary close-window">Close window</button><div class="viewer-content"><canvas id="myChart" width="400" height="400"></canvas></div></div>';
                         $('body').append(empty_panel);
                         var initPanel = function(){
                             $('.new-window').last().click(function(){
