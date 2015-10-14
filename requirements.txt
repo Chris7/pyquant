@@ -4,3 +4,4 @@ matplotlib
 scipy
 cython
 lxml
+scikit-learn
