@@ -166,7 +166,7 @@ class Worker(Process):
                  debug=False, html=False, mono=False, precursor_ppm=5.0, isotope_ppm=2.5, quant_method='integrate',
                  reader_in=None, reader_out=None, thread=None, fitting_run=False, msn_rt_map=None, reporter_mode=False,
                  spline=None, isotopologue_limit=-1, labels_needed=1, overlapping_mz=False, min_resolution=0, min_scans=3,
-                 quant_msn_map=None, mrm=False, mrm_pair_info=None, peak_cutoff=0.05):
+                 quant_msn_map=None, mrm=False, mrm_pair_info=None, peak_cutoff=0.05, ratio_cutoff=1):
         super(Worker, self).__init__()
         self.precision = precision
         self.precursor_ppm = precursor_ppm
@@ -200,6 +200,7 @@ class Worker(Process):
         self.mrm = mrm
         self.mrm_pair_info = mrm_pair_info
         self.peak_cutoff = peak_cutoff
+        self.ratio_cutoff = 1
         if mrm:
             self.quant_mrm_map = {label: list(group) for label, group in groupby(self.quant_msn_map, key=operator.itemgetter(0))}
 
@@ -546,7 +547,7 @@ class Worker(Process):
                         'plot-multi': True,
                         'common-x': ['x']+map(lambda x: '{0:0.2f}'.format(x), combined_data.columns),
                         'rows': len(precursors),
-                        'columns': isotope_labels['isotope_index'].max()+1
+                        'columns': isotope_labels['isotope_index'].max()+1,
                     }
                     rt_figure_mapper = {}
 
@@ -780,7 +781,7 @@ class Worker(Process):
                             # ax.set_xlim(xdata[0], xdata[-1])
                             # ax.set_xticks(x_for_plot)
                             # ax.set_xticklabels(['{0:.2f} '.format(i) for i in x_for_plot], rotation=45, ha='right')
-
+                write_html = True if self.ratio_cutoff == 0 else False
                 for silac_label1 in data.keys():
                     qv1 = quant_vals.get(silac_label1)
                     for silac_label2 in data.keys():
@@ -810,6 +811,11 @@ class Worker(Process):
                                 quant1 = sum([qv1.get(i, 0) for i in common_isotopes])
                                 quant2 = sum([qv2.get(i, 0) for i in common_isotopes])
                                 ratio = quant1/quant2 if quant1 and quant2 else 'NA'
+                            try:
+                                if np.abs(np.log2(ratio)) > self.ratio_cutoff:
+                                    write_html = True
+                            except:
+                                pass
                         result_dict.update({'{}_{}_ratio'.format(silac_label1, silac_label2): ratio})
 
                 if self.html:
@@ -819,7 +825,8 @@ class Worker(Process):
                     # html_images['clusters'] = os.path.join(self.html['rel'], fname)
                 if self.debug or self.html:
                     plt.close('all')
-                result_dict.update({'html_info': html_images})
+                if write_html:
+                    result_dict.update({'html_info': html_images})
                 for silac_label, silac_data in data.iteritems():
                     w1 = peak_info.get(silac_label, {}).get('std', None)
                     w2 = peak_info.get(silac_label, {}).get('std2', None)
@@ -1614,10 +1621,15 @@ def main():
                                      var columns = chart_data['columns'];
                                      var common_x = chart_data['common-x'];
                                      var plot_data = chart_data['data'];
+                                     var last_title;
                                      for(var i=0;i<plot_data.length;i++){
                                          var col_index = i;
-                                         if(columns && col_index%columns == 0){
-                                             $element = $('<div class="row"></div>').appendTo($base_element);
+                                         if(columns){
+                                            var plot_title = plot_data[i]['data']['columns'][1][0].split(' ')[0];
+                                            if(!last_title || (last_title && plot_title.indexOf(last_title) == -1 )){
+                                                $element = $('<div class="row"></div>').appendTo($base_element);
+                                                last_title = plot_title;
+                                            }
                                          }
                                          var chart_name = 'chart'+i;
                                          var new_element = $element.append('<div id="'+chart_name+'"></div>');
