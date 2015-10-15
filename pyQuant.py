@@ -233,7 +233,7 @@ class Worker(Process):
                     y.append(peak['std'])
                     y2.append(peak['std2'])
         from sklearn.covariance import EllipticEnvelope
-        classifier = EllipticEnvelope(contamination=0.4)
+        classifier = EllipticEnvelope(contamination=0.25)
         data = np.array([x,y]).T
         try:
             classifier.fit(data)
@@ -522,6 +522,8 @@ class Worker(Process):
                 if self.reporter_mode:
                     break
                 ms_index += delta
+            rt_figure = {}
+            isotope_figure = {}
             if isotope_labels and not combined_data.empty:
                 if self.mrm:
                     combined_data = combined_data.T
@@ -1083,7 +1085,7 @@ def main():
             except KeyError:
                 raw_files[fname] = [d]
             del scan
-    if scan_filemap and not args.processed:
+    if scan_filemap and not (args.processed or args.tsv):
         # determine if we want to do ms1 ion detection, ms2 ion detection, all ms2 of each file
         if args.msn_ion or args.msn_peaklist:
             RESULT_ORDER.extend([('ions_found', 'Ions Found')])
