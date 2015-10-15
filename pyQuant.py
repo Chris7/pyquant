@@ -493,7 +493,7 @@ class Worker(Process):
                     not_found += 1
                     # the 25 check is in case we're in something crazy. We should already have the elution profile of the ion
                     # of interest, else we're in an LC contaminant that will never end.
-                    if not_found >= 2:
+                    if current_scan is None or not_found >= 2:
                         not_found = 0
                         if delta == -1:
                             delta = 1
