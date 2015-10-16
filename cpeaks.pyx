@@ -582,10 +582,11 @@ def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] 
                 displacement = get_ppm(start+offset, current_loc)
             if debug:
                 print pos, start, current_loc, displacement, last_displacement, displacement > last_displacement, last_displacement < tolerance, isotope_index, offset
-            if displacement < tolerance:
+            # because the peak location may be between two readings, we use a very tolerance search here and enforce the ppm at the peak fitting stage.
+            if displacement < tolerance*5:
                 valid_locations.append((displacement, current_loc, pos))
             if valid_locations and displacement > last_displacement:
-                # pick the largest peak within our error tolerance
+                # pick the peak closest to our error tolerance
                 valid_locations2[isotope_index] = valid_locations
                 isotope_index += 1
                 tolerance = isotope_ppms.get(isotope_index, isotope_ppm)/1000000.0
@@ -609,6 +610,7 @@ def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] 
     #best_locations = sorted(looper(selected=valid_vals, df=df, theo=valid_theor), key=itemgetter(0))[0][1]
     best_locations = [sorted(valid_locations2[i], key=itemgetter(0))[0] for i in valid_keys]
 
+
     for index, isotope_index in enumerate(valid_keys):
         if skip_isotopes is not None and isotope_index in skip_isotopes:
             continue
@@ -631,10 +633,6 @@ def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] 
         env_dict[isotope_index] = micro_index
         ppm_dict[isotope_index] = micro_bounds.get('error')
 
-    # if label == 'Heavy':
-    #     print micro_dict
-
-
     # in all cases, the envelope is going to be either monotonically decreasing, or a parabola (-x^2)
     isotope_pattern = [(isotope_index, isotope_dict['int']) for isotope_index, isotope_dict in micro_dict.items()]
     if theo_dist is not None and len(isotope_pattern) >= 2:
@@ -653,7 +651,7 @@ def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] 
                 ref_iso = isotope_index
                 ref_int = isotope_intensity
                 theo_int = theo_dist[ref_iso]
-            if isotope_intensity > 0:
+            elif isotope_intensity > 0:
                 theo_ratio = theo_int/theo_dist[isotope_index]
                 data_ratio = ref_int/isotope_intensity
                 if not (0.75 < data_ratio/theo_ratio < 1.25):

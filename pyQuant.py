@@ -461,6 +461,8 @@ class Worker(Process):
                                         low_int_isotopes[(precursor_label, isotope)] += 1
                                         if low_int_isotopes[(precursor_label, isotope)] >= 2:
                                             finished_isotopes[precursor_label].add(isotope)
+                                        else:
+                                            labels_found.add(precursor_label)
                                         continue
                                     else:
                                         low_int_isotopes[(precursor_label, isotope)] = 0
@@ -822,7 +824,7 @@ class Worker(Process):
                                         x.append(i)
                                         y.append(q1/q2)
                                 # fit it and take the intercept
-                                if len(x) > 3:
+                                if len(x) >= 3:
                                     slope, intercept, r_value, p_value, std_err = linregress(x,y)
                                     ratio = intercept
                                 else:
