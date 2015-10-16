@@ -1184,9 +1184,8 @@ def main():
                 if 'HTML BREAK' in i:
                     break
                 template.append(i)
-            html_template = Template('\n'.join(template))
-            html_template.delimiter = '~'
-            html_template.substitute({'title': source_file, 'table_header': '\n'.join(['<th>{0}</th>'.format(i) for i in ['Raw File']+[i[1] for i in RESULT_ORDER]])})
+            html_template = Template(''.join(template))
+            html_out.write(html_template.substitute({'title': source_file, 'table_header': '\n'.join(['<th>{0}</th>'.format(i) for i in ['Raw File']+[i[1] for i in RESULT_ORDER]])}))
 
     skip_map = set([])
     all_results = []
@@ -1255,7 +1254,7 @@ def main():
                     spectra_to_quant = find_prior_scan(msn_map, scan_id, ms_level=msn_for_quant) if msn_for_quant != msn_for_id else scan_id
                     d = {
                         'quant_scan': {'id': spectra_to_quant},
-                        'id_scan': {'id': scan_id, 'rt': scan.rt, 'charge': scan.charge, 'mass': float(scan.mass), 'product_ion': float(scan.product_ion)},
+                        'id_scan': {'id': scan_id, 'rt': scan.rt, 'charge': scan.charge, 'mass': float(scan.mass), 'product_ion': float(scan.product_ion) if args.mrm else None},
                     }
                     ion_search_list.append((spectra_to_quant, d))
             del scan
@@ -1540,12 +1539,15 @@ def main():
     out.close()
 
     if html:
-        html_out.write(
-                """
-
-                """
-            )
-
+        template = []
+        append = False
+        for i in open('pyquant_output.html', 'rb'):
+            if 'HTML BREAK' in i:
+                append = True
+            elif append:
+                template.append(i)
+        html_template = Template(''.join(template))
+        html_out.write(html_template.safe_substitute({}))
 
 if __name__ == "__main__":
     sys.exit(main())
