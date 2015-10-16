@@ -1123,6 +1123,8 @@ def main():
                     RESULT_ORDER.extend([('{}_{}_confidence'.format(silac_label, silac_label2), '{}/{} Confidence'.format(silac_label, silac_label2)),
                                          ])
 
+    pq_dir = os.path.split(__file__)[0]
+
     workers = []
     completed = 0
     sys.stderr.write('Beginning quantification.\n')
@@ -1182,7 +1184,7 @@ def main():
         else:
             html_out = open('{0}.html'.format(out_path), 'wb')
             template = []
-            for i in open('pyquant_output.html', 'rb'):
+            for i in open(os.path.join(pq_dir, 'pyquant_output.html'), 'rb'):
                 if 'HTML BREAK' in i:
                     break
                 template.append(i)
@@ -1543,7 +1545,7 @@ def main():
     if html:
         template = []
         append = False
-        for i in open('pyquant_output.html', 'rb'):
+        for i in open(os.path.join(pq_dir, 'pyquant_output.html'), 'rb'):
             if 'HTML BREAK' in i:
                 append = True
             elif append:
