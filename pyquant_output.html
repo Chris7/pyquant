@@ -17,6 +17,9 @@
                 max-height: 50%;
                 height: 50%;
             }
+            .viewer-content {
+                overflow-x: scroll;
+            }
             .viewer-panel {
                 overflow-y: scroll;
                 display: inline;
@@ -246,7 +249,7 @@
 
                 var reload = false;
                 //var empty_panel = '<div class="viewer-panel"><button class="btn btn-primary new-window">New Window</button><button class="btn btn-primary active-window">Set Active Window</button><button class="btn btn-primary close-window">Close window</button><div class="viewer-content"><canvas id="myChart" width="400" height="400"></canvas></div></div>';
-                var empty_panel = '<div class="viewer-panel"><div class="viewer-content"><canvas id="myChart" width="400" height="400"></canvas></div></div>';
+                var empty_panel = '<div class="viewer-panel"><div class="viewer-content"><canvas id="myChart" width="400" height="400" overflow-y:"auto"></canvas></div></div>';
                 $('.display-pane').append(empty_panel);
                 var initPanel = function(){
                     $('.new-window').last().click(function(){
@@ -287,32 +290,36 @@
                         $element = $base_element;
                         //var chart_data = $this.data('chart');
                         var chart_data = JSON.parse(pako.inflate(window.atob($this.data('chart')), { to: 'string' }));
+                        var chart_width = 0;
+                        var plot_width = $(document).width()/3;
                          if(chart_data['plot-multi']){
-                             var columns = chart_data['columns'];
                              var common_x = chart_data['common-x'];
                              var plot_data = chart_data['data'];
                              var last_title;
                              for(var i=0;i<plot_data.length;i++){
-                                 var col_index = i;
-                                 if(columns){
-                                    var plot_title = plot_data[i]['data']['columns'][1][0].split(' ')[0];
-                                    if(!last_title || (last_title && plot_title.indexOf(last_title) == -1 )){
-                                        $element = $('<div class="row"></div>').appendTo($base_element);
-                                        last_title = plot_title;
-                                    }
+                                 var plot_info = plot_data[i]['data']['columns'][1];
+                                 if(!plot_info)
+                                    continue;
+                                 var plot_title = plot_info[0].split(' ');
+                                 if(!last_title || (plot_title && last_title && plot_title[0].indexOf(last_title) == -1 )) {
+                                     if (last_title)
+                                         $element.css('width', chart_width);
+                                     $element = $('<div class="row"></div>').appendTo($base_element);
                                  }
+                                 if(plot_title)
+                                    last_title = plot_title[0];
                                  var chart_name = 'chart'+i;
                                  var new_element = $element.append('<div id="'+chart_name+'"></div>');
                                  plot_data[i]['bindto'] = '#'+chart_name;
-                                 if(columns){
-                                     plot_data[i]['size'] = {width: $( document ).width()/(columns+1)};
-                                 }
+                                 chart_width += plot_width;
+                                 plot_data[i]['size'] = {width: plot_width};
                                  if(common_x){
                                      plot_data[i]['data']['columns'].unshift(common_x);
                                  }
                                  c3.generate(plot_data[i]);
 
                              }
+                             $element.css('width', chart_width);
                         }
 
                     });

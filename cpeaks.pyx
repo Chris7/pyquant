@@ -8,7 +8,7 @@ from scipy import optimize, integrate
 from scipy.interpolate import interp1d
 from scipy.ndimage.filters import gaussian_filter1d
 from scipy.signal import argrelmax, argrelmin, convolve, kaiser
-from operator import itemgetter
+from operator import itemgetter, attrgetter
 from collections import OrderedDict
 from pythomics.proteomics.config import NEUTRON
 
@@ -146,7 +146,7 @@ cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.nda
     # best.bic = bic
     return best
 
-cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata_original, float min_dist=0, filter=False, bigauss_fit=False, rt_peak=0.0):
+cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata_original, float min_dist=0, filter=False, bigauss_fit=False, rt_peak=0.0, mrm=False):
     cdef object fit_func
     cdef np.ndarray[long] row_peaks, smaller_peaks, larger_peaks
     cdef list minima, fit_accuracy, smaller_minima, larger_minima, guess, bnds
@@ -291,16 +291,21 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         args = (xdata, ydata)
         opts = {'maxiter': 1000}
         fit_func = bigauss_func if bigauss_fit else gauss_func
-        routines = ['SLSQP', 'TNC', 'L-BFGS-B', 'SLSQP']
+        routines = ['SLSQP', 'TNC', 'L-BFGS-B']
         routine = routines.pop(0)
         if len(bnds) == 0:
             bnds = deepcopy(initial_bounds)
         # if rt_peak:
         #     print guess, bnds, args
-        res = optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, tol=1e-5)
-        while not res.success and routines:
+        res = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts)]
+        #res = [optimize.differential_evolution(fit_func, bnds, args)]#, method=routine, bounds=bnds, options=opts, tol=1e-5)]
+        while not res[-1].success and routines:
             routine = routines.pop(0)
-            res = optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, tol=1e-5)
+            res.append(optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts))
+        if res[-1].success:
+            res = res[-1]
+        else:
+            res = sorted(res, key=attrgetter('fun'))[0]
         n = len(xdata)
         k = len(res.x)
         res.bic = bic
@@ -593,7 +598,7 @@ def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] 
                 offset = spacing*isotope_index
                 displacement = get_ppm(start+offset, current_loc)
                 valid_locations = []
-                if len(valid_locations2) >= isotopologue_limit:
+                if isotopologue_limit != -1 and (len(valid_locations2) >= isotopologue_limit):
                     break
             elif last_displacement is not None and displacement > last_displacement and not valid_locations:
                 break
@@ -654,7 +659,7 @@ def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] 
             elif isotope_intensity > 0:
                 theo_ratio = theo_int/theo_dist[isotope_index]
                 data_ratio = ref_int/isotope_intensity
-                if not (0.75 < data_ratio/theo_ratio < 1.25):
+                if np.abs(np.log2(data_ratio/theo_ratio)) > 0.5:
                     env_dict.pop(isotope_index)
                     micro_dict.pop(isotope_index)
                     ppm_dict.pop(isotope_index)

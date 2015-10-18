@@ -28,6 +28,8 @@ import random
 from itertools import groupby
 from collections import OrderedDict, defaultdict
 from matplotlib import pyplot as plt
+from sklearn.covariance import EllipticEnvelope
+from sklearn.linear_model import RANSACRegressor
 from mpl_toolkits.mplot3d import Axes3D
 from multiprocessing import Process, Queue, Manager, Array
 import ctypes
@@ -224,8 +226,12 @@ class Worker(Process):
     def replaceOutliers(self, common_peaks, combined_data):
         x = []
         y = []
+        hx = []
+        hy = []
         keys = []
+        hkeys = []
         y2 = []
+        hy2 = []
         for i,v in common_peaks.items():
             for isotope, peaks in v.items():
                 for peak_index, peak in enumerate(peaks):
@@ -233,25 +239,32 @@ class Worker(Process):
                     x.append(peak['mean'])
                     y.append(peak['std'])
                     y2.append(peak['std2'])
-        from sklearn.covariance import EllipticEnvelope
+                    if self.mrm and i != 'Light':
+                        hx.append(peak['mean'])
+                        hy.append(peak['std'])
+                        hy2.append(peak['std2'])
+                        hkeys.append((i, isotope, peak_index))
         classifier = EllipticEnvelope(contamination=0.25)
         data = np.array([x,y]).T
+        false_pred = (False, -1)
+        true_pred = (True, 1)
+        to_delete = set([])
         try:
-            classifier.fit(data)
+            classifier.fit(np.array([hx,hy]).T if self.mrm else data)
         except ValueError:
             # singular matrix
             x1_mean, x1_std = data[0,0], data[0,1]
         else:
             classes = classifier.predict(data)
-            x1_outliers = [i for i,v in enumerate(classes) if v is False or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate')]
-            x1_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v is True])
+            x1_outliers = [i for i,v in enumerate(classes) if v in false_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate')]
+            x1_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred])
             # print x1_outliers, [keys[i] for i in x1_outliers]
             x1_mean, x1_std = classifier.location_
             for index in x1_outliers:
                 indexer = keys[index]
                 if indexer[:2] in x1_inliers:
+                    to_delete.add(indexer)
                     continue
-
                 mz = indexer[1]
                 row_data = combined_data.loc[mz, :]
                 mapper = interp1d(row_data.index.values, row_data.values)
@@ -261,26 +274,25 @@ class Worker(Process):
                 common_peaks[indexer[0]][indexer[1]][indexer[2]]['std'] = x1_std
         data = np.array([x, y2]).T
         try:
-            classifier.fit(data)
+            classifier.fit(np.array([hx,hy2]).T if self.mrm else data)
         except ValueError:
             pass
         else:
             classes = classifier.predict(data)
-            x2_outliers = [i for i,v in enumerate(classes) if v is False or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate')]
-            x2_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v is True])
-            # print x2_outliers, [keys[i] for i in x2_outliers]
+            x2_outliers = [i for i,v in enumerate(classes) if v in false_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate')]
+            x2_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred])
             x2_mean, x2_std = classifier.location_
             for index in x2_outliers:
                 indexer = keys[index]
                 if indexer[:2] in x2_inliers:
+                    to_delete.add(indexer)
                     continue
                 mz = indexer[1]
                 row_data = combined_data.loc[mz, :]
                 mapper = interp1d(row_data.index.values, row_data.values)
-                common_peaks[indexer[0]][indexer[1]][indexer[2]]['amp'] = mapper(x2_mean)
-                common_peaks[indexer[0]][indexer[1]][indexer[2]]['peak'] = x2_mean
-                common_peaks[indexer[0]][indexer[1]][indexer[2]]['mean'] = x2_mean
                 common_peaks[indexer[0]][indexer[1]][indexer[2]]['std2'] = x2_std
+        for i in sorted(set(to_delete), key=operator.itemgetter(0,1,2), reverse=True):
+            del common_peaks[i[0]][i[1]][i[2]]
         return x1_mean
 
     def convertScan(self, scan):
@@ -443,8 +455,10 @@ class Worker(Process):
                                                               theo_dist=theo_dist, label=precursor_label, skip_isotopes=finished_isotopes[precursor_label],
                                                               last_precursor=last_precursors[delta].get(precursor_label, measured_precursor), isotopologue_limit=self.isotopologue_limit)
                                 if not envelope['envelope']:
-                                    finished.add(precursor_label)
+                                #    finished.add(precursor_label)
                                     continue
+                                #if precursor_label == 'Medium':
+                                 #   print df.name, envelope
                                 if 0 in envelope['micro_envelopes'] and envelope['micro_envelopes'][0].get('int'):
                                     if ms_index == 0:
                                         last_precursors[delta*-1][precursor_label] = envelope['micro_envelopes'][0]['params'][1]
@@ -570,7 +584,6 @@ class Worker(Process):
                         'plot-multi': True,
                         'common-x': ['x']+map(lambda x: '{0:0.2f}'.format(x), combined_data.columns),
                         'rows': len(precursors),
-                        'columns': isotope_labels['isotope_index'].max()+1,
                     }
                     rt_figure_mapper = {}
 
@@ -667,8 +680,11 @@ class Worker(Process):
                         valid_peak = None
                         if not to_keep:
                             # we have no peaks with our RT, there are contaminating peaks, remove all the noise but the closest to our RT
-                            valid_peak = sorted([(i, np.abs(i['mean']-start_rt)) for i in valid_peaks], key=operator.itemgetter(1))[0][0]
-                            valid_peak['interpolate'] = True
+                            if not self.mrm:
+                                valid_peak = sorted([(i, np.abs(i['mean']-start_rt)) for i in valid_peaks], key=operator.itemgetter(1))[0][0]
+                                valid_peak['interpolate'] = True
+                            # else:
+                            #     valid_peak = [j[0] for j in sorted([(i, i['amp']) for i in valid_peaks], key=operator.itemgetter(1), reverse=True)[:3]]
                         else:
                             for i in reversed(to_remove):
                                 del valid_peaks[i]
@@ -694,7 +710,13 @@ class Worker(Process):
                 # get two most common peak, pick the closest to our RT
                 # we may need to add a check for a minimal # of in for max distance from the RT as well here.
                 # print combined_peaks
+                # print combined_peaks, combined_data
+                # if self.mrm:
+                #     for i,v in combined_peaks.items():
+                #         for isotope, scan_peaks in v.items():
+                #             v[isotope] = [j[1] for j in sorted([(peak['amp'], peak) for peak in scan_peaks], key=lambda x: x[0], reverse=True)[:3]]
                 common_peak = self.replaceOutliers(combined_peaks, combined_data)
+                # print combined_peaks, combined_data
                 # print combined_peaks
                 # if self.mrm:
                 #     common_peaks = pd.Series([sorted(value_peaks, key=lambda x: x['amp'], reverse=True)[0]['peak'] for i, values in combined_peaks.items() for index, value_peaks in values.iteritems()]).value_counts()
@@ -817,16 +839,22 @@ class Worker(Process):
                                 common_isotopes = set(qv1.keys()).intersection(qv2.keys())
                                 x = []
                                 y = []
+                                l1, l2 = 0,0
                                 for i in common_isotopes:
                                     q1 = qv1.get(i)
                                     q2 = qv2.get(i)
-                                    if q1 > 100 and q2 > 100:
+                                    if q1 > 100 and q2 > 100 and q1 > l1*0.15 and q2 > q2*0.15:
                                         x.append(i)
                                         y.append(q1/q2)
+                                        l1, l2 = q1, q2
                                 # fit it and take the intercept
                                 if len(x) >= 3:
-                                    slope, intercept, r_value, p_value, std_err = linregress(x,y)
-                                    ratio = intercept
+                                    classifier = EllipticEnvelope(contamination=0.4, assume_centered=True)
+                                    fit_data = np.array(y).reshape(len(y),1)
+                                    true_pred = (True, 1)
+                                    classifier.fit(fit_data)
+                                    #print peptide, ms1, np.mean([y[i] for i,v in enumerate(classifier.predict(fit_data)) if v in true_pred]), y
+                                    ratio = np.mean([y[i] for i,v in enumerate(classifier.predict(fit_data)) if v in true_pred])
                                 else:
                                     ratio = np.array(y).mean()
                             else:
