@@ -324,7 +324,7 @@
 
                     });
                     $('#raw-table').delegate('tr > td[data-chart]', 'click', function(event) {
-                     $('.selected').removeClass('selected'); $(this).addClass('selected');
+                     $('.selected').removeClass('selected'); $(this).parent().addClass('selected');
                     });
                 }
                 initDataViewer();

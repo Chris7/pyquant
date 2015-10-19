@@ -41,15 +41,71 @@ cpdef float gauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, nd
     cdef float residual = sum(np.abs(ydata-data)**2)
     return residual
 
+cpdef np.ndarray[FLOAT_t, ndim=2] bigauss_jac2(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
+    cdef np.ndarray[FLOAT_t] x0, f0, dx
+    cdef np.ndarray[FLOAT_t, ndim=2] jac
+    x0 = np.asfarray(params)
+    f0 = np.atleast_1d(bigauss_func(params, x, y))
+    jac = np.zeros([len(x0), len(f0)])
+    dx = np.zeros(len(x0))
+    for i in range(len(x0)):
+        if i%4 == 0:
+            # amplitudes
+            epsilon = 0.05
+        elif i%4 == 1:
+            # means
+            epsilon = 0.02
+        elif i%4 == 2 or i%4 == 3:
+            # standard deviations
+            epsilon = x0[i]*0.25
+            if epsilon < 0.005:
+                epsilon = 0.005
+        dx[i] = epsilon
+        jac[i] = (bigauss_func(*((x0+dx,)+(x,y))) - f0)/epsilon
+        dx[i] = 0.0
+    return jac.transpose()
+
+cpdef np.ndarray[FLOAT_t, ndim=2] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
+    cdef np.ndarray[FLOAT_t, ndim=2] jac
+    cdef np.ndarray[FLOAT_t, ndim=1] lx, ly, rx, ry, a_jac, mu_jac, s1_jac, s2_jac
+    cdef float amp, mu, stdl, stdr, sigma1, sigma2
+    jac = np.zeros([len(params), 1])
+    for i in xrange(len(params)):
+        if i%4 == 0:
+            amp = params[i]
+        elif i%4 == 1:
+            mu = params[i]
+        elif i%4 == 2:
+            stdl = params[i]
+        elif i%4 == 3:
+            stdr = params[i]
+            sigma1 = stdl/1.177
+            sigma2 = stdr/1.177
+            lx = x[x<=mu]
+            ly = y[x<=mu]
+            rx = x[x>mu]
+            ry = x[x>mu]
+            exp_term = np.exp(-(lx-mu)**2/(2*sigma1**2))
+            amp_exp_term = amp*exp_term
+            prefix = 2*amp_exp_term
+            jac[i-3] += sum(prefix*(amp-ly*exp_term))
+            jac[i-2] += sum(2*amp*(lx-mu)*exp_term*(amp_exp_term-ly)/sigma1**2)
+            jac[i-1] += sum(2*amp*((lx-mu)**2)*exp_term*(amp_exp_term-ly)/sigma1**3)
+            exp_term = np.exp(-(rx-mu)**2/(2*sigma2**2))
+            amp_exp_term = amp*exp_term
+            prefix = 2*amp_exp_term
+            jac[i-3] += sum(prefix*(amp-ry*exp_term))
+            jac[i-2] += sum(2*amp*(rx-mu)*exp_term*(amp_exp_term-ry)/sigma2**2)
+            jac[i] += sum(2*amp*((rx-mu)**2)*exp_term*(amp_exp_term-ry)/sigma2**3)
+    return jac.transpose()
+
 cdef np.ndarray[FLOAT_t, ndim=1] bigauss(np.ndarray[FLOAT_t, ndim=1] x, float amp, float mu, float stdl, float stdr):
     cdef float sigma1 = stdl/1.177
-    cdef float m1 = np.sqrt(2*np.pi)*sigma1*amp
     cdef float sigma2 = stdr/1.177
-    cdef float m2 = np.sqrt(2*np.pi)*sigma2*amp
     cdef np.ndarray[FLOAT_t, ndim=1] lx = x[x<=mu]
-    cdef np.ndarray[FLOAT_t, ndim=1] left = m1/(np.sqrt(2*np.pi)*sigma1)*np.exp(-(lx-mu)**2/(2*sigma1**2))
+    cdef np.ndarray[FLOAT_t, ndim=1] left = amp*np.exp(-(lx-mu)**2/(2*sigma1**2))
     cdef np.ndarray[FLOAT_t, ndim=1] rx = x[x>mu]
-    cdef np.ndarray[FLOAT_t, ndim=1] right = m2/(np.sqrt(2*np.pi)*sigma2)*np.exp(-(rx-mu)**2/(2*sigma2**2))
+    cdef np.ndarray[FLOAT_t, ndim=1] right = amp*np.exp(-(rx-mu)**2/(2*sigma2**2))
     cdef np.ndarray[FLOAT_t, ndim=1] y = np.concatenate([left, right], axis=1)
     return y
 
@@ -146,6 +202,13 @@ cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.nda
     # best.bic = bic
     return best
 
+cpdef basin_stepper(np.ndarray[FLOAT_t, ndim=1] args):
+    args[::1] += 0.1
+    args[::2] += 0.1
+    args[::3] += 0.05
+    args[::4] += 0.05
+    return args
+
 cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata_original, float min_dist=0, filter=False, bigauss_fit=False, rt_peak=0.0, mrm=False):
     cdef object fit_func
     cdef np.ndarray[long] row_peaks, smaller_peaks, larger_peaks
@@ -199,6 +262,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
     cdef object res
     cdef int n, k
     cdef float bic
+    cdef float min_val
 
     fit_accuracy = []
     min_spacing = min(np.diff(xdata))/10
@@ -295,13 +359,11 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         routine = routines.pop(0)
         if len(bnds) == 0:
             bnds = deepcopy(initial_bounds)
-        # if rt_peak:
-        #     print guess, bnds, args
         res = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts)]
-        #res = [optimize.differential_evolution(fit_func, bnds, args)]#, method=routine, bounds=bnds, options=opts, tol=1e-5)]
         while not res[-1].success and routines:
             routine = routines.pop(0)
             res.append(optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts))
+            # print routine, res[-1]
         if res[-1].success:
             res = res[-1]
         else:

@@ -69,6 +69,7 @@ search_group = parser.add_argument_group("Search Information")
 parser.add_processed_ms(group=search_group, required=False)
 search_group.add_argument('--skip', help="If true, skip scans with missing files in the mapping.", action='store_true')
 search_group.add_argument('--peptide', help="The peptide(s) to limit quantification to.", type=str, nargs='*')
+search_group.add_argument('--scan', help="The scan(s) to limit quantification to.", type=str, nargs='*')
 
 label_group = parser.add_argument_group("Labeling Information")
 label_subgroup = label_group.add_mutually_exclusive_group()
@@ -244,7 +245,7 @@ class Worker(Process):
                         hy.append(peak['std'])
                         hy2.append(peak['std2'])
                         hkeys.append((i, isotope, peak_index))
-        classifier = EllipticEnvelope(contamination=0.25)
+        classifier = EllipticEnvelope(contamination=0.4, random_state=0)
         data = np.array([x,y]).T
         false_pred = (False, -1)
         true_pred = (True, 1)
@@ -471,6 +472,8 @@ class Worker(Process):
                                     # if precursor_label == 'Medium':
                                     #     print peak_intensity, last_peak_height[precursor_label][isotope]
                                     # check the slope to see if we're just going off endlessly
+                                    # if precursor_label == 'Light':
+                                    #     print precursor_label, isotope, self.peak_cutoff, peak_intensity, low_int_isotopes[(precursor_label, isotope)], last_peak_height[precursor_label][isotope]
                                     if peak_intensity == 0 or (self.peak_cutoff and peak_intensity < last_peak_height[precursor_label][isotope]*self.peak_cutoff):
                                         low_int_isotopes[(precursor_label, isotope)] += 1
                                         if low_int_isotopes[(precursor_label, isotope)] >= 2:
@@ -506,7 +509,7 @@ class Worker(Process):
                                         del isotopes_chosen[i]
                         del df
 
-                if not found or (np.abs(ms_index) > 10 and self.flat_slope(combined_data, delta)):
+                if not found or (np.abs(ms_index) > 7 and self.flat_slope(combined_data, delta)):
                     not_found += 1
                     # the 25 check is in case we're in something crazy. We should already have the elution profile of the ion
                     # of interest, else we're in an LC contaminant that will never end.
@@ -650,6 +653,7 @@ class Worker(Process):
                     xdata = values.index.values.astype(float)
                     ydata = values.fillna(0).values.astype(float)
                     if sum(ydata>0) >= self.min_scans:
+                        # print quant_label, index
                         res, all_peaks = peaks.findAllPeaks(xdata, ydata, filter=True, bigauss_fit=True, rt_peak=0 if self.mrm else start_rt)
                         # res2, all_peaks2 = peaks.findAllPeaks2(values, filter=True)
                         # if len(res.x) > 4:
@@ -843,14 +847,14 @@ class Worker(Process):
                                 for i in common_isotopes:
                                     q1 = qv1.get(i)
                                     q2 = qv2.get(i)
-                                    if q1 > 100 and q2 > 100 and q1 > l1*0.15 and q2 > q2*0.15:
+                                    if q1 > 100 and q2 > 100 and q1 > l1*0.15 and q2 > l2*0.15:
                                         x.append(i)
                                         y.append(q1/q2)
                                         l1, l2 = q1, q2
                                 # fit it and take the intercept
                                 if len(x) >= 3:
-                                    classifier = EllipticEnvelope(contamination=0.4, assume_centered=True)
-                                    fit_data = np.array(y).reshape(len(y),1)
+                                    classifier = EllipticEnvelope(contamination=0.25, random_state=0)
+                                    fit_data = np.log2(np.array(y).reshape(len(y),1))
                                     true_pred = (True, 1)
                                     classifier.fit(fit_data)
                                     #print peptide, ms1, np.mean([y[i] for i,v in enumerate(classifier.predict(fit_data)) if v in true_pred]), y
@@ -948,7 +952,6 @@ def main():
     out = args.out
     html = args.html
     resume = args.resume
-    manager = Manager()
     calc_stats = not args.disable_stats
     msn_for_id = args.msn
     msn_for_quant = args.msn_quant_from if args.msn_quant_from else msn_for_id-1
@@ -1087,8 +1090,8 @@ def main():
             if not args.peptide and (sample != 1.0 and random.random() > sample):
                 continue
             specId = scan.id
-            # if specId not in ('1955', '1956'):
-            #     continue
+            if args.scan and specId not in args.scan:
+                continue
             fname = scan.file
             mass_key = (fname, specId, peptide)
             if mass_key in found_scans:
@@ -1174,17 +1177,6 @@ def main():
         out.write('{0}\n'.format('\t'.join(headers)))
 
     if html:
-        import unicodedata
-        value = unicodedata.normalize('NFKD', unicode(os.path.splitext(os.path.split(out_path)[1])[0])).encode('ascii', 'ignore')
-        value = unicode(re.sub('[^\w\s-]', '', value).strip().lower())
-        value = unicode(re.sub('[-\s]+', '-', value))
-        html = os.path.join(os.path.split(out_path)[0], os.path.normpath(value)+'_images')
-        try:
-            os.mkdir(html)
-        except OSError:
-            pass
-        html = {'full': os.path.join(os.path.split(out_path)[0], os.path.normpath(value)+'_images'),
-                'rel':os.path.normpath(value)+'_images' }
 
         def table_rows(html_list, res=None):
             # each item is a string like a\tb\tc
