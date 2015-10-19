@@ -29,6 +29,7 @@ from itertools import groupby
 from collections import OrderedDict, defaultdict
 from matplotlib import pyplot as plt
 from sklearn.covariance import EllipticEnvelope
+from sklearn.svm import OneClassSVM
 from sklearn.linear_model import RANSACRegressor
 from mpl_toolkits.mplot3d import Axes3D
 from multiprocessing import Process, Queue, Manager, Array
@@ -245,7 +246,7 @@ class Worker(Process):
                         hy.append(peak['std'])
                         hy2.append(peak['std2'])
                         hkeys.append((i, isotope, peak_index))
-        classifier = EllipticEnvelope(contamination=0.4, random_state=0)
+        classifier = EllipticEnvelope(support_fraction=0.75)
         data = np.array([x,y]).T
         false_pred = (False, -1)
         true_pred = (True, 1)
@@ -253,26 +254,26 @@ class Worker(Process):
         try:
             classifier.fit(np.array([hx,hy]).T if self.mrm else data)
         except ValueError:
-            # singular matrix
-            x1_mean, x1_std = data[0,0], data[0,1]
+            pass
         else:
             classes = classifier.predict(data)
             x1_outliers = [i for i,v in enumerate(classes) if v in false_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate')]
             x1_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred])
-            # print x1_outliers, [keys[i] for i in x1_outliers]
-            x1_mean, x1_std = classifier.location_
-            for index in x1_outliers:
-                indexer = keys[index]
-                if indexer[:2] in x1_inliers:
-                    to_delete.add(indexer)
-                    continue
-                mz = indexer[1]
-                row_data = combined_data.loc[mz, :]
-                mapper = interp1d(row_data.index.values, row_data.values)
-                common_peaks[indexer[0]][indexer[1]][indexer[2]]['amp'] = mapper(x1_mean)
-                common_peaks[indexer[0]][indexer[1]][indexer[2]]['peak'] = x1_mean
-                common_peaks[indexer[0]][indexer[1]][indexer[2]]['mean'] = x1_mean
-                common_peaks[indexer[0]][indexer[1]][indexer[2]]['std'] = x1_std
+            if x1_inliers:
+                # print x1_outliers, [keys[i] for i in x1_outliers]
+                x1_mean, x1_std = classifier.location_#np.mean(classifier.support_vectors_[:,0]), np.mean(classifier.support_vectors_[:,1])
+                for index in x1_outliers:
+                    indexer = keys[index]
+                    if indexer[:2] in x1_inliers:
+                        to_delete.add(indexer)
+                        continue
+                    mz = indexer[1]
+                    row_data = combined_data.loc[mz, :]
+                    mapper = interp1d(row_data.index.values, row_data.values)
+                    common_peaks[indexer[0]][indexer[1]][indexer[2]]['amp'] = mapper(x1_mean)
+                    common_peaks[indexer[0]][indexer[1]][indexer[2]]['peak'] = x1_mean
+                    common_peaks[indexer[0]][indexer[1]][indexer[2]]['mean'] = x1_mean
+                    common_peaks[indexer[0]][indexer[1]][indexer[2]]['std'] = x1_std
         data = np.array([x, y2]).T
         try:
             classifier.fit(np.array([hx,hy2]).T if self.mrm else data)
@@ -282,16 +283,19 @@ class Worker(Process):
             classes = classifier.predict(data)
             x2_outliers = [i for i,v in enumerate(classes) if v in false_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate')]
             x2_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred])
-            x2_mean, x2_std = classifier.location_
-            for index in x2_outliers:
-                indexer = keys[index]
-                if indexer[:2] in x2_inliers:
-                    to_delete.add(indexer)
-                    continue
-                mz = indexer[1]
-                row_data = combined_data.loc[mz, :]
-                mapper = interp1d(row_data.index.values, row_data.values)
-                common_peaks[indexer[0]][indexer[1]][indexer[2]]['std2'] = x2_std
+            if x2_inliers:
+                x2_mean, x2_std = classifier.location_#np.mean(classifier.support_vectors_[:,0]), np.mean(classifier.support_vectors_[:,1])
+                for index in x2_outliers:
+                    indexer = keys[index]
+                    if indexer[:2] in x2_inliers:
+                        to_delete.add(indexer)
+                        continue
+                    mz = indexer[1]
+                    row_data = combined_data.loc[mz, :]
+                    mapper = interp1d(row_data.index.values, row_data.values)
+                    common_peaks[indexer[0]][indexer[1]][indexer[2]]['std2'] = x2_std
+        # if to_delete:
+        #     print common_peaks
         for i in sorted(set(to_delete), key=operator.itemgetter(0,1,2), reverse=True):
             del common_peaks[i[0]][i[1]][i[2]]
         return x1_mean
@@ -852,7 +856,7 @@ class Worker(Process):
                                         y.append(q1/q2)
                                         l1, l2 = q1, q2
                                 # fit it and take the intercept
-                                if len(x) >= 3:
+                                if len(x) >= 3 and np.std(np.log2(y))>0.3:
                                     classifier = EllipticEnvelope(contamination=0.25, random_state=0)
                                     fit_data = np.log2(np.array(y).reshape(len(y),1))
                                     true_pred = (True, 1)
