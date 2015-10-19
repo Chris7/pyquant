@@ -41,30 +41,6 @@ cpdef float gauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, nd
     cdef float residual = sum(np.abs(ydata-data)**2)
     return residual
 
-cpdef np.ndarray[FLOAT_t, ndim=2] bigauss_jac2(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
-    cdef np.ndarray[FLOAT_t] x0, f0, dx
-    cdef np.ndarray[FLOAT_t, ndim=2] jac
-    x0 = np.asfarray(params)
-    f0 = np.atleast_1d(bigauss_func(params, x, y))
-    jac = np.zeros([len(x0), len(f0)])
-    dx = np.zeros(len(x0))
-    for i in range(len(x0)):
-        if i%4 == 0:
-            # amplitudes
-            epsilon = 0.05
-        elif i%4 == 1:
-            # means
-            epsilon = 0.02
-        elif i%4 == 2 or i%4 == 3:
-            # standard deviations
-            epsilon = x0[i]*0.25
-            if epsilon < 0.005:
-                epsilon = 0.005
-        dx[i] = epsilon
-        jac[i] = (bigauss_func(*((x0+dx,)+(x,y))) - f0)/epsilon
-        dx[i] = 0.0
-    return jac.transpose()
-
 cpdef np.ndarray[FLOAT_t, ndim=2] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
     cdef np.ndarray[FLOAT_t, ndim=2] jac
     cdef np.ndarray[FLOAT_t, ndim=1] lx, ly, rx, ry, a_jac, mu_jac, s1_jac, s2_jac
@@ -126,7 +102,16 @@ cpdef float bigauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, 
     cdef np.ndarray[FLOAT_t, ndim=1] data = bigauss_ndim(xdata, guess)
     # absolute deviation as our distance metric. Empirically found to give better results than
     # residual sum of squares for this data.
-    cdef float residual = sum(np.abs(ydata-data)**2)
+    #cdef float residual = sum(np.abs(ydata-data)**2)
+    cdef float fit, real, res
+    cdef float residual = 0
+    for i in range(len(ydata)):
+        fit = data[i]
+        real = ydata[i]
+        res = (real-fit)**2
+        if real > fit > 0.01:
+            res = res*2*real/fit
+        residual += res
     return residual
 
 cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata,
@@ -229,7 +214,9 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
     if rt_peak > 0:
         rt_peak = mapper(rt_peak)
     peaks_found = {}
-    for peak_width in xrange(1,4):
+    peak_width_start = 2
+    peak_width_end = 4
+    for peak_width in xrange(peak_width_start,peak_width_end):
         row_peaks = argrelmax(ydata_peaks, order=peak_width)[0]
         if not row_peaks.size:
             row_peaks = np.array([np.argmax(ydata)], dtype=int)
@@ -242,7 +229,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         peaks_found[peak_width] = {'peaks': row_peaks, 'minima': minima}
     # collapse identical orders
     final_peaks = {}
-    for peak_width in xrange(1, 3):
+    for peak_width in xrange(peak_width_start, peak_width_end-1):
         if peak_width == len(peaks_found):
             final_peaks[peak_width] = peaks_found[peak_width]
             continue

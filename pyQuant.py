@@ -216,13 +216,15 @@ class Worker(Process):
     def flat_slope(self, combined_data, delta):
         if delta == -1:
             # moving to the left
-            data = combined_data.sum(axis='index').iloc[:5]
+            data = combined_data.sum(axis='index').iloc[:10]
         else:
             # moving to the right
-            data = combined_data.sum(axis='index').iloc[-5:]
+            data = combined_data.sum(axis='index').iloc[-10:]
         data /= combined_data.max().max()
+        # remove the bottom values
+        data = data[data>(data[data>data.quantile(0.5)].mean()*0.25)]
         slope, intercept, r_value, p_value, std_err = linregress(xrange(len(data)),data)
-        return np.abs(slope) < 0.2
+        return np.abs(slope) < 0.2 if self.mono else np.abs(slope) < 0.1
 
     def replaceOutliers(self, common_peaks, combined_data):
         x = []
@@ -257,43 +259,53 @@ class Worker(Process):
             x1_mean, x1_std = data[0,0], data[0,1]
         else:
             classes = classifier.predict(data)
-            x1_outliers = [i for i,v in enumerate(classes) if v in false_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate')]
             x1_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred])
-            # print x1_outliers, [keys[i] for i in x1_outliers]
-            x1_mean, x1_std = classifier.location_
-            for index in x1_outliers:
-                indexer = keys[index]
-                if indexer[:2] in x1_inliers:
-                    to_delete.add(indexer)
-                    continue
-                mz = indexer[1]
-                row_data = combined_data.loc[mz, :]
-                mapper = interp1d(row_data.index.values, row_data.values)
-                common_peaks[indexer[0]][indexer[1]][indexer[2]]['amp'] = mapper(x1_mean)
-                common_peaks[indexer[0]][indexer[1]][indexer[2]]['peak'] = x1_mean
-                common_peaks[indexer[0]][indexer[1]][indexer[2]]['mean'] = x1_mean
-                common_peaks[indexer[0]][indexer[1]][indexer[2]]['std'] = x1_std
-        data = np.array([x, y2]).T
-        try:
-            classifier.fit(np.array([hx,hy2]).T if self.mrm else data)
-        except ValueError:
-            pass
-        else:
-            classes = classifier.predict(data)
-            x2_outliers = [i for i,v in enumerate(classes) if v in false_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate')]
-            x2_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred])
-            x2_mean, x2_std = classifier.location_
-            for index in x2_outliers:
-                indexer = keys[index]
-                if indexer[:2] in x2_inliers:
-                    to_delete.add(indexer)
-                    continue
-                mz = indexer[1]
-                row_data = combined_data.loc[mz, :]
-                mapper = interp1d(row_data.index.values, row_data.values)
-                common_peaks[indexer[0]][indexer[1]][indexer[2]]['std2'] = x2_std
-        for i in sorted(set(to_delete), key=operator.itemgetter(0,1,2), reverse=True):
-            del common_peaks[i[0]][i[1]][i[2]]
+            x1_outliers = [i for i,v in enumerate(classes) if v in false_pred or (common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate') and keys[i][:2] not in x1_inliers)]
+            if x1_inliers:
+                x1_mean, x1_std = classifier.location_
+        #         for index in x1_outliers:
+        #             indexer = keys[index]
+        #             if indexer[:2] in x1_inliers:
+        #                 to_delete.add(indexer)
+        #                 continue
+        #             mz = indexer[1]
+        #             row_data = combined_data.loc[mz, :]
+        #             # remove the bottom values
+        #             row_data2 = row_data[row_data>(row_data[row_data>row_data.quantile(0.3)].mean()*0.25)]
+        #             if sum(row_data2>0) >= 3:
+        #                 mapper = interp1d(row_data2.index.values, row_data2.values)
+        #             else:
+        #                 mapper = interp1d(row_data.index.values, row_data.values)
+        #             try:
+        #                 common_peaks[indexer[0]][indexer[1]][indexer[2]]['amp'] = mapper(x1_mean)
+        #             except ValueError:
+        #                 mapper = interp1d(row_data.index.values, row_data.values)
+        #                 common_peaks[indexer[0]][indexer[1]][indexer[2]]['amp'] = mapper(x1_mean)
+        #             common_peaks[indexer[0]][indexer[1]][indexer[2]]['peak'] = x1_mean
+        #             common_peaks[indexer[0]][indexer[1]][indexer[2]]['mean'] = x1_mean
+        #             common_peaks[indexer[0]][indexer[1]][indexer[2]]['std'] = x1_std
+        # data = np.array([x, y2]).T
+        # try:
+        #     classifier.fit(np.array([hx,hy2]).T if self.mrm else data)
+        # except ValueError:
+        #     pass
+        # else:
+        #     classes = classifier.predict(data)
+        #     x2_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred])
+        #     x2_outliers = [i for i,v in enumerate(classes) if v in false_pred or (common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate') and keys[i][:2] not in x2_inliers)]
+        #     if x2_inliers:
+        #         x2_mean, x2_std = classifier.location_
+        #         for index in x2_outliers:
+        #             indexer = keys[index]
+        #             if indexer[:2] in x2_inliers:
+        #                 if indexer[:2] not in x1_inliers:
+        #                     to_delete.add(indexer)
+        #                 continue
+        #             mz = indexer[1]
+        #             row_data = combined_data.loc[mz, :]
+        #             common_peaks[indexer[0]][indexer[1]][indexer[2]]['std2'] = x2_std
+        # for i in sorted(set(to_delete), key=operator.itemgetter(0,1,2), reverse=True):
+        #     del common_peaks[i[0]][i[1]][i[2]]
         return x1_mean
 
     def convertScan(self, scan):
@@ -580,13 +592,19 @@ class Worker(Process):
                     isotopes_chosen['RT'] = isotopes_chosen.index.get_level_values('RT')
                     isotope_group = isotopes_chosen.groupby('RT')
 
-                    isotope_figure = {'data': [], 'plot-multi': True, 'common-x': ['x']+all_x}
+                    isotope_figure = {
+                        'data': [],
+                        'plot-multi': True,
+                        'common-x': ['x']+all_x,
+                        'max-y': isotopes_chosen['amplitude'].max(),
+                    }
                     isotope_figure_mapper = {}
                     rt_figure = {
                         'data': [],
                         'plot-multi': True,
                         'common-x': ['x']+map(lambda x: '{0:0.2f}'.format(x), combined_data.columns),
                         'rows': len(precursors),
+                        'max-y': combined_data.max().max(),
                     }
                     rt_figure_mapper = {}
 
@@ -602,7 +620,7 @@ class Worker(Process):
                         if index in isotope_figure_mapper:
                             isotope_base = isotope_figure_mapper[index]
                         else:
-                            isotope_base = {'data': {'x': 'x', 'columns': [], 'type': 'bar'}, 'axis': {'x': {'label': 'M/Z'}, 'y': {'label': 'Intensity', 'max': isotopes_chosen['amplitude'].max()}}}
+                            isotope_base = {'data': {'x': 'x', 'columns': [], 'type': 'bar'}, 'axis': {'x': {'label': 'M/Z'}, 'y': {'label': 'Intensity'}}}
                             isotope_figure_mapper[index] = isotope_base
                             isotope_figure['data'].append(isotope_base)
                         for group in precursors.keys():
@@ -695,11 +713,11 @@ class Worker(Process):
                         combined_peaks[quant_label][index] = valid_peaks if valid_peak is None else [valid_peak]
                     if self.html:
                         # ax = fig.add_subplot(subplot_rows, subplot_columns, fig_index)
-                        if ydata.any() and self.quant_method == 'integrate':
+                        if self.quant_method == 'integrate':
                             if quant_label in rt_figure_mapper:
                                 rt_base = rt_figure_mapper[(quant_label, index)]
                             else:
-                                rt_base = {'data': {'x': 'x', 'columns': []}, 'grid': {'x': {'lines': [{'value': rt, 'text': 'Initial RT {0:0.2f}'.format(rt), 'position': 'middle'}]}}, 'subchart': {'show': True}, 'axis': {'x': {'label': 'Retention Time'}, 'y': {'label': 'Intensity', 'max': combined_data.max().max()}}}
+                                rt_base = {'data': {'x': 'x', 'columns': []}, 'grid': {'x': {'lines': [{'value': rt, 'text': 'Initial RT {0:0.2f}'.format(rt), 'position': 'middle'}]}}, 'subchart': {'show': True}, 'axis': {'x': {'label': 'Retention Time'}, 'y': {'label': 'Intensity'}}}
                                 rt_figure_mapper[(quant_label, index)] = rt_base
                                 rt_figure['data'].append(rt_base)
                             rt_base['data']['columns'].append(['{0} {1} raw'.format(quant_label, index)]+ydata.tolist())
