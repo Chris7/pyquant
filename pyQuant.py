@@ -256,7 +256,7 @@ class Worker(Process):
             x1_mean, x1_std = data[0,0], data[0,1]
         else:
             classes = classifier.predict(data)
-            x1_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred])
+            x1_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('valid')])
             # print x1_inliers
             x1_outliers = [i for i,v in enumerate(classes) if v in false_pred or (common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate') and keys[i][:2] not in x1_inliers)]
             if x1_inliers:
@@ -870,7 +870,6 @@ class Worker(Process):
                                 # fit it and take the intercept
                                 if len(x) >= 3:
                                     classifier = EllipticEnvelope(contamination=0.25, random_state=0)
-                                    print y
                                     fit_data = np.log2(np.array(y).reshape(len(y),1))
                                     true_pred = (True, 1)
                                     classifier.fit(fit_data)
