@@ -4,8 +4,9 @@
         <meta charset="UTF-8">
         <title>$title</title>
         <link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/css/bootstrap.min.css" type="text/css">
-        <link rel="stylesheet" href="http://cdn.datatables.net/1.10.5/css/jquery.dataTables.css" type="text/css">
+        <link rel="stylesheet" href="http://cdn.datatables.net/1.10.9/css/jquery.dataTables.css" type="text/css">
         <link rel="stylesheet" href="http://cdnjs.cloudflare.com/ajax/libs/c3/0.4.10/c3.min.css" type="text/css">
+        <link rel="stylesheet" href="http://cdnjs.cloudflare.com/ajax/libs/jquery-contextmenu/1.9.1/jquery.contextMenu.min.css" type="text/css">
         <style>
             html, body {
                 padding: 0;
@@ -182,12 +183,11 @@
                 <div class="menu-list">
 
                     <ul id="menu-content" class="menu-content collapse out">
-                        <li  data-toggle="collapse" data-target="#products" class="collapsed active">
-                          <a href="#"><i class="fa fa-gift fa-lg"></i> Data Manipulation <span class="arrow"></span></a>
+                        <li  data-toggle="collapse" data-target="#plotinfo" class="collapsed active">
+                          <a href="#"><i class="fa fa-gift fa-lg"></i> Plot Options <span class="arrow"></span></a>
                         </li>
-                        <ul class="sub-menu collapse" id="products">
-                            <li><a id="ratio-logger" href="#">Log Ratios</a></li>
-                            <li><a id="ratio-logger" href="#">Confidence Filter</a></li>
+                        <ul class="sub-menu collapse" id="plotinfo">
+                            <li><input id="plot-max-y" class="plot-options" name="max-y" type="checkbox" />Set Y axis maximum to maximum value in data</li>
                         </ul>
 
 
@@ -215,13 +215,14 @@
             <div class="chart-display"></div>
         </div>
         <footer></footer>
-        <script type="text/javascript" src="http://code.jquery.com/jquery-1.11.1.min.js"></script>
+        <script type="text/javascript" src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
         <script type="text/javascript" src="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/js/bootstrap.min.js"></script>
-        <script type="text/javascript" src="http://cdn.datatables.net/1.10.5/js/jquery.dataTables.min.js"></script>
+        <script type="text/javascript" src="http://cdn.datatables.net/1.10.9/js/jquery.dataTables.min.js"></script>
         <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/Chart.js/1.0.2/Chart.js"></script>
         <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/d3/3.5.6/d3.min.js"></script>
         <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/c3/0.4.10/c3.min.js"></script>
         <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/pako/0.2.8/pako_inflate.min.js"></script>
+        <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/jquery-contextmenu/1.9.1/jquery.contextMenu.min.js"></script>
         <script>
             $(document).ready(function() {
                 var dt = $('#raw-table').DataTable({
@@ -277,8 +278,45 @@
                 var $active_window = $('.viewer-panel');
                 initPanel();
 
-                var current_plot;
+                var $plot_options = $('.plot-options');
+		        var context_data = {};
+                var plotting_params = {};
+                var update_plot_params = function(){
+                    $plot_options.each(function(index, value){
+                    var $el = $(value);
+                    var value = $el.val();
+                    var name = $el.attr('name');
+                    var el_type = $el.attr('type');
+                    if(el_type == 'checkbox')
+                        value = $el.is(':checked');
+                    plotting_params[name] = value;
+                    });
+                };
 
+                update_plot_params();
+                $plot_options.click(function(event){
+                    update_plot_params();
+                });
+
+                var current_plot;
+                var dt_mods = {};
+                $.fn.dataTableExt.afnFiltering.push(
+                    function( oSettings, aData, iDataIndex ) {
+                        for(var column in dt_mods) {
+                            var val = parseFloat(aData[column]);
+                            var filter_info = dt_mods[column]['filter'];
+                            var below = filter_info['below'];
+                            var above = filter_info['above'];
+                            if (below == false && above == false)
+                                return true;
+                            if (below != false && val <= below)
+                                return true;
+                            if (above != false && val >= above)
+                                return true;
+                            return false;
+                        }
+                    }
+                );
                 var initDataViewer = function(){
                     $('[data-chart]').click(function(event){
                         var $this = $(this);
@@ -292,41 +330,127 @@
                         var chart_data = JSON.parse(pako.inflate(window.atob($this.data('chart')), { to: 'string' }));
                         var chart_width = 0;
                         var plot_width = $(document).width()/3;
-                         if(chart_data['plot-multi']){
-                             var common_x = chart_data['common-x'];
-                             var plot_data = chart_data['data'];
-                             var last_title;
-                             for(var i=0;i<plot_data.length;i++){
-                                 var plot_info = plot_data[i]['data']['columns'][1];
-                                 if(!plot_info)
-                                    continue;
-                                 var plot_title = plot_info[0].split(' ');
-                                 if(!last_title || (plot_title && last_title && plot_title[0].indexOf(last_title) == -1 )) {
-                                     if (last_title)
-                                         $element.css('width', chart_width);
-                                     $element = $('<div class="row"></div>').appendTo($base_element);
-                                 }
-                                 if(plot_title)
+                        var max_y = chart_data['max-y'];
+                        if(chart_data['plot-multi']){
+                            var common_x = chart_data['common-x'];
+                            var plot_data = chart_data['data'];
+                            var last_title;
+                            for(var i=0;i<plot_data.length;i++){
+                                var plot_info = plot_data[i]['data']['columns'][0];
+                                if(!plot_info)
+                                continue;
+                                var plot_title = plot_info[0].split(' ');
+                                if(!last_title || (plot_title && last_title && plot_title[0].indexOf(last_title) == -1 )) {
+                                    if (last_title)
+                                        $element.css('width', chart_width);
+                                    $element = $('<div class="row"></div>').appendTo($base_element);
+                                }
+                                if(plot_title)
                                     last_title = plot_title[0];
-                                 var chart_name = 'chart'+i;
-                                 var new_element = $element.append('<div id="'+chart_name+'"></div>');
-                                 plot_data[i]['bindto'] = '#'+chart_name;
-                                 chart_width += plot_width;
-                                 plot_data[i]['size'] = {width: plot_width};
-                                 if(common_x){
-                                     plot_data[i]['data']['columns'].unshift(common_x);
-                                 }
-                                 c3.generate(plot_data[i]);
+                                var chart_name = 'chart'+i;
+                                var new_element = $element.append('<div id="'+chart_name+'"></div>');
+                                plot_data[i]['bindto'] = '#'+chart_name;
+                                chart_width += plot_width;
+                                plot_data[i]['size'] = {width: plot_width};
+                                if(common_x){
+                                    plot_data[i]['data']['columns'].unshift(common_x);
+                                }
+                                if(max_y && plotting_params['max-y']){
+                                    plot_data[i]['axis']['y']['max'] = max_y;
+                                }
+                                c3.generate(plot_data[i]);
 
-                             }
-                             $element.css('width', chart_width);
+                            }
+                            $element.css('width', chart_width);
                         }
 
                     });
                     $('#raw-table').delegate('tr > td[data-chart]', 'click', function(event) {
                      $('.selected').removeClass('selected'); $(this).parent().addClass('selected');
                     });
-                }
+                    $.contextMenu({
+                        selector: 'tr > th',
+                        items: {
+                            showabove: {
+                                name: "Show Values Above",
+                                type: 'text',
+                                value: "",
+                            },
+                            showbelow: {
+                                name: "Show Values Below",
+                                type: 'text',
+                                value: "",
+                            },
+                            sep1: "---------",
+                            log2: {
+                                name: "Log2 Values",
+                                type: 'checkbox',
+                                selected: false
+                            },
+                        },
+                        events: {
+                            show: function(opt) {
+                                var $this = this;
+                                var column_index = dt.column($this).index();
+                                if(context_data[column_index])
+                                    $.contextMenu.setInputValues(opt, context_data[column_index]);
+                                else
+                                    $.contextMenu.setInputValues(opt, $this.data());
+                                if(!dt_mods[column_index]){
+                                    dt_mods[column_index] = {log: false, filter: {below: false, above: false}};
+                                }
+                                // this basically fills the input commands from an object
+                            },
+                            hide: function(opt) {
+                                var $this = this;
+                                var data = $.contextMenu.getInputValues(opt, $this.data());
+                                var column_index = dt.column($this).index();
+                                var update = false;
+                                if((data['log2'] == true) && !(dt_mods[column_index]['log'])){
+                                    dt_mods[column_index]['log'] = true;
+                                    dt.rows().every( function () {
+                                        var d = this.data();
+                                        d[column_index] = Math.log2(d[column_index]); // update data source for the row
+                                        this.data(d);
+                                        this.invalidate(); // invalidate the data DataTables has cached for this row
+                                    } );
+                                    update = true;
+                                }
+                                else if((data['log2'] == false) && (dt_mods[column_index]['log'] == true)){
+                                    dt_mods[column_index]['log'] = false;
+                                    dt.rows().every( function () {
+                                        var d = this.data();
+                                        d[column_index] = Math.pow(2, d[column_index]); // update data source for the row
+                                        this.data(d);
+                                        this.invalidate(); // invalidate the data DataTables has cached for this row
+                                    } );
+                                    update = true;
+                                }
+                                var below_val = data['showbelow'];
+                                var above_val = data['showabove'];
+                                if(below_val != ''){
+                                dt_mods[column_index]['filter']['below'] = parseFloat(below_val);
+                                    update = true;
+                                }
+                                else if(below_val == '' && dt_mods[column_index]['filter']['below'] != false){
+                                    dt_mods[column_index]['filter']['below'] = false;
+                                    update = true;
+                                }
+                                if(above_val != ''){
+                                    dt_mods[column_index]['filter']['above'] = parseFloat(above_val);
+                                                    update = true;
+                                                }
+                                else if(above_val == '' && dt_mods[column_index]['filter']['above'] != false){
+                                    dt_mods[column_index]['filter']['above'] = false;
+                                    update = true;
+                                }
+                                context_data[column_index] = data;
+                                if(update)
+                                    dt.draw();
+                            }
+                        }
+                    });
+                };
                 initDataViewer();
                 $('#raw-table').on( 'page.dt search.dt init.dt order.dt length.dt', function () {
                     reload = true;
@@ -341,3 +465,5 @@
         </script>
     </body>
 </html>
+
+
