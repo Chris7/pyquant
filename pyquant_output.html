@@ -307,11 +307,14 @@
                             var filter_info = dt_mods[column]['filter'];
                             var below = filter_info['below'];
                             var above = filter_info['above'];
-                            if (below == false && above == false)
+                            var hidenan = filter_info['hidenan'];
+                            if (below == false && above == false && hidenan == false)
                                 continue;
                             if (below != false && val <= below)
                                 continue;
                             if (above != false && val >= above)
+                                continue;
+                            if(hidenan && !isNaN(val))
                                 continue;
                             return false;
                         }
@@ -388,6 +391,11 @@
                                 type: 'checkbox',
                                 selected: false
                             },
+                            hidenan: {
+                                name: "Hide nan values",
+                                type: 'checkbox',
+                                selected: false
+                            },
                         },
                         events: {
                             show: function(opt) {
@@ -398,7 +406,7 @@
                                 else
                                     $.contextMenu.setInputValues(opt, $this.data());
                                 if(!dt_mods[column_index]){
-                                    dt_mods[column_index] = {log: false, filter: {below: false, above: false}};
+                                    dt_mods[column_index] = {log: false, filter: {below: false, above: false, hidenan: false}};
                                 }
                                 // this basically fills the input commands from an object
                             },
@@ -429,6 +437,7 @@
                                 }
                                 var below_val = data['showbelow'];
                                 var above_val = data['showabove'];
+                                var hidenan = data['hidenan'];
                                 if(below_val != ''){
                                 dt_mods[column_index]['filter']['below'] = parseFloat(below_val);
                                     update = true;
@@ -444,6 +453,11 @@
                                 else if(above_val == '' && dt_mods[column_index]['filter']['above'] != false){
                                     dt_mods[column_index]['filter']['above'] = false;
                                     update = true;
+                                }
+                                if(dt_mods[column_index]['filter']['hidenan'] != hidenan) {
+                                    dt_mods[column_index]['filter']['hidenan'] = hidenan;
+                                    update = true;
+
                                 }
                                 context_data[column_index] = data;
                                 if(update)

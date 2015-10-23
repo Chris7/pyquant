@@ -212,7 +212,10 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             ydata_peaks[ydata_peaks<0] = 0
     mapper = interp1d(xdata, ydata_peaks)
     if rt_peak > 0:
-        rt_peak = mapper(rt_peak)
+        try:
+            rt_peak = mapper(rt_peak)
+        except ValueError:
+            rt_peak = ydata_peaks[find_nearest_index(xdata, rt_peak)]
     peaks_found = {}
     peak_width_start = 2
     peak_width_end = 4
@@ -545,6 +548,21 @@ def find_nearest_index(np.ndarray[FLOAT_t, ndim=1] array, value):
         return idx-1
     else:
         return idx
+
+def find_nearest_indices(np.ndarray[FLOAT_t, ndim=1] array, value):
+    indices = np.searchsorted(array, value, side="left")
+    out = []
+    for search_index, idx in enumerate(indices):
+        search_value = value[search_index]
+        if idx == 0:
+            out.append(0)
+        elif idx == len(array):
+            out.append(-1)
+        elif fabs(search_value - array[idx-1]) < fabs(search_value - array[idx]):
+            out.append(idx-1)
+        else:
+            out.append(idx)
+    return out
 
 def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, measured_mz=None, theo_mz=None, max_mz=None, precursor_ppm=5, isotope_ppm=2.5, isotope_ppms=None, charge=2, debug=False,
                  isotope_offset=0, isotopologue_limit=-1, theo_dist=None, label=None, skip_isotopes=None, last_precursor=None, quant_method='integrate', reporter_mode=False):
