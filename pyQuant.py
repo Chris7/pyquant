@@ -142,7 +142,7 @@ class Reader(Process):
                 if self.spline:
                     scan_vals[:,0] = scan_vals[:,0]/(1-self.spline(scan_vals[:,0])/1e6)
                 # add to our database
-                d = {'vals': scan_vals, 'rt': scan.rt, 'title': scan.title}
+                d = {'vals': scan_vals, 'rt': scan.rt, 'title': scan.title, 'mass': scan.mass, 'charge': scan.charge}
                 self.scan_dict[scan_id] = d
                 # the scan has been stored, delete it
                 del scan
@@ -215,12 +215,7 @@ class Worker(Process):
         return mass/(1-self.spline(mass)/1e6) if self.spline else mass
 
     def flat_slope(self, combined_data, delta):
-        if delta == -1:
-            # moving to the left
-            data = combined_data.sum(axis='index').iloc[:10]
-        else:
-            # moving to the right
-            data = combined_data.sum(axis='index').iloc[-10:]
+        data = combined_data.sum(axis='index').iloc[:10] if delta == -1 else combined_data.sum(axis='index').iloc[-10:]
         data /= combined_data.max().max()
         # remove the bottom values
         data = data[data>(data[data>data.quantile(0.5)].mean()*0.25)]
@@ -248,7 +243,9 @@ class Worker(Process):
                         hy.append(peak['std'])
                         hy2.append(peak['std2'])
                         hkeys.append((i, isotope, peak_index))
-        classifier = EllipticEnvelope(support_fraction=0.75)
+        classifier = EllipticEnvelope(support_fraction=0.75, random_state=0)
+        if len(x) == 1:
+            return x[0]
         data = np.array([x,y]).T
         false_pred = (False, -1)
         true_pred = (True, 1)
@@ -259,15 +256,16 @@ class Worker(Process):
             pass
         else:
             classes = classifier.predict(data)
-            x1_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred])
+            x1_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('valid')])
+            # print x1_inliers
             x1_outliers = [i for i,v in enumerate(classes) if v in false_pred or (common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate') and keys[i][:2] not in x1_inliers)]
             if x1_inliers:
                 x1_mean, x1_std = classifier.location_
-        #         for index in x1_outliers:
-        #             indexer = keys[index]
-        #             if indexer[:2] in x1_inliers:
-        #                 to_delete.add(indexer)
-        #                 continue
+                for index in x1_outliers:
+                    indexer = keys[index]
+                    # if indexer[:2] in x1_inliers:
+                    to_delete.add(indexer)
+                    continue
         #             mz = indexer[1]
         #             row_data = combined_data.loc[mz, :]
         #             mapper = interp1d(row_data.index.values, row_data.values)
@@ -299,8 +297,9 @@ class Worker(Process):
         #             mz = indexer[1]
         #             row_data = combined_data.loc[mz, :]
         #             common_peaks[indexer[0]][indexer[1]][indexer[2]]['std2'] = x2_std
-        # for i in sorted(set(to_delete), key=operator.itemgetter(0,1,2), reverse=True):
-        #     del common_peaks[i[0]][i[1]][i[2]]
+        # print to_delete
+        for i in sorted(set(to_delete), key=operator.itemgetter(0,1,2), reverse=True):
+            del common_peaks[i[0]][i[1]][i[2]]
         return x1_mean
 
     def convertScan(self, scan):
@@ -708,14 +707,13 @@ class Worker(Process):
                         combined_peaks[quant_label][index] = valid_peaks if valid_peak is None else [valid_peak]
                     if self.html:
                         # ax = fig.add_subplot(subplot_rows, subplot_columns, fig_index)
-                        if self.quant_method == 'integrate':
-                            if quant_label in rt_figure_mapper:
-                                rt_base = rt_figure_mapper[(quant_label, index)]
-                            else:
-                                rt_base = {'data': {'x': 'x', 'columns': []}, 'grid': {'x': {'lines': [{'value': rt, 'text': 'Initial RT {0:0.2f}'.format(rt), 'position': 'middle'}]}}, 'subchart': {'show': True}, 'axis': {'x': {'label': 'Retention Time'}, 'y': {'label': 'Intensity'}}}
-                                rt_figure_mapper[(quant_label, index)] = rt_base
-                                rt_figure['data'].append(rt_base)
-                            rt_base['data']['columns'].append(['{0} {1} raw'.format(quant_label, index)]+ydata.tolist())
+                        if quant_label in rt_figure_mapper:
+                            rt_base = rt_figure_mapper[(quant_label, index)]
+                        else:
+                            rt_base = {'data': {'x': 'x', 'columns': []}, 'grid': {'x': {'lines': [{'value': rt, 'text': 'Initial RT {0:0.2f}'.format(rt), 'position': 'middle'}]}}, 'subchart': {'show': True}, 'axis': {'x': {'label': 'Retention Time'}, 'y': {'label': 'Intensity'}}}
+                            rt_figure_mapper[(quant_label, index)] = rt_base
+                            rt_figure['data'].append(rt_base)
+                        rt_base['data']['columns'].append(['{0} {1} raw'.format(quant_label, index)]+ydata.tolist())
                         # if labely:
                         #     labely = False
                         # else:
@@ -967,8 +965,11 @@ def main():
     resume = args.resume
     calc_stats = not args.disable_stats
     msn_for_id = args.msn
+    raw_data_only = not (args.processed or args.tsv)
     msn_for_quant = args.msn_quant_from if args.msn_quant_from else msn_for_id-1
-    ion_compare = args.reporter_ion
+    if msn_for_quant == 0:
+        msn_for_quant = 1
+    reporter_mode = args.reporter_ion
     msn_ppm = args.msn_ppm
     quant_method = args.quant_method
     if msn_for_quant == 1 and quant_method is None:
@@ -981,7 +982,7 @@ def main():
     scan_filemap = {}
     found_scans = {}
     raw_files = {}
-    silac_labels = {'Light': {0: set([])}} if not ion_compare else {}
+    silac_labels = {'Light': {0: set([])}} if not reporter_mode else {}
 
     name_mapping = {}
 
@@ -1132,7 +1133,7 @@ def main():
             except KeyError:
                 raw_files[fname] = [d]
             del scan
-    if scan_filemap and not (args.processed or args.tsv):
+    if scan_filemap and raw_data_only:
         # determine if we want to do ms1 ion detection, ms2 ion detection, all ms2 of each file
         if args.msn_ion or args.msn_peaklist:
             RESULT_ORDER.extend([('ions_found', 'Ions Found')])
@@ -1269,6 +1270,13 @@ def main():
             ion_search_list = []
             ion_tolerance = args.msn_ppm/1e6
             scans_to_fetch = []
+
+        # figure out the splines for mass accuracy correction
+        calc_spline = args.no_mass_accuracy_correction is False and raw_data_only is False
+        spline_x = []
+        spline_y = []
+        spline = None
+
         for index, scan in enumerate(raw):
             if index % 100 == 0:
                 sys.stderr.write('.')
@@ -1294,64 +1302,16 @@ def main():
                         'id_scan': {'id': scan_id, 'rt': scan.rt, 'charge': scan.charge, 'mass': float(scan.mass), 'product_ion': float(scan.product_ion) if args.mrm else None},
                     }
                     ion_search_list.append((spectra_to_quant, d))
+            if not raw_data_only and calc_spline:
+                if hasattr(scan, 'theor_mass'):
+                    theor_mass = scan.getTheorMass()
+                    observed_mass = scan.mass
+                    mass_error = (theor_mass-observed_mass)/theor_mass*1e6
+                    spline_x.append(observed_mass)
+                    spline_y.append(mass_error)
             del scan
-        if ion_search:
-            ions = raw_scans['ions']
-            for scan_id in scans_to_fetch:
-                scan = raw.getScan(scan_id)
-                scan_mzs = np.array(scan.scans)
-                scan_mzs = scan_mzs[scan_mzs[:, 1] > 0][:, 0]
-                if not np.any(scan_mzs):
-                    continue
-                mass, charge, rt = scan.mass, scan.charge, scan.rt
-                del scan
-                ions_found = []
-                for ion in ions:
-                    # ion_precision = np.abs(decimal.Decimal(str(ion)).as_tuple().exponent)
-                    nearest_mz = peaks.find_nearest(scan_mzs, ion)
-                    if peaks.get_ppm(ion, nearest_mz) < ion_tolerance:
-                        ions_found.append('{}({})'.format(ion, nearest_mz))
-                if ions_found:
-                # we have two options here. If we are quantifying a preceeding scan or the ion itself per scan
-                    if msn_for_quant == msn_for_id:
-                        spectra_to_quant = scan_id
-                        # we are quantifying the ion itself
-                        d = {
-                            'quant_scan': {'id': scan_id},
-                            'id_scan': {
-                                'id': scan_id, 'theor_mass': ion, 'rt': rt,
-                                'charge': charge, 'mass': float(nearest_mz), 'ions_found': ';'.join(map(str, ions_found)),
-                            },
-                        }
-                    else:
-                        # we are identifying the ion in a particular scan, and quantifying a preceeding scan
-                        # find the closest scan to this, which will be the parent scan
-                        spectra_to_quant = find_prior_scan(msn_map, scan_id, ms_level=msn_for_quant)
-                        d = {
-                            'quant_scan': {'id': spectra_to_quant},
-                            'id_scan': {
-                                'id': scan_id, 'rt': rt, 'charge': charge,
-                                'mass': float(mass), 'ions_found': ';'.join(map(str, ions_found))
-                            },
-                        }
-                    ion_search_list.append((spectra_to_quant, d))
 
-        if ion_search or all_msn:
-            scan_count = len(ion_search_list)
-            raw_scans = [i[1] for i in sorted(ion_search_list, key=operator.itemgetter(0))]
-
-        # figure out the splines for mass accuracy correction
-        if args.no_mass_accuracy_correction is False:
-            spline_x = []
-            spline_y = []
-            for scan_index, v in enumerate(raw_scans):
-                target_scan = v['id_scan']
-                theor_mass = target_scan.get('theor_mass', target_scan.get('mass'))
-                observed_mass = target_scan['mass']
-                mass_error = (theor_mass-observed_mass)/theor_mass*1e6
-                spline_x.append(observed_mass)
-                spline_y.append(mass_error)
-
+        if calc_spline and len(spline_x):
             spline_df = pd.DataFrame(zip(spline_x, spline_y), columns=['Observed', 'Error'])
             spline_df = spline_df[(spline_df['Error']<25) & (spline_df['Error']>-25)].dropna()
             spline_df.sort('Observed', inplace=True)
@@ -1360,16 +1320,84 @@ def main():
                 spline = UnivariateSpline(spline_df['Observed'].astype(float).values, spline_df['Error'].astype(float).values, s=1e6)
             else:
                 spline = None
-        else:
-            spline = None
 
         reader = Reader(reader_in, reader_outs, raw_file=raw, spline=spline)
         reader.start()
+        if ion_search:
+            ions = raw_scans['ions']
+            last_scan_ions = set([])
+            for scan_id in scans_to_fetch:
+                reader_in.put((0, scan_id, None, None))
+                scan = reader_outs[0].get()
+                scan_mzs = scan['vals']
+                mz_vals = scan_mzs[scan_mzs[:, 1] > 0][:, 1]
+                scan_mzs = scan_mzs[scan_mzs[:, 1] > 0][:, 0]
+                if not np.any(scan_mzs):
+                    continue
+                mass, charge, rt = scan['mass'], scan['charge'], scan['rt']
+                ions_found = []
+                print scan_id
+                for ion in ions:
+                    # ion_precision = np.abs(decimal.Decimal(str(ion)).as_tuple().exponent)
+                    nearest_mz = peaks.find_nearest(scan_mzs, ion)
+                    if peaks.get_ppm(ion, nearest_mz) < ion_tolerance:
+                        ions_found.append((ion, nearest_mz))
+                if ions_found:
+                    # we have two options here. If we are quantifying a preceeding scan or the ion itself per scan
+                    isotope_ppm = args.isotope_ppm/1e6
+                    if msn_for_quant == msn_for_id:
+                        for ion, nearest_mz in ions_found:
+                            if not reporter_mode and ion in last_scan_ions:
+                                print 'skipping', ion
+                                continue
+                            ion_found = '{}({})'.format(ion, nearest_mz)
+                            if msn_for_quant == msn_for_id:
+                                spectra_to_quant = scan_id
+                                # we are quantifying the ion itself
+                                if charge == 0:
+                                    # see if we can figure out the charge state
+                                    charge_states = []
+                                    for i in xrange(1,5):
+                                        next_peak = ion+peaks.NEUTRON/float(i)
+                                        closest_mz = peaks.find_nearest_index(scan_mzs, next_peak)
+                                        charge_states.append((peaks.get_ppm(next_peak, scan_mzs[closest_mz]), mz_vals[closest_mz], i))
+                                    charge_states = [i for i in sorted(charge_states, key=operator.itemgetter(0)) if i[0] < isotope_ppm]
+                                    charge_to_use = sorted(charge_states, key=operator.itemgetter(1), reverse=True)[0][2] if charge_states else 1
+                                else:
+                                    charge_to_use = charge
+
+                                d = {
+                                    'quant_scan': {'id': scan_id},
+                                    'id_scan': {
+                                        'id': scan_id, 'theor_mass': ion, 'rt': rt,
+                                        'charge': charge_to_use, 'mass': float(nearest_mz), 'ions_found': ion_found,
+                                    },
+                                }
+                                ion_search_list.append((spectra_to_quant, d))
+                                print 'adding', ion, d, last_scan_ions
+                    else:
+                        # we are identifying the ion in a particular scan, and quantifying a preceeding scan
+                        # find the closest scan to this, which will be the parent scan
+                        spectra_to_quant = find_prior_scan(msn_map, scan_id, ms_level=msn_for_quant)
+                        d = {
+                            'quant_scan': {'id': spectra_to_quant},
+                            'id_scan': {
+                                'id': scan_id, 'rt': rt, 'charge': charge,
+                                'mass': float(mass), 'ions_found': ';'.join(map(lambda x: '{}({})'.format(ion, nearest_mz), ions_found))
+                            },
+                        }
+                        ion_search_list.append((spectra_to_quant, d))
+                last_scan_ions = set([i[0] for i in ions_found])
+                del scan
+
+        if ion_search or all_msn:
+            scan_count = len(ion_search_list)
+            raw_scans = [i[1] for i in sorted(ion_search_list, key=operator.itemgetter(0))]
 
         for i in xrange(threads):
             worker = Worker(queue=in_queue, results=result_queue, raw_name=filepath, silac_labels=silac_labels,
                             debug=args.debug, html=html, mono=not args.spread, precursor_ppm=args.precursor_ppm,
-                            isotope_ppm=args.isotope_ppm, isotope_ppms=None, msn_rt_map=msn_rt_map, reporter_mode=ion_compare,
+                            isotope_ppm=args.isotope_ppm, isotope_ppms=None, msn_rt_map=msn_rt_map, reporter_mode=reporter_mode,
                             reader_in=reader_in, reader_out=reader_outs[i], thread=i, quant_method=quant_method,
                             spline=spline, isotopologue_limit=isotopologue_limit, labels_needed=labels_needed,
                             quant_msn_map=filter(lambda x: x[0] == msn_for_quant, msn_map) if not args.mrm else msn_map,

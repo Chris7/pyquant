@@ -102,16 +102,16 @@ cpdef float bigauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, 
     cdef np.ndarray[FLOAT_t, ndim=1] data = bigauss_ndim(xdata, guess)
     # absolute deviation as our distance metric. Empirically found to give better results than
     # residual sum of squares for this data.
-    #cdef float residual = sum(np.abs(ydata-data)**2)
-    cdef float fit, real, res
-    cdef float residual = 0
-    for i in range(len(ydata)):
-        fit = data[i]
-        real = ydata[i]
-        res = (real-fit)**2
-        if real > fit > 0.01:
-            res = res*2*real/fit
-        residual += res
+    cdef float residual = sum(np.abs(ydata-data)**2)
+    # cdef float fit, real, res
+    # cdef float residual = 0
+    # for i in range(len(ydata)):
+    #     fit = data[i]
+    #     real = ydata[i]
+    #     res = (real-fit)**2
+    #     if real > fit > 0.01:
+    #         res = res*2*real/fit
+    #     residual += res
     return residual
 
 cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata,

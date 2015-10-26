@@ -308,13 +308,14 @@
                             var below = filter_info['below'];
                             var above = filter_info['above'];
                             if (below == false && above == false)
-                                return true;
+                                continue;
                             if (below != false && val <= below)
-                                return true;
+                                continue;
                             if (above != false && val >= above)
-                                return true;
+                                continue;
                             return false;
                         }
+                        return true;
                     }
                 );
                 var initDataViewer = function(){
