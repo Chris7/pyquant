@@ -270,12 +270,7 @@ class Worker(Process):
         #                 continue
         #             mz = indexer[1]
         #             row_data = combined_data.loc[mz, :]
-        #             # remove the bottom values
-        #             row_data2 = row_data[row_data>(row_data[row_data>row_data.quantile(0.3)].mean()*0.25)]
-        #             if sum(row_data2>0) >= 3:
-        #                 mapper = interp1d(row_data2.index.values, row_data2.values)
-        #             else:
-        #                 mapper = interp1d(row_data.index.values, row_data.values)
+        #             mapper = interp1d(row_data.index.values, row_data.values)
         #             try:
         #                 common_peaks[indexer[0]][indexer[1]][indexer[2]]['amp'] = mapper(x1_mean)
         #             except ValueError:
