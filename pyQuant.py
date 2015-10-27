@@ -33,9 +33,12 @@ from sklearn.linear_model import RANSACRegressor
 from mpl_toolkits.mplot3d import Axes3D
 from multiprocessing import Process, Queue, Manager, Array
 import ctypes
+from pympler import tracker
+from pympler import summary
+from pympler import muppy
 try:
     from profilestats import profile
-    # from memory_profiler import profile
+    from memory_profiler import profile as memory_profiler
 except ImportError:
     pass
 from Queue import Empty
@@ -221,6 +224,7 @@ class Worker(Process):
         return mass/(1-self.spline(mass)/1e6) if self.spline else mass
 
     def flat_slope(self, combined_data, delta):
+        return False
         data = combined_data.sum(axis='index').iloc[:10] if delta == -1 else combined_data.sum(axis='index').iloc[-10:]
         data /= combined_data.max().max()
         # remove the bottom values
@@ -248,6 +252,7 @@ class Worker(Process):
                         hx.append(peak['mean'])
                         hy.append(peak['std'])
                         hy2.append(peak['std2'])
+
                         hkeys.append((i, isotope, peak_index))
         classifier = EllipticEnvelope(support_fraction=0.75, random_state=0)
         if len(x) == 1:
@@ -270,45 +275,38 @@ class Worker(Process):
                 x1_mean, x1_std = classifier.location_
                 for index in x1_outliers:
                     indexer = keys[index]
-                    # if indexer[:2] in x1_inliers:
-                    to_delete.add(indexer)
-                    continue
-        #             mz = indexer[1]
-        #             row_data = combined_data.loc[mz, :]
-        #             # remove the bottom values
-        #             row_data2 = row_data[row_data>(row_data[row_data>row_data.quantile(0.3)].mean()*0.25)]
-        #             if sum(row_data2>0) >= 3:
-        #                 mapper = interp1d(row_data2.index.values, row_data2.values)
-        #             else:
-        #                 mapper = interp1d(row_data.index.values, row_data.values)
-        #             try:
-        #                 common_peaks[indexer[0]][indexer[1]][indexer[2]]['amp'] = mapper(x1_mean)
-        #             except ValueError:
-        #                 mapper = interp1d(row_data.index.values, row_data.values)
-        #                 common_peaks[indexer[0]][indexer[1]][indexer[2]]['amp'] = mapper(x1_mean)
-        #             common_peaks[indexer[0]][indexer[1]][indexer[2]]['peak'] = x1_mean
-        #             common_peaks[indexer[0]][indexer[1]][indexer[2]]['mean'] = x1_mean
-        #             common_peaks[indexer[0]][indexer[1]][indexer[2]]['std'] = x1_std
-        # data = np.array([x, y2]).T
-        # try:
-        #     classifier.fit(np.array([hx,hy2]).T if self.mrm else data)
-        # except ValueError:
-        #     pass
-        # else:
-        #     classes = classifier.predict(data)
-        #     x2_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred])
-        #     x2_outliers = [i for i,v in enumerate(classes) if v in false_pred or (common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate') and keys[i][:2] not in x2_inliers)]
-        #     if x2_inliers:
-        #         x2_mean, x2_std = classifier.location_
-        #         for index in x2_outliers:
-        #             indexer = keys[index]
-        #             if indexer[:2] in x2_inliers:
-        #                 if indexer[:2] not in x1_inliers:
-        #                     to_delete.add(indexer)
-        #                 continue
-        #             mz = indexer[1]
-        #             row_data = combined_data.loc[mz, :]
-        #             common_peaks[indexer[0]][indexer[1]][indexer[2]]['std2'] = x2_std
+                    if indexer[:2] in x1_inliers:
+                        to_delete.add(indexer)
+                    # elif common_peaks[indexer[i][0]][indexer[i][1]][indexer[i][2]].get('interpolate'):
+                    #     mz = indexer[1]
+                    #     row_data = combined_data.loc[mz, :]
+                    #     mapper = interp1d(row_data.index.values, row_data.values)
+                    #     common_peaks[indexer[0]][indexer[1]][indexer[2]]['amp'] = mapper(x1_mean)
+                    #     common_peaks[indexer[0]][indexer[1]][indexer[2]]['peak'] = x1_mean
+                    #     common_peaks[indexer[0]][indexer[1]][indexer[2]]['mean'] = x1_mean
+                    #     common_peaks[indexer[0]][indexer[1]][indexer[2]]['std'] = x1_std
+                    # else:
+                    #     to_delete.add(indexer)
+        data = np.array([x, y2]).T
+        try:
+            classifier.fit(np.array([hx,hy2]).T if self.mrm else data)
+        except ValueError:
+            pass
+        else:
+            classes = classifier.predict(data)
+            x2_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred])
+            x2_outliers = [i for i,v in enumerate(classes) if v in false_pred or (common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate') and keys[i][:2] not in x2_inliers)]
+            if x2_inliers:
+                x2_mean, x2_std = classifier.location_
+                for index in x2_outliers:
+                    indexer = keys[index]
+                    if indexer[:2] in x2_inliers:
+                        if indexer[:2] not in x1_inliers:
+                            to_delete.add(indexer)
+                        # elif common_peaks[indexer[i][0]][indexer[i][1]][indexer[i][2]].get('interpolate'):
+                        #     common_peaks[indexer[0]][indexer[1]][indexer[2]]['std2'] = x2_std
+                        # else:
+                        #     to_delete.add(indexer)
         # print to_delete
         for i in sorted(set(to_delete), key=operator.itemgetter(0,1,2), reverse=True):
             del common_peaks[i[0]][i[1]][i[2]]
@@ -331,6 +329,7 @@ class Worker(Process):
         scan = self.reader_out.get()
         return self.convertScan(scan)
 
+    # @memory_profiler
     def run_thing(self, params):
         try:
             html_images = {}
@@ -403,7 +402,7 @@ class Worker(Process):
                            'modifications': target_scan.get('modifications'), 'rt': rt}
             ms_index = 0
             delta = -1
-            theo_dist = peaks.calculate_theoretical_distribution(peptide.upper()) if peptide and self.mono else None
+            theo_dist = peaks.calculate_theoretical_distribution(peptide.upper()) if peptide else None
             spacing = config.NEUTRON/float(charge)
             isotope_labels = {}
             isotopes_chosen = {}
@@ -471,7 +470,7 @@ class Worker(Process):
                                 envelope = peaks.findEnvelope(xdata, ydata, measured_mz=measured_precursor, theo_mz=theoretical_precursor, max_mz=shift_max,
                                                               charge=charge, precursor_ppm=self.precursor_ppm, isotope_ppm=self.isotope_ppm, reporter_mode=self.reporter_mode,
                                                               isotope_ppms=self.isotope_ppms if self.fitting_run else None, quant_method=self.quant_method,
-                                                              theo_dist=theo_dist, label=precursor_label, skip_isotopes=finished_isotopes[precursor_label],
+                                                              theo_dist=theo_dist if self.mono or precursor_shift == 0.0 else None, label=precursor_label, skip_isotopes=finished_isotopes[precursor_label],
                                                               last_precursor=last_precursors[delta].get(precursor_label, measured_precursor), isotopologue_limit=self.isotopologue_limit)
                                 if not envelope['envelope']:
                                 #    finished.add(precursor_label)
@@ -662,6 +661,56 @@ class Worker(Process):
                 labelx = False
                 labely = False
 
+                merged_data = combined_data.sum(axis=0)
+                merged_x = merged_data.index.astype(float).values
+                merged_y = merged_data.values.astype(float)
+                mval = merged_y.max()
+                res, all_peaks = peaks.findAllPeaks(merged_x, merged_y, filter=True, bigauss_fit=True, rt_peak=start_rt)
+                rt_means = res[1::4]
+                rt_amps = res[::4]
+                rt_std = res[2::4]
+                rt_std2 = res[3::4]
+                valid_peaks = [{'mean': i, 'amp': j*mval, 'std': l, 'std2': k, 'total': merged_y.sum()}
+                                        for i, j, l, k in zip(rt_means, rt_amps, rt_std, rt_std2)]
+                # if we have a peaks containing our retention time, keep them and throw out ones not containing it
+                # to_remove = []
+                # to_keep = []
+                # print valid_peaks
+                # for i,v in enumerate(valid_peaks):
+                #     mu = v['mean']
+                #     s1 = v['std']
+                #     s2 = v['std2']
+                #     if mu-s1*3 < start_rt < mu+s2*3:
+                #         v['valid'] = True
+                #         to_keep.append(i)
+                #     else:
+                #         to_remove.append(i)
+                # # kick out peaks not containing our RT
+                # valid_peak = None
+                # if not to_keep:
+                #     # we have no peaks with our RT, there are contaminating peaks, remove all the noise but the closest to our RT
+                #     if not self.mrm:
+                #         valid_peak = sorted([(i, np.abs(i['mean']-start_rt)) for i in valid_peaks], key=operator.itemgetter(1))[0][0]
+                #         valid_peak['interpolate'] = True
+                #     # else:
+                #     #     valid_peak = [j[0] for j in sorted([(i, i['amp']) for i in valid_peaks], key=operator.itemgetter(1), reverse=True)[:3]]
+                # else:
+                #     for i in reversed(to_remove):
+                #         del valid_peaks[i]
+                #     # sort by RT
+                valid_peaks.sort(key=lambda x: np.abs(x['mean']-start_rt))
+                # print to_keep, to_remove
+                # print valid_peak
+                # print valid_peaks
+                # print '---'
+                #valid_peaks = valid_peaks if valid_peak is None else [valid_peak]
+                peak_index = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean'])
+                peak_location = merged_x[peak_index]
+                merged_lb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean']-valid_peaks[0]['std']*2)
+                merged_rb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean']+valid_peaks[0]['std2']*2)
+                merged_rb = len(merged_x) if merged_rb == -1 else merged_rb+1
+                # print merged_x, merged_lb, merged_rb, valid_peaks, valid_peaks[0]['mean']-valid_peaks[0]['std']*2, valid_peaks[0]['mean']+valid_peaks[0]['std2']*2
+
                 for row_num, (index, values) in enumerate(combined_data.iterrows()):
                     quant_label = isotope_labels.loc[index, 'label']
                     # if self.html:
@@ -678,20 +727,30 @@ class Worker(Process):
                     ydata = values.fillna(0).values.astype(float)
                     if sum(ydata>0) >= self.min_scans:
                         # print quant_label, index
-                        res, all_peaks = peaks.findAllPeaks(xdata, ydata, filter=True, bigauss_fit=True, rt_peak=0 if self.mrm else start_rt)
+                        #res, all_peaks = peaks.findAllPeaks(xdata, ydata, filter=True, bigauss_fit=True, rt_peak=peak_location)
+                        peak_x = np.copy(xdata[merged_lb:merged_rb])
+                        peak_y = np.copy(ydata[merged_lb:merged_rb])
+                        if peak_x.size <= 1 or sum(peak_y>0) < self.min_scans:
+                            continue
+                        res = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=peaks.find_nearest_index(peak_x, valid_peaks[0]['mean']))
+                        # if quant_label == 'Light':
+                        # print 'fmf', quant_label, index, res, peak_x, ydata[merged_lb:merged_rb], peaks.fixedMeanFit2(peak_x, np.copy(ydata[merged_lb:merged_rb]), peak_index=peaks.find_nearest_index(peak_x, valid_peaks[0]['mean']), debug=True)
+                        #print peak_x
+                        #print res, peaks.fixedMeanFit(peak_x, np.copy(ydata[merged_lb:merged_rb]), peak_index=peaks.find_nearest_index(peak_x, valid_peaks[0]['mean']))
+                        if res is None:
+                            continue
                         # res2, all_peaks2 = peaks.findAllPeaks2(values, filter=True)
                         # if len(res.x) > 4:
                         #     print res
                         # res2, all_peaks2 = peaks.findAllPeaks2(values, filter=True)
                         #print res1.success, res2.success, res1.fun, res2.fun, res1.bic, res2.bic
                         # res, all_peaks = (res, all_peaks) if res.bic < res2.bic else (res2, all_peaks2)
-                        mval = ydata.max()
                         rt_means = res[1::4]
                         rt_amps = res[::4]
                         rt_std = res[2::4]
                         rt_std2 = res[3::4]
-                        valid_peaks = [{'mean': i, 'amp': j*mval, 'std': l, 'std2': k, 'peak': m, 'total': values.sum()}
-                                        for i, j, l, k, m in zip(rt_means, rt_amps, rt_std, rt_std2, all_peaks)]
+                        valid_peaks = [{'mean': i, 'amp': j, 'std': l, 'std2': k, 'total': values.sum()}
+                                        for i, j, l, k in zip(rt_means, rt_amps, rt_std, rt_std2)]
                         # if we have a peaks containing our retention time, keep them and throw out ones not containing it
                         to_remove = []
                         to_keep = []
@@ -702,21 +761,29 @@ class Worker(Process):
                             if mu-s1*2 < start_rt < mu+s2*2:
                                 v['valid'] = True
                                 to_keep.append(i)
-                            else:
+                            elif peaks.find_nearest_index(merged_x, mu)-peak_location > 2:
                                 to_remove.append(i)
                         # kick out peaks not containing our RT
                         valid_peak = None
                         if not to_keep:
                             # we have no peaks with our RT, there are contaminating peaks, remove all the noise but the closest to our RT
                             if not self.mrm:
+                                # for i in to_remove:
+                                #     valid_peaks[i]['interpolate'] = True
                                 valid_peak = sorted([(i, np.abs(i['mean']-start_rt)) for i in valid_peaks], key=operator.itemgetter(1))[0][0]
-                                valid_peak['interpolate'] = True
+                                for i in reversed(xrange(len(valid_peaks))):
+                                    if valid_peaks[i] == valid_peak:
+                                        continue
+                                    else:
+                                        del valid_peaks[i]
+                                # valid_peak['interpolate'] = True
                             # else:
                             #     valid_peak = [j[0] for j in sorted([(i, i['amp']) for i in valid_peaks], key=operator.itemgetter(1), reverse=True)[:3]]
                         else:
                             for i in reversed(to_remove):
                                 del valid_peaks[i]
-                        combined_peaks[quant_label][index] = valid_peaks if valid_peak is None else [valid_peak]
+                        combined_peaks[quant_label][index] = valid_peaks# if valid_peak is None else [valid_peak]
+
                     if self.html:
                         # ax = fig.add_subplot(subplot_rows, subplot_columns, fig_index)
                         if quant_label in rt_figure_mapper:
@@ -726,133 +793,93 @@ class Worker(Process):
                             rt_figure_mapper[(quant_label, index)] = rt_base
                             rt_figure['data'].append(rt_base)
                         rt_base['data']['columns'].append(['{0} {1} raw'.format(quant_label, index)]+ydata.tolist())
-                        # if labely:
-                        #     labely = False
-                        # else:
-                        #     ax.set_yticklabels([])
-                        # if labelx:
-                        #     labelx = False
-                        # else:
-                        #     ax.set_xticklabels([])
-                # get two most common peak, pick the closest to our RT
-                # we may need to add a check for a minimal # of in for max distance from the RT as well here.
-                # print combined_peaks
-                # print combined_peaks, combined_data
-                # if self.mrm:
-                #     for i,v in combined_peaks.items():
-                #         for isotope, scan_peaks in v.items():
-                #             v[isotope] = [j[1] for j in sorted([(peak['amp'], peak) for peak in scan_peaks], key=lambda x: x[0], reverse=True)[:3]]
-                common_peak = self.replaceOutliers(combined_peaks, combined_data)
-                # print combined_peaks, combined_data
-                # print combined_peaks
-                # if self.mrm:
-                #     common_peaks = pd.Series([sorted(value_peaks, key=lambda x: x['amp'], reverse=True)[0]['peak'] for i, values in combined_peaks.items() for index, value_peaks in values.iteritems()]).value_counts()
-                # else:
-                #     common_peaks = pd.Series([peak['peak'] for i, values in combined_peaks.items() for index, value_peaks in values.iteritems() for peak in value_peaks]).value_counts()
-                # print combined_peaks
-                # common_peaks = common_peaks.sort_index()
-                # tcommon_peaks = common_peaks[common_peaks>=4]
-                #
-                # # combine peaks that are separated by a single scan
-                # spillover_peaks = tcommon_peaks.index.to_series().apply(lambda x: np.where(xdata==x)[0][0])
-                # spillover_peaks = spillover_peaks.sort_index()
-                # spillover = defaultdict(list)
-                # for index, value in spillover_peaks.iteritems():
-                #     spillover_matches = spillover_peaks==(value+1)
-                #     if spillover_matches.any():
-                #         spillover[spillover_peaks[spillover_matches].index[0]].extend(spillover.get(index, [index]))
-                #     else:
-                #         spillover[index].extend([index])
-                # new_common = pd.Series(0, index=spillover.keys())
-                # for i,v in spillover.iteritems():
-                #     new_common[i] += sum([tcommon_peaks[val] for val in v])
-                #
-                # common_peaks = new_common if new_common.any() else common_peaks
-                # common_peaks_deltas = sorted([(i, np.abs(i-start_rt)) for i in common_peaks.index], key=operator.itemgetter(1))
-                # try:
-                #     common_peak = common_peaks_deltas[0][0]
-                # except:
-                #     print common_peaks
-                #     common_peak = common_peaks_deltas[0][0]
-                # common_peak_info = [peak for i, values in combined_peaks.items() for index, value_peaks in values.iteritems() for peak in value_peaks if peak['peak'] == common_peak]
-                common_loc = peaks.find_nearest_index(xdata, common_peak)#np.where(xdata==common_peak)[0][0]
+
                 peak_info = {i: {'amp': -1, 'var': 0} for i in self.mrm_pair_info.columns} if self.mrm else {i: {'amp': -1, 'var': 0} for i in data.keys()}
+                if combined_peaks:
+                    common_peak = self.replaceOutliers(combined_peaks, combined_data)
+                    common_loc = peaks.find_nearest_index(xdata, common_peak)#np.where(xdata==common_peak)[0][0]
 
-                for quant_label, quan_values in combined_peaks.items():
-                    for index, values in quan_values.items():
-                        if not values:
-                            continue
-                        rt_values = combined_data.loc[index]
-                        xdata = rt_values.index.values.astype(float)
-                        ydata = rt_values.fillna(0).values.astype(float)
-                        # pick the biggest within a rt cutoff of 0.2, otherwise pick closest
-                        # closest_rts = sorted([(i, i['amp']) for i in values if np.abs(i['peak']-common_peak) < 0.2], key=operator.itemgetter(1), reverse=True)
-                        # if not closest_rts:
-                        closest_rts = sorted([(i, np.abs(i['peak']-common_peak)) for i in values], key=operator.itemgetter(1))
-                        closest_rt = closest_rts[0][0]
-                        # if we move more than a # of ms1 to the dominant peak, update to our known peak
-                        gc = 'k'
-                        pos_x = xdata[ydata>0]
-                        nearest = peaks.find_nearest_index(pos_x, closest_rt['peak'])
-                        peak_loc = np.where(xdata==pos_x[nearest])[0][0]
-                        mean = closest_rt['mean']
-                        amp = closest_rt['amp']
-                        mean_diff = mean-xdata[common_loc]
-                        mean_diff = np.abs(mean_diff/closest_rt['std'] if mean_diff < 0 else mean_diff/closest_rt['std2'])
-                        std = closest_rt['std']
-                        std2 = closest_rt['std2']
-                        if False and len(xdata) >= 3 and (mean_diff > 2 or (np.abs(peak_loc-common_loc) > 2 and mean_diff > 2)):
-                            # fixed mean fit
-                            if self.debug:
-                                print quant_label, index
-                                print common_loc, peak_loc
-                            nearest = peaks.find_nearest_index(pos_x, mean)
-                            nearest_index = np.where(xdata==pos_x[nearest])[0][0]
-                            res = peaks.fixedMeanFit(xdata, ydata, peak_index=nearest_index, debug=self.debug)
-                            if res is None:
+                    for quant_label, quan_values in combined_peaks.items():
+                        for index, values in quan_values.items():
+                            if not values:
                                 continue
-                            amp, mean, std, std2 = res
-                            amp *= ydata.max()
-                            gc = 'g'
-                        #var_rat = closest_rt['var']/common_var
-                        peak_params = np.array([amp,  mean, std, std2])
-                        # int_args = (res.x[rt_index]*mval, res.x[rt_index+1], res.x[rt_index+2])
-                        left, right = xdata[0]-4*std, xdata[-1]+4*std2
-                        xr = np.linspace(left, right, 1000)
-                        int_val = integrate.simps(peaks.bigauss_ndim(xr, peak_params), x=xr) if self.quant_method == 'integrate' else ydata[(xdata > left) & (xdata < right)].sum()
-                        isotope_index = isotope_labels.loc[index, 'isotope_index']
-
-                        if int_val and not pd.isnull(int_val) and gc != 'c':
+                            rt_values = combined_data.loc[index]
+                            xdata = rt_values.index.values.astype(float)
+                            ydata = rt_values.fillna(0).values.astype(float)
+                            # pick the biggest within a rt cutoff of 0.2, otherwise pick closest
+                            # closest_rts = sorted([(i, i['amp']) for i in values if np.abs(i['peak']-common_peak) < 0.2], key=operator.itemgetter(1), reverse=True)
+                            # if not closest_rts:
+                            # print values
+                            closest_rts = sorted([(i, np.abs(i['mean']-common_peak)) for i in values], key=operator.itemgetter(1))
+                            # print closest_rts
+                            closest_rt = closest_rts[0][0]
+                            # if we move more than a # of ms1 to the dominant peak, update to our known peak
+                            gc = 'k'
+                            pos_x = xdata[ydata>0]
+                            nearest = peaks.find_nearest_index(pos_x, closest_rt['mean'])
+                            peak_loc = np.where(xdata==pos_x[nearest])[0][0]
+                            mean = closest_rt['mean']
+                            amp = closest_rt['amp']
+                            mean_diff = mean-xdata[common_loc]
+                            mean_diff = np.abs(mean_diff/closest_rt['std'] if mean_diff < 0 else mean_diff/closest_rt['std2'])
+                            std = closest_rt['std']
+                            std2 = closest_rt['std2']
+                            if False and len(xdata) >= 3 and (mean_diff > 2 or (np.abs(peak_loc-common_loc) > 2 and mean_diff > 2)):
+                                # fixed mean fit
+                                if self.debug:
+                                    print quant_label, index
+                                    print common_loc, peak_loc
+                                nearest = peaks.find_nearest_index(pos_x, mean)
+                                nearest_index = np.where(xdata==pos_x[nearest])[0][0]
+                                res = peaks.fixedMeanFit(xdata, ydata, peak_index=nearest_index, debug=self.debug)
+                                if res is None:
+                                    continue
+                                amp, mean, std, std2 = res
+                                amp *= ydata.max()
+                                gc = 'g'
+                            #var_rat = closest_rt['var']/common_var
+                            peak_params = np.array([amp,  mean, std, std2])
+                            # int_args = (res.x[rt_index]*mval, res.x[rt_index+1], res.x[rt_index+2])
+                            left, right = xdata[0]-4*std, xdata[-1]+4*std2
+                            xr = np.linspace(left, right, 1000)
                             try:
-                                quant_vals[quant_label][isotope_index] += int_val
-                            except KeyError:
-                                quant_vals[quant_label][isotope_index] = int_val
-                        if peak_info.get(quant_label, {}).get('amp', -1) < amp:
-                            peak_info[quant_label].update({'amp': amp, 'std': std, 'std2': std2, 'mean_diff': mean_diff})
-                        if self.html:
-                            rt_base = rt_figure_mapper[(quant_label, index)]
-                            key = '{} {}'.format(quant_label, index)
-                            for i,v in enumerate(rt_base['data']['columns']):
-                                if key in v[0]:
-                                    break
-                            rt_base['data']['columns'].insert(i, ['{0} {1} fit'.format(quant_label, index)]+(peaks.bigauss_ndim(xdata, peak_params)).tolist())
-                            pass
-                            # ax = fig.add_subplot(subplot_rows, subplot_columns, fig_map.get(index))
-                            # try:
-                            #     ax.set_title('{0:0.2f} AUC: {1}'.format(index, int(int_val)))
-                            # except:
-                            #     ax.set_title('{0:0.2f} AUC: {1}'.format(index, 'NA'))
-                            # plot_points = np.linspace(xdata[0], xdata[-1], 100)
-                            # if self.quant_method == 'integrate':
-                            #     ax.plot(plot_points, peaks.bigauss_ndim(plot_points, peak_params), '{}o-'.format(gc), alpha=0.7)
-                            # else:
-                            #     ax.bar(xdata, ydata, width=((xdata[1]-xdata[0]) if len(xdata) > 1 else 1)/4, alpha=0.7)
-                            # ax.plot([start_rt, start_rt], ax.get_ylim(),'k-')
-                            # ax.set_ylim(0,combined_data.max().max())
-                            # x_for_plot = xdata[::int(len(xdata)/5)+1]
-                            # ax.set_xlim(xdata[0], xdata[-1])
-                            # ax.set_xticks(x_for_plot)
-                            # ax.set_xticklabels(['{0:.2f} '.format(i) for i in x_for_plot], rotation=45, ha='right')
+                                int_val = integrate.simps(peaks.bigauss_ndim(xr, peak_params), x=xr) if self.quant_method == 'integrate' else ydata[(xdata > left) & (xdata < right)].sum()
+                            except:
+                                print traceback.format_exc()
+                                print xr, peak_params
+                            isotope_index = isotope_labels.loc[index, 'isotope_index']
+
+                            if int_val and not pd.isnull(int_val) and gc != 'c':
+                                try:
+                                    quant_vals[quant_label][isotope_index] += int_val
+                                except KeyError:
+                                    quant_vals[quant_label][isotope_index] = int_val
+                            if peak_info.get(quant_label, {}).get('amp', -1) < amp:
+                                peak_info[quant_label].update({'amp': amp, 'std': std, 'std2': std2, 'mean_diff': mean_diff})
+                            if self.html:
+                                rt_base = rt_figure_mapper[(quant_label, index)]
+                                key = '{} {}'.format(quant_label, index)
+                                for i,v in enumerate(rt_base['data']['columns']):
+                                    if key in v[0]:
+                                        break
+                                rt_base['data']['columns'].insert(i, ['{0} {1} fit'.format(quant_label, index)]+np.nan_to_num(peaks.bigauss_ndim(xdata, peak_params)).tolist())
+                                pass
+                                # ax = fig.add_subplot(subplot_rows, subplot_columns, fig_map.get(index))
+                                # try:
+                                #     ax.set_title('{0:0.2f} AUC: {1}'.format(index, int(int_val)))
+                                # except:
+                                #     ax.set_title('{0:0.2f} AUC: {1}'.format(index, 'NA'))
+                                # plot_points = np.linspace(xdata[0], xdata[-1], 100)
+                                # if self.quant_method == 'integrate':
+                                #     ax.plot(plot_points, peaks.bigauss_ndim(plot_points, peak_params), '{}o-'.format(gc), alpha=0.7)
+                                # else:
+                                #     ax.bar(xdata, ydata, width=((xdata[1]-xdata[0]) if len(xdata) > 1 else 1)/4, alpha=0.7)
+                                # ax.plot([start_rt, start_rt], ax.get_ylim(),'k-')
+                                # ax.set_ylim(0,combined_data.max().max())
+                                # x_for_plot = xdata[::int(len(xdata)/5)+1]
+                                # ax.set_xlim(xdata[0], xdata[-1])
+                                # ax.set_xticks(x_for_plot)
+                                # ax.set_xticklabels(['{0:.2f} '.format(i) for i in x_for_plot], rotation=45, ha='right')
                 write_html = True if self.ratio_cutoff == 0 else False
                 for silac_label1 in data.keys():
                     qv1 = quant_vals.get(silac_label1)
@@ -936,8 +963,11 @@ class Worker(Process):
             return
 
     def run(self):
-        for params in iter(self.queue.get, None):
+        for index, params in enumerate(iter(self.queue.get, None)):
             self.run_thing(params)
+            # if index and index % 20 == 0:
+            #     current_sum = summary.summarize(muppy.get_objects())
+            #     summary.print_(current_sum)
         self.results.put(None)
 
 def find_prior_scan(msn_map, current_scan, ms_level=None):
@@ -1094,9 +1124,9 @@ def main():
             #
             d = {
                 'file': fname, 'quant_scan': {}, 'id_scan': {
-                    'id': specId, 'mass': precursor_mass, 'peptide': peptide, 'rt': rt_value,
-                    'charge': charge, 'modifications': None, 'label': name_mapping.get(i[label_col]) if label_col in i else None
-                }
+                'id': specId, 'mass': precursor_mass, 'peptide': peptide, 'rt': rt_value,
+                'charge': charge, 'modifications': None, 'label': name_mapping.get(i[label_col]) if label_col in i else None
+            }
             }
             found_scans[mass_key] = d
             if args.replicate:
@@ -1133,9 +1163,9 @@ def main():
                 continue
             d = {
                 'file': fname, 'quant_scan': {}, 'id_scan': {
-                    'id': specId, 'theor_mass': scan.getTheorMass(), 'peptide': peptide, 'mod_peptide': scan.modifiedPeptide, 'rt': scan.rt,
-                    'charge': scan.charge, 'modifications': scan.getModifications(), 'mass': float(scan.mass)
-                }
+                'id': specId, 'theor_mass': scan.getTheorMass(), 'peptide': peptide, 'mod_peptide': scan.modifiedPeptide, 'rt': scan.rt,
+                'charge': scan.charge, 'modifications': scan.getModifications(), 'mass': float(scan.mass)
+            }
             }
             found_scans[mass_key] = d#.add(mass_key)
             fname = os.path.splitext(fname)[0]
@@ -1237,14 +1267,13 @@ def main():
             if res is None:
                 res = '<tr>'
             out = []
-            for i,v in zip(l.split('\t'), keys):
+            html_output = {}
+            for col_index, (i,v) in enumerate(zip(l.split('\t'), keys)):
                 if v in html_extra:
-                    data_attrs = 'data-chart="{}"'.format(base64.b64encode(gzip.zlib.compress(json.dumps(html_extra[v]), 9)))
-                    out.append("<td {0}>{1}</td>".format(data_attrs, i))
-                else:
-                    out.append('<td>{0}</td>'.format(i))
+                    html_output[col_index] = html_extra[v]
+                out.append('<td>{0}</td>'.format(i))
             res += '\n'.join(out)+'</tr>'
-            return table_rows(html_list, res=res)
+            return table_rows(html_list, res=res), html_output
 
         if resume:
             html_out = open('{0}.html'.format(out_path), 'ab')
@@ -1259,18 +1288,16 @@ def main():
             html_out.write(html_template.substitute({'title': source_file, 'table_header': '\n'.join(['<th>{0}</th>'.format(i) for i in ['Raw File']+[i[1] for i in RESULT_ORDER]])}))
 
     skip_map = set([])
-    all_results = []
     if resume:
-        key = None
-        for index, entry in enumerate(csv.reader(open(out.name, 'rb'), delimiter=str('\t'))):
-            if index == 0:
-                continue
-            # key is filename, peptide, charge, target scan id, modifications
-            key = (entry[0], entry[1], entry[3], entry[5], entry[2])
-            all_results.append(entry)
-            skip_map.add(key)
-
-    html_results = []
+        with open('{}.tmp'.format(out.name), 'rb') as temp_file:
+            for index, entry in enumerate(temp_file):
+                info = json.loads(entry)['res_list']
+                # key is filename, peptide, charge, target scan id, modifications
+                key = (info[0], info[1], info[3], info[5], info[2])
+                skip_map.add(key)
+        temp_file = open('{}.tmp'.format(out.name), 'ab')
+    else:
+        temp_file = open('{}.tmp'.format(out.name), 'wb')
 
     silac_shifts = {}
     for silac_label, silac_masses in silac_labels.items():
@@ -1587,8 +1614,9 @@ def main():
                 res_list = [filename]+[result.get(i[0], 'NA') for i in RESULT_ORDER]
                 key_order = [False]+[i[0] if i[0] in result else False for i in RESULT_ORDER]
                 if calc_stats:
-                    all_results.append(res_list)
-                    html_results.append(result.get('html', {}))
+                    temp_file.write(json.dumps({'res_list': res_list, 'html': result.get('html', {})}))
+                    temp_file.write('\n')
+                    temp_file.flush()
                 res = '{0}\n'.format('\t'.join(map(str, res_list)))
                 out.write(res)
                 out.flush()
@@ -1598,10 +1626,18 @@ def main():
         reader_in.put(None)
         del msn_map
         del scan_rt_map
+        del raw
 
+    temp_file.close()
+    df_data = []
+    html_data = []
+    for j in open(temp_file.name, 'rb'):
+        result = json.loads(j)
+        df_data.append(result['res_list'])
+        html_data.append(result['html'])
+    data = pd.DataFrame.from_records(df_data, columns=[i for i in headers if i != 'Confidence'])
     if calc_stats:
         from scipy import stats
-        data = pd.DataFrame.from_records(all_results, columns=[i for i in headers if i != 'Confidence'])
         header_mapping = []
         order_names = [i[1] for i in RESULT_ORDER]
         for i in data.columns:
@@ -1674,16 +1710,19 @@ def main():
                 data.loc[(data[label2_hifp] < 0.10), mixed_confidence] -= 1
 
         data.to_csv('{}_stats'.format(out.name), sep=str('\t'), index=None)
-        if html:
-            for index, (row_index, row) in enumerate(data.iterrows()):
-                res = '\t'.join(row.astype(str))
-                html_out.write(table_rows([{'table': res.strip(), 'html': html_results[index], 'keys': header_mapping}]))
-                html_out.flush()
 
     out.flush()
     out.close()
 
     if html:
+        html_map = []
+        for index, (row_index, row) in enumerate(data.iterrows()):
+            res = '\t'.join(row.astype(str))
+            to_write, html_info = table_rows([{'table': res.strip(), 'html': html_data[index], 'keys': header_mapping}])
+            html_map.append(html_info)
+            html_out.write(to_write)
+            html_out.flush()
+
         template = []
         append = False
         for i in open(os.path.join(pq_dir, 'pyquant_output.html'), 'rb'):
@@ -1692,7 +1731,9 @@ def main():
             elif append:
                 template.append(i)
         html_template = Template(''.join(template))
-        html_out.write(html_template.safe_substitute({}))
+        html_out.write(html_template.safe_substitute({'html_output': base64.b64encode(gzip.zlib.compress(json.dumps(html_map), 9))}))
+
+    os.remove(temp_file.name)
 
 if __name__ == "__main__":
     sys.exit(main())

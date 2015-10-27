@@ -18,6 +18,15 @@
                 max-height: 50%;
                 height: 50%;
             }
+            .chart-title {
+                display: inline-block;
+                transform: rotate(270deg);
+                float: left;
+                margin-top: 0;
+                margin-bottom: 0;
+                vertical-align: middle;
+                line-height: 8;
+            }
             .viewer-content {
                 overflow-x: scroll;
             }
@@ -225,6 +234,9 @@
         <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/jquery-contextmenu/1.9.1/jquery.contextMenu.min.js"></script>
         <script>
             $(document).ready(function() {
+
+                var dt_data = JSON.parse(pako.inflate(window.atob("$html_output"), { to: 'string' }));
+
                 var dt = $('#raw-table').DataTable({
                     "iDisplayLength": 100,
                     "sScrollY": $(window).height()*0.4,
@@ -283,13 +295,15 @@
                 var plotting_params = {};
                 var update_plot_params = function(){
                     $plot_options.each(function(index, value){
-                    var $el = $(value);
-                    var value = $el.val();
-                    var name = $el.attr('name');
-                    var el_type = $el.attr('type');
-                    if(el_type == 'checkbox')
-                        value = $el.is(':checked');
-                    plotting_params[name] = value;
+                        var $el = $(value);
+                        var value = $el.val();
+                        var name = $el.attr('name');
+                        var el_type = $el.attr('type');
+                        if(el_type == 'checkbox')
+                            value = $el.is(':checked');
+                        plotting_params[name] = value;
+                        current_plot = 0;
+                        $('.current-plot').trigger('click');
                     });
                 };
 
@@ -322,16 +336,18 @@
                     }
                 );
                 var initDataViewer = function(){
-                    $('[data-chart]').click(function(event){
+                        $('td').click(function(event){
                         var $this = $(this);
+                        var cell_info = dt.cell(this).index();
+                        var row_index = cell_info['row'];
+                        var col_index = cell_info['column'];
                         if(current_plot && (current_plot[0] == $this[0]))
                             return;
                         current_plot = $this;
                         var $base_element = $active_window.find('.viewer-content');
                         $base_element.children().remove();
                         $element = $base_element;
-                        //var chart_data = $this.data('chart');
-                        var chart_data = JSON.parse(pako.inflate(window.atob($this.data('chart')), { to: 'string' }));
+                        var chart_data = $.extend(true, {}, dt_data[row_index][col_index]);
                         var chart_width = 0;
                         var plot_width = $(document).width()/3;
                         var max_y = chart_data['max-y'];
@@ -342,12 +358,14 @@
                             for(var i=0;i<plot_data.length;i++){
                                 var plot_info = plot_data[i]['data']['columns'][0];
                                 if(!plot_info)
-                                continue;
+                                    continue;
                                 var plot_title = plot_info[0].split(' ');
-                                if(!last_title || (plot_title && last_title && plot_title[0].indexOf(last_title) == -1 )) {
-                                    if (last_title)
-                                        $element.css('width', chart_width);
-                                    $element = $('<div class="row"></div>').appendTo($base_element);
+                                if(!last_title || (plot_title && last_title && plot_title[0] != 'Scan' && plot_title[0].indexOf(last_title) == -1 )) {
+                                    if (last_title) {
+                                        $element.css('width', chart_width + $element.find('.chart-title').outerWidth(true) + 20);
+                                        chart_width = 0;
+                                    }
+                                    $element = $('<div class="row"><h2 class="chart-title">'+plot_title[0]+'</h2></div>').appendTo($base_element);
                                 }
                                 if(plot_title)
                                     last_title = plot_title[0];
@@ -365,12 +383,13 @@
                                 c3.generate(plot_data[i]);
 
                             }
-                            $element.css('width', chart_width);
+                            if(plot_data.length)
+                                $element.css('width', chart_width+$element.find('.chart-title').outerWidth(true)+20);
                         }
-
-                    });
-                    $('#raw-table').delegate('tr > td[data-chart]', 'click', function(event) {
-                     $('.selected').removeClass('selected'); $(this).parent().addClass('selected');
+                        $('.selected').removeClass('selected');
+                        $('.current-plot').removeClass('current-plot');
+                        $(this).parent().addClass('selected');
+                        $(this).addClass('current-plot')
                     });
                     $.contextMenu({
                         selector: 'tr > th',
