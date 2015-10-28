@@ -34,9 +34,7 @@ from sklearn.linear_model import RANSACRegressor
 from mpl_toolkits.mplot3d import Axes3D
 from multiprocessing import Process, Queue, Manager, Array
 import ctypes
-from pympler import tracker
-from pympler import summary
-from pympler import muppy
+
 try:
     from profilestats import profile
     from memory_profiler import profile as memory_profiler
