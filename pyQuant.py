@@ -262,15 +262,15 @@ class Worker(Process):
         to_delete = set([])
         try:
             classifier.fit(np.array([hx,hy]).T if self.mrm else data)
+            x1_mean, x1_std = classifier.location_
         except ValueError:
-            pass
+            x1_mean, x1_std = data[0,0], data[0,1]
         else:
             classes = classifier.predict(data)
             x1_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('valid')])
             # print x1_inliers
             x1_outliers = [i for i,v in enumerate(classes) if v in false_pred or (common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate') and keys[i][:2] not in x1_inliers)]
             if x1_inliers:
-                x1_mean, x1_std = classifier.location_
                 for index in x1_outliers:
                     indexer = keys[index]
                     if indexer[:2] in x1_inliers:
@@ -328,7 +328,7 @@ class Worker(Process):
         return self.convertScan(scan)
 
     # @memory_profiler
-    def run_thing(self, params):
+    def quantify_peaks(self, params):
         try:
             html_images = {}
             scan_info = params.get('scan_info')
@@ -962,10 +962,7 @@ class Worker(Process):
 
     def run(self):
         for index, params in enumerate(iter(self.queue.get, None)):
-            self.run_thing(params)
-            # if index and index % 20 == 0:
-            #     current_sum = summary.summarize(muppy.get_objects())
-            #     summary.print_(current_sum)
+            self.quantify_peaks(params)
         self.results.put(None)
 
 def find_prior_scan(msn_map, current_scan, ms_level=None):
