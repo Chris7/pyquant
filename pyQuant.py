@@ -1288,7 +1288,7 @@ def main():
             for index, entry in enumerate(temp_file):
                 info = json.loads(entry)['res_list']
                 # key is filename, peptide, charge, target scan id, modifications
-                key = (info[0], info[1], info[3], info[5], info[2])
+                key = tuple(map(str, (info[0], info[1], info[3], info[5], info[2])))
                 skip_map.add(key)
         temp_file = open('{}.tmp'.format(out.name), 'ab')
     else:
@@ -1576,7 +1576,6 @@ def main():
                 if tuple(map(str, key)) in skip_map:
                     completed += 1
                     continue
-
             params = {'scan_info': v}
             scans_to_submit.append((target_scan['rt'], params))
 
@@ -1633,6 +1632,27 @@ def main():
     data = pd.DataFrame.from_records(df_data, columns=[i for i in headers if i != 'Confidence'])
     if calc_stats:
         from scipy import stats
+        from sklearn.linear_model import Ridge
+        classifier = Ridge(fit_intercept=False)
+        classifier.intercept_ = 0
+        classifier.coef_ = np.array(
+            [-0.00047946708951521167,
+             -0.05459013462133773,
+             0.03947597539686713,
+             0.012500086719963251,
+             -0.04460429974810026,
+             -0.003013387119734296,
+             0.012130188407269928,
+             0.022754432521285253,
+             0.017437852071750377,
+             -0.016128581914192995,
+             -0.023397317438551505,
+             -0.0161285819141919,
+             -0.023397317438550867,
+             0.06922293630844761,
+             0.05971290394801583,
+             -0.012331605128417564,
+             0.02048600460811109])
         header_mapping = []
         order_names = [i[1] for i in RESULT_ORDER]
         for i in data.columns:
@@ -1645,6 +1665,7 @@ def main():
             label1_log = 'L{}'.format(silac_label1)
             label1_logp = 'L{}_p'.format(silac_label1)
             label1_int = '{} Intensity'.format(silac_label1)
+            label1_pint = '{} Peak Intensity'.format(silac_label1)
             label1_hif = '{} Isotopes Found'.format(silac_label1)
             label1_hifp = '{} Isotopes Found p'.format(silac_label1)
             for silac_label2 in silac_labels.keys():
@@ -1653,6 +1674,7 @@ def main():
                 label2_log = 'L{}'.format(silac_label2)
                 label2_logp = 'L{}_p'.format(silac_label2)
                 label2_int = '{} Intensity'.format(silac_label2)
+                label2_pint = '{} Peak Intensity'.format(silac_label1)
                 label2_hif = '{} Isotopes Found'.format(silac_label2)
                 label2_hifp = '{} Isotopes Found p'.format(silac_label2)
 
@@ -1694,15 +1716,63 @@ def main():
 
                 # confidence assessment
                 mixed_confidence = '{}/{} Confidence'.format(silac_label1, silac_label2)
-                data[mixed_confidence] = 10
-                data.loc[(data[mixed_mean_p] > 0.90), mixed_confidence] -= 1
-                data.loc[(data[mixed_rt_diff_p] > 0.90), mixed_confidence] -= 1
-                data.loc[(data[label2_logp] < 0.10), mixed_confidence] -= 0.5
-                data.loc[(data[label1_logp] < 0.10), mixed_confidence] -= 0.5
-                data.loc[(data[mixed_p] < 0.10), mixed_confidence] -= 0.5
-                data.loc[((data[mixed_isotope_diff_p] > 0.90) | (data[mixed_isotope_diff_p] < 0.10)), mixed_confidence] -= 1
-                data.loc[(data[label2_hifp] < 0.10), mixed_confidence] -= 1
-                data.loc[(data[label2_hifp] < 0.10), mixed_confidence] -= 1
+
+                cols = []
+                for i in (silac_label1, silac_label2):
+                    cols.extend(['{} {}'.format(i,j) for j in ['Intensity', 'Isotopes Found', 'RT Width', 'Peak Intensity', 'SNR', 'Residual']])
+
+                fit_data = data.loc[:, cols]
+                fit_data['MSNR'] = np.log2(fit_data[label2_int])/np.log2(np.std(fit_data[label2_int]))
+                fit_data['LSNR'] = np.log2(fit_data[label1_int])/np.log2(np.std(fit_data[label1_int]))
+
+                fit_data['MIp'] = stats.norm.cdf((np.log2(fit_data[label2_int])-np.log2(fit_data[label2_int]).median())/np.log2(fit_data[label2_int]).std())
+                fit_data['LIp'] = stats.norm.cdf((np.log2(fit_data[label1_int])-np.log2(fit_data[label1_int]).median())/np.log2(fit_data[label1_int]).std())
+
+                fit_data['MSNRp'] = stats.norm.cdf((fit_data['MSNR']-fit_data['MSNR'].median())/fit_data['MSNR'].std())
+                fit_data['LSNRp'] = stats.norm.cdf((fit_data['LSNR']-fit_data['LSNR'].median())/fit_data['LSNR'].std())
+
+                fit_data['MPIp'] = stats.norm.cdf((fit_data[label2_pint]-fit_data[label2_pint].median())/fit_data[label2_pint].std())
+                fit_data['LPIp'] = stats.norm.cdf((fit_data[label1_pint]-fit_data[label1_pint].median())/fit_data[label1_pint].std())
+
+                fit_data['MIFp'] = stats.norm.cdf((fit_data[label2_hif]-fit_data[label2_hif].median())/fit_data[label2_hif].std())
+                fit_data['LIFp'] = stats.norm.cdf((fit_data[label1_hif]-fit_data[label1_hif].median())/fit_data[label1_hif].std())
+
+                cols_to_use  = np.array([False,
+                                     True,
+                                     True,
+                                     False,
+                                     True,
+                                     True,
+                                     False,
+                                     False,
+                                     True,
+                                     False,
+                                     True,
+                                     True,
+                                     True,
+                                     True,
+                                     True,
+                                     True,
+                                     True,
+                                     True,
+                                     True,
+                                     True,
+                                     True,
+                                     True
+                                         ]
+                )
+                fit_data.to_csv('/home/chris/fit.csv')
+                conf_ass = classifier.predict(fit_data.loc[:, cols_to_use].replace([np.inf, -np.inf], np.nan).fillna(0).values)
+                conf_mapper = interp1d(sorted(conf_ass), np.linspace(0,10,len(fit_data)))
+                data[mixed_confidence] = conf_mapper(conf_ass)
+                # data.loc[(data[mixed_mean_p] > 0.90), mixed_confidence] -= 1
+                # data.loc[(data[mixed_rt_diff_p] > 0.90), mixed_confidence] -= 1
+                # data.loc[(data[label2_logp] < 0.10), mixed_confidence] -= 0.5
+                # data.loc[(data[label1_logp] < 0.10), mixed_confidence] -= 0.5
+                # data.loc[(data[mixed_p] < 0.10), mixed_confidence] -= 0.5
+                # data.loc[((data[mixed_isotope_diff_p] > 0.90) | (data[mixed_isotope_diff_p] < 0.10)), mixed_confidence] -= 1
+                # data.loc[(data[label2_hifp] < 0.10), mixed_confidence] -= 1
+                # data.loc[(data[label2_hifp] < 0.10), mixed_confidence] -= 1
 
         data.to_csv('{}_stats'.format(out.name), sep=str('\t'), index=None)
 
