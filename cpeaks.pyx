@@ -187,7 +187,7 @@ cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.nda
     # best.bic = bic
     return best
 
-cpdef np.ndarray[FLOAT_t] fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata,
+cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata,
                                        int peak_index=1, debug=False):
     cdef float rel_peak, mval
     cdef float peak_loc = xdata[peak_index]
@@ -255,16 +255,16 @@ cpdef np.ndarray[FLOAT_t] fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.nd
     # cdef int n = len(xdata)
     cdef float lowest = -1
     cdef np.ndarray[FLOAT_t] best
-    best = results[0].x
+    best_fit = results[0]
     for i in results:
         if within_bounds(i.x, bnds):
             if lowest == -1 or i.fun < lowest:
-                best = i.x
-    best[0]*=mval
+                best_fit = i
+    best_fit.x[0]*=mval
     # cdef int k = len(best.x)
     # cdef float bic = n*np.log(best.fun/n)+k+np.log(n)
     # best.bic = bic
-    return best
+    return best_fit.x, best_fit.fun
 
 cpdef basin_stepper(np.ndarray[FLOAT_t, ndim=1] args):
     args[::1] += 0.1
@@ -449,10 +449,10 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         if len(res.x) > 3 and res.x[3] < min_spacing:
             res.x[3] = min_spacing
         bic = n*np.log(res.fun/n)+k+np.log(n)
-        fit_accuracy.append((peak_width, bic, res.x, xdata[fitted_peaks]))
+        fit_accuracy.append((peak_width, bic, res, xdata[fitted_peaks]))
     # we want to maximize our BIC given our definition
     best_fits = sorted(fit_accuracy, key=itemgetter(1,0), reverse=True)
-    return best_fits[0][2:]
+    return best_fits[0][2].x, best_fits[0][2].fun
 
 cdef tuple findPeak(np.ndarray[FLOAT_t, ndim=1] y, int srt):
     # check our SNR, if it's low, lessen our window
@@ -573,7 +573,7 @@ def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] yda
         right += 1
         new_x = xdata[left:right]
         new_y = ydata[left:right]
-        peaks, peak_centers = findAllPeaks(new_x, new_y, min_dist=(new_x[1]-new_x[0])*2.0)
+        peaks, peak_residuals = findAllPeaks(new_x, new_y, min_dist=(new_x[1]-new_x[0])*2.0)
         if start_mz is None:
             start_mz = xdata[pos]
 

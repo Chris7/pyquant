@@ -663,12 +663,13 @@ class Worker(Process):
                 merged_x = merged_data.index.astype(float).values
                 merged_y = merged_data.values.astype(float)
                 mval = merged_y.max()
-                res, all_peaks = peaks.findAllPeaks(merged_x, merged_y, filter=True, bigauss_fit=True, rt_peak=start_rt)
+                res, residual = peaks.findAllPeaks(merged_x, merged_y, filter=True, bigauss_fit=True, rt_peak=start_rt)
                 rt_means = res[1::4]
                 rt_amps = res[::4]
                 rt_std = res[2::4]
                 rt_std2 = res[3::4]
-                valid_peaks = [{'mean': i, 'amp': j*mval, 'std': l, 'std2': k, 'total': merged_y.sum()}
+                m_std = np.std(merged_y)
+                valid_peaks = [{'mean': i, 'amp': j*mval, 'std': l, 'std2': k, 'total': merged_y.sum(), 'snr': j*mval/m_std, 'residual': residual}
                                         for i, j, l, k in zip(rt_means, rt_amps, rt_std, rt_std2)]
                 # if we have a peaks containing our retention time, keep them and throw out ones not containing it
                 # to_remove = []
@@ -730,7 +731,7 @@ class Worker(Process):
                         peak_y = np.copy(ydata[merged_lb:merged_rb])
                         if peak_x.size <= 1 or sum(peak_y>0) < self.min_scans:
                             continue
-                        res = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=peaks.find_nearest_index(peak_x, valid_peaks[0]['mean']))
+                        fit, residual = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=peaks.find_nearest_index(peak_x, valid_peaks[0]['mean']))
                         # if quant_label == 'Light':
                         # print 'fmf', quant_label, index, res, peak_x, ydata[merged_lb:merged_rb], peaks.fixedMeanFit2(peak_x, np.copy(ydata[merged_lb:merged_rb]), peak_index=peaks.find_nearest_index(peak_x, valid_peaks[0]['mean']), debug=True)
                         #print peak_x
@@ -743,11 +744,11 @@ class Worker(Process):
                         # res2, all_peaks2 = peaks.findAllPeaks2(values, filter=True)
                         #print res1.success, res2.success, res1.fun, res2.fun, res1.bic, res2.bic
                         # res, all_peaks = (res, all_peaks) if res.bic < res2.bic else (res2, all_peaks2)
-                        rt_means = res[1::4]
-                        rt_amps = res[::4]
-                        rt_std = res[2::4]
-                        rt_std2 = res[3::4]
-                        valid_peaks = [{'mean': i, 'amp': j, 'std': l, 'std2': k, 'total': values.sum()}
+                        rt_means = fit[1::4]
+                        rt_amps = fit[::4]
+                        rt_std = fit[2::4]
+                        rt_std2 = fit[3::4]
+                        valid_peaks = [{'mean': i, 'amp': j, 'std': l, 'std2': k, 'total': values.sum(), 'snr': j/np.std(ydata), 'residual': residual}
                                         for i, j, l, k in zip(rt_means, rt_amps, rt_std, rt_std2)]
                         # if we have a peaks containing our retention time, keep them and throw out ones not containing it
                         to_remove = []
@@ -822,6 +823,8 @@ class Worker(Process):
                             mean_diff = np.abs(mean_diff/closest_rt['std'] if mean_diff < 0 else mean_diff/closest_rt['std2'])
                             std = closest_rt['std']
                             std2 = closest_rt['std2']
+                            snr = closest_rt['snr']
+                            residual = closest_rt['residual']
                             if False and len(xdata) >= 3 and (mean_diff > 2 or (np.abs(peak_loc-common_loc) > 2 and mean_diff > 2)):
                                 # fixed mean fit
                                 if self.debug:
@@ -853,7 +856,7 @@ class Worker(Process):
                                 except KeyError:
                                     quant_vals[quant_label][isotope_index] = int_val
                             if peak_info.get(quant_label, {}).get('amp', -1) < amp:
-                                peak_info[quant_label].update({'amp': amp, 'std': std, 'std2': std2, 'mean_diff': mean_diff})
+                                peak_info[quant_label].update({'amp': amp, 'std': std, 'std2': std2, 'mean_diff': mean_diff, 'snr': snr, 'residual': residual})
                             if self.html:
                                 rt_base = rt_figure_mapper[(quant_label, index)]
                                 key = '{} {}'.format(quant_label, index)
@@ -936,6 +939,8 @@ class Worker(Process):
                     result_dict.update({
                         '{}_intensity'.format(silac_label): sum(quant_vals[silac_label].values()),
                         '{}_peak_intensity'.format(silac_label): peak_info.get(silac_label, {}).get('amp', 'NA'),
+                        '{}_snr'.format(silac_label): peak_info.get(silac_label, {}).get('snr', 'NA'),
+                        '{}_residual'.format(silac_label): peak_info.get(silac_label, {}).get('residual', 'NA'),
                         '{}_isotopes'.format(silac_label): sum(isotopes_chosen['label'] == silac_label),
                         '{}_rt_width'.format(silac_label): w1+w2 if w1 and w2 else 'NA',
                         '{}_mean_diff'.format(silac_label): peak_info.get(silac_label, {}).get('mean_diff', 'NA'),
@@ -1217,6 +1222,8 @@ def main():
                              ('{}_isotopes'.format(silac_label), '{} Isotopes Found'.format(silac_label)),
                              ('{}_mean_diff'.format(silac_label), '{} Mean Offset'.format(silac_label)),
                              ('{}_peak_intensity'.format(silac_label), '{} Peak Intensity'.format(silac_label)),
+                             ('{}_snr'.format(silac_label), '{} SNR'.format(silac_label)),
+                             ('{}_residual'.format(silac_label), '{} Residual'.format(silac_label)),
                              ])
         for silac_label2 in labels:
             if silac_label != silac_label2:
