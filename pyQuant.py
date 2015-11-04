@@ -1732,11 +1732,11 @@ def main():
                 fit_data['MSNR'] = np.log2(fit_data[label2_int])/np.log2(np.std(fit_data[label2_int]))
                 fit_data['LSNR'] = np.log2(fit_data[label1_int])/np.log2(np.std(fit_data[label1_int]))
 
-                fit_data['MIp'] = stats.norm.cdf((np.log2(fit_data[label2_int])-np.log2(fit_data[label2_int]).median())/np.log2(fit_data[label2_int]).std())
-                fit_data['LIp'] = stats.norm.cdf((np.log2(fit_data[label1_int])-np.log2(fit_data[label1_int]).median())/np.log2(fit_data[label1_int]).std())
+                fit_data['MIp'] = stats.norm.cdf((np.log2(fit_data[label2_int])-np.log2(fit_data[label2_int]).median())/np.log2(fit_data[label2_int]).replace([np.inf, -np.inf], np.nan).dropna().std())
+                fit_data['LIp'] = stats.norm.cdf((np.log2(fit_data[label1_int])-np.log2(fit_data[label1_int]).median())/np.log2(fit_data[label1_int]).replace([np.inf, -np.inf], np.nan).dropna().std())
 
-                fit_data['MSNRp'] = stats.norm.cdf((fit_data['MSNR']-fit_data['MSNR'].median())/fit_data['MSNR'].std())
-                fit_data['LSNRp'] = stats.norm.cdf((fit_data['LSNR']-fit_data['LSNR'].median())/fit_data['LSNR'].std())
+                fit_data['MSNRp'] = stats.norm.cdf((fit_data['MSNR']-fit_data['MSNR'].median())/fit_data['MSNR'].replace([np.inf, -np.inf], np.nan).dropna().std())
+                fit_data['LSNRp'] = stats.norm.cdf((fit_data['LSNR']-fit_data['LSNR'].median())/fit_data['LSNR'].replace([np.inf, -np.inf], np.nan).dropna().std())
 
                 fit_data['MPIp'] = stats.norm.cdf((fit_data[label2_pint]-fit_data[label2_pint].median())/fit_data[label2_pint].std())
                 fit_data['LPIp'] = stats.norm.cdf((fit_data[label1_pint]-fit_data[label1_pint].median())/fit_data[label1_pint].std())
@@ -1768,10 +1768,15 @@ def main():
                                      True
                                          ]
                 )
-                fit_data.to_csv('/home/chris/fit.csv')
                 conf_ass = classifier.predict(fit_data.loc[:, cols_to_use].replace([np.inf, -np.inf], np.nan).fillna(0).values)
-                conf_mapper = interp1d(sorted(conf_ass), np.linspace(0,10,len(fit_data)))
-                data[mixed_confidence] = conf_mapper(conf_ass)
+                conf_ecdf = (pd.Series(np.log2(conf_ass)).value_counts().sort_index().cumsum()*1./len(conf_ass))*10
+                conf_mapper = interp1d(conf_ecdf.index, conf_ecdf.values, bounds_error=False)
+                conf_ass = np.log2(conf_ass)
+                np.place(conf_ass, (conf_ass==np.inf) | (conf_ass==-np.inf), np.nan)
+                conf_values = conf_mapper(np.nan_to_num(conf_ass))
+                for i in np.where(np.isnan(conf_values))[0]:
+                    conf_values[i] = 0 if i <= conf_ecdf.index.min() else 10
+                data[mixed_confidence] = conf_values
                 # data.loc[(data[mixed_mean_p] > 0.90), mixed_confidence] -= 1
                 # data.loc[(data[mixed_rt_diff_p] > 0.90), mixed_confidence] -= 1
                 # data.loc[(data[label2_logp] < 0.10), mixed_confidence] -= 0.5
