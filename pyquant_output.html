@@ -196,7 +196,15 @@
                           <a href="#"><i class="fa fa-gift fa-lg"></i> Plot Options <span class="arrow"></span></a>
                         </li>
                         <ul class="sub-menu collapse" id="plotinfo">
-                            <li><input id="plot-max-y" class="plot-options" name="max-y" type="checkbox" />Set Y axis maximum to maximum value in data</li>
+                            <div class="form-group">
+                                <label for="exampleInputEmail1">Email address</label>
+                                <input type="email" class="form-control" id="exampleInputEmail1" placeholder="Email">
+                            </div>
+                            <li>
+                                <input class="plot-options" name="max-y" type="radio" value="max-all" />Set Y axis maximum to maximum value across all plots
+                                <input class="plot-options" name="max-y" type="radio" value="max-data" />Set Y axis maximum to maximum value in data
+                                <input class="plot-options" name="max-y" type="radio" value="fitted" checked />Set Y axis maximum to maximum fitted value in data
+                            </li>
                         </ul>
 
 
@@ -296,12 +304,15 @@
                 var update_plot_params = function(){
                     $plot_options.each(function(index, value){
                         var $el = $(value);
-                        var value = $el.val();
+                        var el_value = $el.val();
                         var name = $el.attr('name');
                         var el_type = $el.attr('type');
+                        var is_checked = $el.is(':checked');
                         if(el_type == 'checkbox')
-                            value = $el.is(':checked');
-                        plotting_params[name] = value;
+                            el_value = is_checked;
+                        if(el_type == 'radio' && !is_checked)
+                        	return;
+                        plotting_params[name] = el_value;
                         current_plot = 0;
                         $('.current-plot').trigger('click');
                     });
@@ -377,8 +388,22 @@
                                 if(common_x){
                                     plot_data[i]['data']['columns'].unshift(common_x);
                                 }
-                                if(max_y && plotting_params['max-y']){
-                                    plot_data[i]['axis']['y']['max'] = max_y;
+                                if(max_y){
+                                var param_max_y = plotting_params['max-y'];
+                                    if(param_max_y == 'max-all')
+                                        plot_data[i]['axis']['y']['max'] = max_y;
+                                    else if(param_max_y == 'fitted'){
+                                    	var plot_columns = plot_data[i]['data']['columns'];
+                                    	var max_fit = 0;
+                                    	for(var j=0;j<plot_columns.length;j++){
+                                    		if(plot_columns[j][0].endsWith('fit')) {
+                                                var new_max = Math.max.apply(null, plot_columns[j].map(function(x){return parseFloat(x) ? x : 0}))
+                                                if(new_max > max_fit)
+                                                    max_fit = new_max;
+                                            }
+                                    	}
+                                    	plot_data[i]['axis']['y']['max'] = max_fit;
+                                    }
                                 }
                                 c3.generate(plot_data[i]);
 

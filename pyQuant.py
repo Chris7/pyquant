@@ -1639,27 +1639,8 @@ def main():
     data = pd.DataFrame.from_records(df_data, columns=[i for i in headers if i != 'Confidence'])
     if calc_stats:
         from scipy import stats
-        from sklearn.linear_model import Ridge
-        classifier = Ridge(fit_intercept=False)
-        classifier.intercept_ = 0
-        classifier.coef_ = np.array(
-            [-0.00047946708951521167,
-             -0.05459013462133773,
-             0.03947597539686713,
-             0.012500086719963251,
-             -0.04460429974810026,
-             -0.003013387119734296,
-             0.012130188407269928,
-             0.022754432521285253,
-             0.017437852071750377,
-             -0.016128581914192995,
-             -0.023397317438551505,
-             -0.0161285819141919,
-             -0.023397317438550867,
-             0.06922293630844761,
-             0.05971290394801583,
-             -0.012331605128417564,
-             0.02048600460811109])
+        import pickle
+        classifier = pickle.load(open(os.path.join(pq_dir, 'classifier.pickle'), 'rb'))
         header_mapping = []
         order_names = [i[1] for i in RESULT_ORDER]
         for i in data.columns:
@@ -1726,57 +1707,28 @@ def main():
 
                 cols = []
                 for i in (silac_label1, silac_label2):
-                    cols.extend(['{} {}'.format(i,j) for j in ['Intensity', 'Isotopes Found', 'RT Width', 'Peak Intensity', 'SNR', 'Residual']])
+                    cols.extend(['{} {}'.format(i,j) for j in ['Intensity', 'Isotopes Found', 'Peak Intensity', 'SNR', 'Residual']])
 
-                fit_data = data.loc[:, cols]
-                fit_data['MSNR'] = np.log2(fit_data[label2_int])/np.log2(np.std(fit_data[label2_int]))
-                fit_data['LSNR'] = np.log2(fit_data[label1_int])/np.log2(np.std(fit_data[label1_int]))
-
-                fit_data['MIp'] = stats.norm.cdf((np.log2(fit_data[label2_int])-np.log2(fit_data[label2_int]).median())/np.log2(fit_data[label2_int]).replace([np.inf, -np.inf], np.nan).dropna().std())
-                fit_data['LIp'] = stats.norm.cdf((np.log2(fit_data[label1_int])-np.log2(fit_data[label1_int]).median())/np.log2(fit_data[label1_int]).replace([np.inf, -np.inf], np.nan).dropna().std())
-
-                fit_data['MSNRp'] = stats.norm.cdf((fit_data['MSNR']-fit_data['MSNR'].median())/fit_data['MSNR'].replace([np.inf, -np.inf], np.nan).dropna().std())
-                fit_data['LSNRp'] = stats.norm.cdf((fit_data['LSNR']-fit_data['LSNR'].median())/fit_data['LSNR'].replace([np.inf, -np.inf], np.nan).dropna().std())
-
-                fit_data['MPIp'] = stats.norm.cdf((fit_data[label2_pint]-fit_data[label2_pint].median())/fit_data[label2_pint].std())
-                fit_data['LPIp'] = stats.norm.cdf((fit_data[label1_pint]-fit_data[label1_pint].median())/fit_data[label1_pint].std())
-
-                fit_data['MIFp'] = stats.norm.cdf((fit_data[label2_hif]-fit_data[label2_hif].median())/fit_data[label2_hif].std())
-                fit_data['LIFp'] = stats.norm.cdf((fit_data[label1_hif]-fit_data[label1_hif].median())/fit_data[label1_hif].std())
-
-                cols_to_use  = np.array([False,
-                                     True,
-                                     True,
-                                     False,
-                                     True,
-                                     True,
-                                     False,
-                                     False,
-                                     True,
-                                     False,
-                                     True,
-                                     True,
-                                     True,
-                                     True,
-                                     True,
-                                     True,
-                                     True,
-                                     True,
-                                     True,
-                                     True,
-                                     True,
-                                     True
-                                         ]
-                )
-                conf_ass = classifier.predict(fit_data.loc[:, cols_to_use].replace([np.inf, -np.inf], np.nan).fillna(0).values)
-                conf_ecdf = (pd.Series(np.log2(conf_ass)).value_counts().sort_index().cumsum()*1./len(conf_ass))*10
-                conf_mapper = interp1d(conf_ecdf.index, conf_ecdf.values, bounds_error=False)
-                conf_ass = np.log2(conf_ass)
-                np.place(conf_ass, (conf_ass==np.inf) | (conf_ass==-np.inf), np.nan)
-                conf_values = conf_mapper(np.nan_to_num(conf_ass))
-                for i in np.where(np.isnan(conf_values))[0]:
-                    conf_values[i] = 0 if i <= conf_ecdf.index.min() else 10
-                data[mixed_confidence] = conf_values
+                try:
+                    fit_data = data.loc[:, cols]
+                    fit_data.loc[:,(label2_int, label1_int, label2_pint, label1_pint)] = np.log2(fit_data.loc[:,(label2_int, label1_int, label2_pint, label1_pint)])
+                    from sklearn import preprocessing
+                    fit_data = fit_data.replace([np.inf, -np.inf], np.nan)
+                    fit_data.dropna(inplace=True)
+                    fit_data.loc[:] = preprocessing.scale(fit_data)
+                    conf_ass = classifier.predict(fit_data.values)
+                    left = conf_ass[conf_ass<0]
+                    ecdf = pd.Series(left).value_counts().sort_index().cumsum()*1./len(left)*10
+                    #ecdf = pd.Series(conf_ass).value_counts().sort_index(ascending=False).cumsum()*1./len(conf_ass)*10
+                    mapper = interp1d(ecdf.index.values, ecdf.values)
+                    data.loc[conf_ass<0, mixed_confidence] = mapper(left)
+                    right = conf_ass[conf_ass>=0]
+                    ecdf = pd.Series(right).value_counts().sort_index(ascending=False).cumsum()*1./len(right)*10
+                    #ecdf = pd.Series(conf_ass).value_counts().sort_index(ascending=False).cumsum()*1./len(conf_ass)*10
+                    mapper = interp1d(ecdf.index.values, ecdf.values)
+                    data.loc[conf_ass>=0, mixed_confidence] = mapper(right)
+                except:
+                    sys.stderr.write('Unable to calculate statistics for {}/{}.\n Traceback: {}'.format(silac_label1, silac_label2, traceback.format_exc()))
                 # data.loc[(data[mixed_mean_p] > 0.90), mixed_confidence] -= 1
                 # data.loc[(data[mixed_rt_diff_p] > 0.90), mixed_confidence] -= 1
                 # data.loc[(data[label2_logp] < 0.10), mixed_confidence] -= 0.5
