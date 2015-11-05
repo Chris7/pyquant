@@ -1714,6 +1714,7 @@ def main():
                     fit_data.loc[:,(label2_int, label1_int, label2_pint, label1_pint)] = np.log2(fit_data.loc[:,(label2_int, label1_int, label2_pint, label1_pint)])
                     from sklearn import preprocessing
                     fit_data = fit_data.replace([np.inf, -np.inf], np.nan)
+                    non_na_data = fit_data.dropna().index
                     fit_data.dropna(inplace=True)
                     fit_data.loc[:] = preprocessing.scale(fit_data)
                     conf_ass = classifier.predict(fit_data.values)
@@ -1721,12 +1722,12 @@ def main():
                     ecdf = pd.Series(left).value_counts().sort_index().cumsum()*1./len(left)*10
                     #ecdf = pd.Series(conf_ass).value_counts().sort_index(ascending=False).cumsum()*1./len(conf_ass)*10
                     mapper = interp1d(ecdf.index.values, ecdf.values)
-                    data.loc[conf_ass<0, mixed_confidence] = mapper(left)
+                    data.loc[non_na_data[conf_ass<0], mixed_confidence] = mapper(left)
                     right = conf_ass[conf_ass>=0]
                     ecdf = pd.Series(right).value_counts().sort_index(ascending=False).cumsum()*1./len(right)*10
                     #ecdf = pd.Series(conf_ass).value_counts().sort_index(ascending=False).cumsum()*1./len(conf_ass)*10
                     mapper = interp1d(ecdf.index.values, ecdf.values)
-                    data.loc[conf_ass>=0, mixed_confidence] = mapper(right)
+                    data.loc[non_na_data[conf_ass>=0], mixed_confidence] = mapper(right)
                 except:
                     sys.stderr.write('Unable to calculate statistics for {}/{}.\n Traceback: {}'.format(silac_label1, silac_label2, traceback.format_exc()))
                 # data.loc[(data[mixed_mean_p] > 0.90), mixed_confidence] -= 1
