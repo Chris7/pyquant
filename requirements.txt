@@ -5,3 +5,4 @@ scipy
 cython
 lxml
 scikit-learn
+patsy
