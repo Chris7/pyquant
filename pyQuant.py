@@ -1378,7 +1378,6 @@ def main():
         filepath = scan_filemap[filename]
         if not len(raw_scans):
             continue
-        print filename, filepath
         in_queue = Queue()
         result_queue = Queue()
         reader_in = Queue()
@@ -1486,7 +1485,7 @@ def main():
                     if msn_for_quant == msn_for_id or args.replicate:
                         for ion_dict in ions_found:
                             ion, nearest_mz = ion_dict['ion'], ion_dict['nearest_mz']
-                            if not reporter_mode and not args.replicate:#ion in last_scan_ions:
+                            if not args.replicate and ion in last_scan_ions:
                                 continue
                             ion_found = '{}({})'.format(ion, nearest_mz)
                             spectra_to_quant = scan_id
@@ -1513,8 +1512,9 @@ def main():
                                     charge_to_use = ion_dict['charge']
                                 else:
                                     charge_to_use = sorted(charge_states, key=operator.itemgetter(1), reverse=True)[0][0] if charge_states else 1
-                                rep_key = (ion_dict['scan_info']['id_scan']['rt'], ion_dict['scan_info']['id_scan']['mass'], charge_to_use)
-                                rep_map[rep_key].add(rt)
+                                if args.replicate:
+                                    rep_key = (ion_dict['scan_info']['id_scan']['rt'], ion_dict['scan_info']['id_scan']['mass'], charge_to_use)
+                                    rep_map[rep_key].add(rt)
                             else:
                                 charge_to_use = charge
                             if args.replicate:
@@ -1538,7 +1538,8 @@ def main():
                             if key in added:
                                 continue
                             added.add(key)
-                            replicate_search_list[(d['id_scan']['rt'], ion_dict['ion'])].append((spectra_to_quant, d))
+                            if args.replicate:
+                                replicate_search_list[(d['id_scan']['rt'], ion_dict['ion'])].append((spectra_to_quant, d))
                             # print 'adding', ion, nearest_mz, d
                     else:
                         # we are identifying the ion in a particular scan, and quantifying a preceeding scan
