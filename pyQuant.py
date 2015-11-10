@@ -46,8 +46,8 @@ import argparse
 from datetime import datetime, timedelta
 from scipy import integrate
 from scipy.stats import linregress
-from scipy.interpolate import interp1d
 from scipy.interpolate import UnivariateSpline
+from scipy.ndimage.filters import gaussian_filter1d
 
 from pythomics.templates import CustomParser
 from pythomics.proteomics.parsers import GuessIterator
@@ -73,6 +73,7 @@ search_group = parser.add_argument_group("Search Information")
 parser.add_processed_ms(group=search_group, required=False)
 search_group.add_argument('--skip', help="If true, skip scans with missing files in the mapping.", action='store_true')
 search_group.add_argument('--peptide', help="The peptide(s) to limit quantification to.", type=str, nargs='*')
+search_group.add_argument('--peptide-file', help="A file of peptide(s) to limit quantification to.", type=argparse.FileType('r'))
 search_group.add_argument('--scan', help="The scan(s) to limit quantification to.", type=str, nargs='*')
 
 replicate_group = parser.add_argument_group("Replicate Search")
@@ -669,7 +670,8 @@ class Worker(Process):
                 rt_std = res[2::4]
                 rt_std2 = res[3::4]
                 m_std = np.std(merged_y)
-                valid_peaks = [{'mean': i, 'amp': j*mval, 'std': l, 'std2': k, 'total': merged_y.sum(), 'snr': j*mval/m_std, 'residual': residual}
+                m_mean = np.mean(merged_y)
+                valid_peaks = [{'mean': i, 'amp': j*mval, 'std': l, 'std2': k, 'total': merged_y.sum(), 'snr': m_mean/m_std, 'residual': residual}
                                         for i, j, l, k in zip(rt_means, rt_amps, rt_std, rt_std2)]
                 # if we have a peaks containing our retention time, keep them and throw out ones not containing it
                 # to_remove = []
@@ -748,8 +750,33 @@ class Worker(Process):
                         rt_amps = fit[::4]
                         rt_std = fit[2::4]
                         rt_std2 = fit[3::4]
-                        valid_peaks = [{'mean': i, 'amp': j, 'std': l, 'std2': k, 'total': values.sum(), 'snr': j/np.std(ydata), 'residual': residual}
-                                        for i, j, l, k in zip(rt_means, rt_amps, rt_std, rt_std2)]
+                        valid_peaks = []
+                        positive_y = ydata[ydata>0]
+                        if len(positive_y) > 5:
+                            positive_y = gaussian_filter1d(positive_y, 3, mode='constant')
+                        for i, j, l, k in zip(rt_means, rt_amps, rt_std, rt_std2):
+                            d = {'mean': i, 'amp': j, 'std': l, 'std2': k, 'total': values.sum(), 'residual': residual}
+                            mean_index = peaks.find_nearest_index(xdata[ydata>0], i)
+                            window_size = 5 if len(positive_y) < 15 else len(positive_y)/3
+                            lb, rb = mean_index-window_size, mean_index+window_size+1
+                            if lb < 0:
+                                lb = 0
+                            if rb > len(positive_y):
+                                rb = -1
+                            #print j, background, j/background
+                            data_window = positive_y[lb:rb]
+                            try:
+                                background = np.percentile(data_window, 0.8)
+                            except:
+                                background = np.percentile(ydata, 0.8)
+                            mean = np.mean(data_window)
+                            if background < mean:
+                                background = mean
+                            #print ydata.tolist()
+                            #print j, background
+                            d['sbr'] = np.mean(j/np.array(filter(lambda x: x>0, sorted(data_window, reverse=True))[:5]))#(j-np.mean(positive_y[lb:rb]))/np.std(positive_y[lb:rb])
+                            d['snr'] = (j-background)/np.std(data_window)
+                            valid_peaks.append(d)
                         # if we have a peaks containing our retention time, keep them and throw out ones not containing it
                         to_remove = []
                         to_keep = []
@@ -824,6 +851,7 @@ class Worker(Process):
                             std = closest_rt['std']
                             std2 = closest_rt['std2']
                             snr = closest_rt['snr']
+                            sbr = closest_rt['sbr']
                             residual = closest_rt['residual']
                             if False and len(xdata) >= 3 and (mean_diff > 2 or (np.abs(peak_loc-common_loc) > 2 and mean_diff > 2)):
                                 # fixed mean fit
@@ -843,11 +871,22 @@ class Worker(Process):
                             # int_args = (res.x[rt_index]*mval, res.x[rt_index+1], res.x[rt_index+2])
                             left, right = xdata[0]-4*std, xdata[-1]+4*std2
                             xr = np.linspace(left, right, 1000)
+                            left_index, right_index = peaks.find_nearest_index(xdata, left), peaks.find_nearest_index(xdata, right)+1
+                            if left_index < 0:
+                                left_index = 0
+                            if right_index >= len(xdata) or right_index <= 0:
+                                right_index = len(xdata)
                             try:
                                 int_val = integrate.simps(peaks.bigauss_ndim(xr, peak_params), x=xr) if self.quant_method == 'integrate' else ydata[(xdata > left) & (xdata < right)].sum()
                             except:
                                 print traceback.format_exc()
                                 print xr, peak_params
+                            try:
+                                total_int = integrate.simps(ydata[left_index:right_index], x=xdata[left_index:right_index])
+                            except:
+                                print traceback.format_exc()
+                                print left_index, right_index, xdata, ydata
+                            sdr = np.log2(int_val*1./total_int+1.)
                             isotope_index = isotope_labels.loc[index, 'isotope_index']
 
                             if int_val and not pd.isnull(int_val) and gc != 'c':
@@ -856,7 +895,16 @@ class Worker(Process):
                                 except KeyError:
                                     quant_vals[quant_label][isotope_index] = int_val
                             if peak_info.get(quant_label, {}).get('amp', -1) < amp:
-                                peak_info[quant_label].update({'amp': amp, 'std': std, 'std2': std2, 'mean_diff': mean_diff, 'snr': snr, 'residual': residual})
+                                peak_info[quant_label].update({'amp': amp, 'std': std, 'std2': std2})
+                            try:
+                                peak_info[quant_label]['mean_diff'].append(mean_diff)
+                                peak_info[quant_label]['snr'].append(snr)
+                                peak_info[quant_label]['residual'].append(residual)
+                                peak_info[quant_label]['sbr'].append(sbr)
+                                peak_info[quant_label]['sdr'].append(sdr)
+                            except KeyError:
+                                peak_info[quant_label].update({'mean_diff': [mean_diff], 'snr': [snr],
+                                                               'residual': [residual], 'sbr': [sbr], 'sdr': [sdr]})
                             if self.html:
                                 rt_base = rt_figure_mapper[(quant_label, index)]
                                 key = '{} {}'.format(quant_label, index)
@@ -939,12 +987,13 @@ class Worker(Process):
                     result_dict.update({
                         '{}_intensity'.format(silac_label): sum(quant_vals[silac_label].values()),
                         '{}_peak_intensity'.format(silac_label): peak_info.get(silac_label, {}).get('amp', 'NA'),
-                        '{}_snr'.format(silac_label): peak_info.get(silac_label, {}).get('snr', 'NA'),
-                        '{}_residual'.format(silac_label): peak_info.get(silac_label, {}).get('residual', 'NA'),
+                        '{}_snr'.format(silac_label): np.mean(pd.Series(peak_info.get(silac_label, {}).get('snr', [])).replace([np.inf, -np.inf, np.nan], 0)),
+                        '{}_sbr'.format(silac_label): np.mean(pd.Series(peak_info.get(silac_label, {}).get('sbr', [])).replace([np.inf, -np.inf, np.nan], 0)),
+                        '{}_sdr'.format(silac_label): np.mean(pd.Series(peak_info.get(silac_label, {}).get('sdr', [])).replace([np.inf, -np.inf, np.nan], 0)),
+                        '{}_residual'.format(silac_label): np.mean(pd.Series(peak_info.get(silac_label, {}).get('residual', [])).replace([np.inf, -np.inf, np.nan], 0)),
                         '{}_isotopes'.format(silac_label): sum(isotopes_chosen['label'] == silac_label),
                         '{}_rt_width'.format(silac_label): w1+w2 if w1 and w2 else 'NA',
-                        '{}_mean_diff'.format(silac_label): peak_info.get(silac_label, {}).get('mean_diff', 'NA'),
-
+                        '{}_mean_diff'.format(silac_label): np.mean(pd.Series(peak_info.get(silac_label, {}).get('mean_diff', [])).replace([np.inf, -np.inf, np.nan], 0))
                     })
                 del combined_peaks
             for silac_label, silac_data in data.iteritems():
@@ -1060,9 +1109,16 @@ def main():
     all_msn = False # we just have a raw file
     ion_search = False # we have an ion we want to find
 
+    if args.peptide_file:
+        peptides = set((i.strip().upper() for i in args.peptide_file))
+    elif args.peptide:
+        peptides = set(args.peptide) if isinstance(args.peptide, list) else set([args.peptide])
+    else:
+        peptides = set([])
+
     input_found = None
     if args.processed:
-        results = GuessIterator(args.processed.name, full=True, store=False, peptide=args.peptide)
+        results = GuessIterator(args.processed.name, full=True, store=False, peptide=peptides)
         input_found = 'ms'
     elif args.tsv:
         results = pd.read_table(args.tsv, sep='\t')
@@ -1101,9 +1157,9 @@ def main():
                 sys.stderr.write('.')
             row_index, i = row
             peptide = i[peptide_col].strip() if peptide_col in i else ''
-            if args.peptide and not any([j.lower() == peptide.lower() for j in args.peptide]):
+            if peptides and not any([j.lower() == peptide.lower() for j in peptides]):
                 continue
-            if not args.peptide and (sample != 1.0 and random.random() > sample):
+            if not peptides and (sample != 1.0 and random.random() > sample):
                 continue
             specId = str(i[scan_col])
             fname = i[file_col] if file_col in i else raw_file
@@ -1150,9 +1206,9 @@ def main():
             peptide = scan.peptide
             # if peptide.lower() != 'AGkPVIcATQMLESmIk'.lower():
             #     continue
-            if args.peptide and not any([j.lower() == peptide.lower() for j in args.peptide]):
+            if peptides and peptide.upper() not in peptides:
                 continue
-            if not args.peptide and (sample != 1.0 and random.random() > sample):
+            if not peptides and (sample != 1.0 and random.random() > sample):
                 continue
             specId = scan.id
             if args.scan and specId not in scans_to_select:
@@ -1162,10 +1218,10 @@ def main():
             if mass_key in found_scans:
                 continue
             d = {
-                'file': fname, 'quant_scan': {}, 'id_scan': {
-                'id': specId, 'theor_mass': scan.getTheorMass(), 'peptide': peptide, 'mod_peptide': scan.modifiedPeptide, 'rt': scan.rt,
-                'charge': scan.charge, 'modifications': scan.getModifications(), 'mass': float(scan.mass)
-            }
+                    'file': fname, 'quant_scan': {}, 'id_scan': {
+                    'id': specId, 'theor_mass': scan.getTheorMass(), 'peptide': peptide, 'mod_peptide': scan.modifiedPeptide, 'rt': scan.rt,
+                    'charge': scan.charge, 'modifications': scan.getModifications(), 'mass': float(scan.mass)
+                }
             }
             found_scans[mass_key] = d#.add(mass_key)
             fname = os.path.splitext(fname)[0]
@@ -1174,15 +1230,21 @@ def main():
                 import difflib
                 if fname in replicate_file_mapper:
                     fname = replicate_file_mapper[fname]
+                    if fname is None:
+                        continue
                 else:
                     s = difflib.SequenceMatcher(None, fname)
                     seq_matches = []
                     for i in scan_filemap:
                         s.set_seq2(i)
                         seq_matches.append((s.ratio(), i))
-                    seq_matches.sort(key=operator.itemgetter(1), reverse=True)
-                    replicate_file_mapper[fname] = seq_matches[0][1]
-                    fname = seq_matches[0][1]
+                    seq_matches.sort(key=operator.itemgetter(0), reverse=True)
+                    if False:#len(fname)-len(fname)*seq_matches[0][0] > 1:
+                        replicate_file_mapper[fname] = None
+                        continue
+                    else:
+                        replicate_file_mapper[fname] = seq_matches[0][1]
+                        fname = seq_matches[0][1]
             if fname not in scan_filemap:
                 fname = os.path.split(fname)[1]
                 if fname not in scan_filemap:
@@ -1223,6 +1285,8 @@ def main():
                              ('{}_mean_diff'.format(silac_label), '{} Mean Offset'.format(silac_label)),
                              ('{}_peak_intensity'.format(silac_label), '{} Peak Intensity'.format(silac_label)),
                              ('{}_snr'.format(silac_label), '{} SNR'.format(silac_label)),
+                             ('{}_sbr'.format(silac_label), '{} SBR'.format(silac_label)),
+                             ('{}_sdr'.format(silac_label), '{} Density'.format(silac_label)),
                              ('{}_residual'.format(silac_label), '{} Residual'.format(silac_label)),
                              ])
         for silac_label2 in labels:
@@ -1314,6 +1378,7 @@ def main():
         filepath = scan_filemap[filename]
         if not len(raw_scans):
             continue
+        print filename, filepath
         in_queue = Queue()
         result_queue = Queue()
         reader_in = Queue()
@@ -1332,6 +1397,7 @@ def main():
         # params in case we are doing ion search or replicate analysis
         ion_tolerance = args.precursor_ppm/1e6 if args.replicate else args.msn_ppm/1e6
         ion_search_list = []
+        replicate_search_list = defaultdict(list)
         scans_to_fetch = []
 
         # figure out the splines for mass accuracy correction
@@ -1420,7 +1486,7 @@ def main():
                     if msn_for_quant == msn_for_id or args.replicate:
                         for ion_dict in ions_found:
                             ion, nearest_mz = ion_dict['ion'], ion_dict['nearest_mz']
-                            if not reporter_mode and ion in last_scan_ions:
+                            if not reporter_mode and not args.replicate:#ion in last_scan_ions:
                                 continue
                             ion_found = '{}({})'.format(ion, nearest_mz)
                             spectra_to_quant = scan_id
@@ -1454,8 +1520,12 @@ def main():
                             if args.replicate:
                                 d = copy.deepcopy(ion_dict['scan_info'])
                                 d['id_scan']['id'] = scan_id
+                                theo_mass = d['id_scan'].get('theor_mass')
+                                if theo_mass:
+                                    d['id_scan']['mass'] = theo_mass
                                 spectra_to_quant = find_prior_scan(msn_map, scan_id, ms_level=msn_for_quant)
-                                d['quant_scan']['id'] = scan_id
+                                d['quant_scan']['id'] = spectra_to_quant
+                                d['replicate_scan_rt'] = rt
                             else:
                                 d = {
                                     'quant_scan': {'id': scan_id},
@@ -1468,7 +1538,7 @@ def main():
                             if key in added:
                                 continue
                             added.add(key)
-                            ion_search_list.append((spectra_to_quant, d))
+                            replicate_search_list[(d['id_scan']['rt'], ion_dict['ion'])].append((spectra_to_quant, d))
                             # print 'adding', ion, nearest_mz, d
                     else:
                         # we are identifying the ion in a particular scan, and quantifying a preceeding scan
@@ -1494,11 +1564,23 @@ def main():
                     y.append(j)
             from sklearn.linear_model import LinearRegression
             rep_mapper = LinearRegression()
-            rep_mapper.fit(np.array(x).reshape(len(x), 1), y)
+            try:
+                rep_mapper.fit(np.array(x).reshape(len(x), 1), y)
+            except ValueError:
+                rep_mapper = None
 
-        if ion_search or all_msn or args.replicate:
+        if ion_search or all_msn:
             scan_count = len(ion_search_list)
             raw_scans = [i[1] for i in sorted(ion_search_list, key=operator.itemgetter(0))]
+        if args.replicate:
+            scan_count = len(replicate_search_list)
+            raw_scans = []
+            for i in replicate_search_list:
+                ion_rt, ion = i
+                best_scan = sorted([(np.abs((rep_mapper.predict(j[1]['replicate_scan_rt']) if rep_mapper else j[1]['replicate_scan_rt'])-ion_rt), j[1]) for j in replicate_search_list[i]], key=operator.itemgetter(0))[0][1]
+                # import pdb; pdb.set_trace();
+                raw_scans.append(best_scan)
+
 
         for i in xrange(threads):
             worker = Worker(queue=in_queue, results=result_queue, raw_name=filepath, silac_labels=silac_labels,
@@ -1546,7 +1628,7 @@ def main():
                 rt = float(msn_rt_map[msn_to_quant])
                 target_scan['rt'] = rt
 
-            if args.replicate:
+            if args.replicate and rep_mapper is not None:
                 target_scan['rt'] = rep_mapper.predict(float(target_scan['rt']))[0]
 
             mods = target_scan.get('modifications')

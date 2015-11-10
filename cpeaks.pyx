@@ -289,6 +289,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         if len(ydata) >= 5:
             ydata_peaks = convolve(ydata_peaks, kaiser(10, 12), mode='same')#gaussian_filter1d(convolve(ydata_peaks, kaiser(10, 14), mode='same'), 3, mode='constant')##gaussian_filter1d(ydata_peaks, 3, mode='constant')
             ydata_peaks[ydata_peaks<0] = 0
+    ydata_peaks[np.isnan(ydata_peaks)] = 0
     mapper = interp1d(xdata, ydata_peaks)
     if rt_peak > 0:
         try:

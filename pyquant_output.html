@@ -241,6 +241,19 @@
         <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/pako/0.2.8/pako_inflate.min.js"></script>
         <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/jquery-contextmenu/1.9.1/jquery.contextMenu.min.js"></script>
         <script>
+            // Custom sorting methods
+            jQuery.fn.dataTableExt.oSort["num-asc"] = function (x, y) {
+                x = parseFloat(x);
+                y = parseFloat(y);
+                return ((x < y || isNaN(y) ) ? -1 : ((x > y || isNaN(x)) ? 1 : 0));
+            };
+
+            jQuery.fn.dataTableExt.oSort["num-asc"] = function (x, y) {
+                x = parseFloat(x);
+                y = parseFloat(y);
+                return ((x < y || isNaN(x)) ? 1 : ((x > y || isNaN(y) ) ? -1 : 0));
+            };
+
             $(document).ready(function() {
 
                 var dt_data = JSON.parse(pako.inflate(window.atob("$html_output"), { to: 'string' }));
@@ -348,73 +361,75 @@
                 );
                 var initDataViewer = function(){
                         $('td').click(function(event){
-                        var $this = $(this);
-                        var cell_info = dt.cell(this).index();
-                        var row_index = cell_info['row'];
-                        var col_index = cell_info['column'];
-                        if(current_plot && (current_plot[0] == $this[0]))
-                            return;
-                        current_plot = $this;
-                        var $base_element = $active_window.find('.viewer-content');
-                        $base_element.children().remove();
-                        $element = $base_element;
-                        var chart_data = $.extend(true, {}, dt_data[row_index][col_index]);
-                        var chart_width = 0;
-                        var plot_width = $(document).width()/3;
-                        var max_y = chart_data['max-y'];
-                        if(chart_data['plot-multi']){
-                            var common_x = chart_data['common-x'];
-                            var plot_data = chart_data['data'];
-                            var last_title;
-                            for(var i=0;i<plot_data.length;i++){
-                                var plot_info = plot_data[i]['data']['columns'][0];
-                                if(!plot_info)
-                                    continue;
-                                var plot_title = plot_info[0].split(' ');
-                                if(!last_title || (plot_title && last_title && plot_title[0] != 'Scan' && plot_title[0].indexOf(last_title) == -1 )) {
-                                    if (last_title) {
-                                        $element.css('width', chart_width + $element.find('.chart-title').outerWidth(true) + 20);
-                                        chart_width = 0;
+                            var $this = $(this);
+                            var cell_info = dt.cell(this).index();
+                            var row_index = cell_info['row'];
+                            var col_index = cell_info['column'];
+                            if(current_plot && (current_plot[0] == $this[0]))
+                                return;
+                            var chart_data = $.extend(true, {}, dt_data[row_index][col_index]);
+                            if($.isEmptyObject(chart_data))
+                                return;
+                            current_plot = $this;
+                            var $base_element = $active_window.find('.viewer-content');
+                            $base_element.children().remove();
+                            $element = $base_element;
+                            var chart_width = 0;
+                            var plot_width = $(document).width()/3;
+                            var max_y = chart_data['max-y'];
+                            if(chart_data['plot-multi']){
+                                var common_x = chart_data['common-x'];
+                                var plot_data = chart_data['data'];
+                                var last_title;
+                                for(var i=0;i<plot_data.length;i++){
+                                    var plot_info = plot_data[i]['data']['columns'][0];
+                                    if(!plot_info)
+                                        continue;
+                                    var plot_title = plot_info[0].split(' ');
+                                    if(!last_title || (plot_title && last_title && plot_title[0] != 'Scan' && plot_title[0].indexOf(last_title) == -1 )) {
+                                        if (last_title) {
+                                            $element.css('width', chart_width + $element.find('.chart-title').outerWidth(true) + 20);
+                                            chart_width = 0;
+                                        }
+                                        $element = $('<div class="row"><h2 class="chart-title">'+plot_title[0]+'</h2></div>').appendTo($base_element);
                                     }
-                                    $element = $('<div class="row"><h2 class="chart-title">'+plot_title[0]+'</h2></div>').appendTo($base_element);
-                                }
-                                if(plot_title)
-                                    last_title = plot_title[0];
-                                var chart_name = 'chart'+i;
-                                var new_element = $element.append('<div id="'+chart_name+'"></div>');
-                                plot_data[i]['bindto'] = '#'+chart_name;
-                                chart_width += plot_width;
-                                plot_data[i]['size'] = {width: plot_width};
-                                if(common_x){
-                                    plot_data[i]['data']['columns'].unshift(common_x);
-                                }
-                                if(max_y){
-                                var param_max_y = plotting_params['max-y'];
-                                    if(param_max_y == 'max-all')
-                                        plot_data[i]['axis']['y']['max'] = max_y;
-                                    else if(param_max_y == 'fitted'){
-                                    	var plot_columns = plot_data[i]['data']['columns'];
-                                    	var max_fit = 0;
-                                    	for(var j=0;j<plot_columns.length;j++){
-                                    		if(plot_columns[j][0].endsWith('fit')) {
-                                                var new_max = Math.max.apply(null, plot_columns[j].map(function(x){return parseFloat(x) ? x : 0}))
-                                                if(new_max > max_fit)
-                                                    max_fit = new_max;
+                                    if(plot_title)
+                                        last_title = plot_title[0];
+                                    var chart_name = 'chart'+i;
+                                    var new_element = $element.append('<div id="'+chart_name+'"></div>');
+                                    plot_data[i]['bindto'] = '#'+chart_name;
+                                    chart_width += plot_width;
+                                    plot_data[i]['size'] = {width: plot_width};
+                                    if(common_x){
+                                        plot_data[i]['data']['columns'].unshift(common_x);
+                                    }
+                                    if(max_y){
+                                    var param_max_y = plotting_params['max-y'];
+                                        if(param_max_y == 'max-all')
+                                            plot_data[i]['axis']['y']['max'] = max_y;
+                                        else if(param_max_y == 'fitted'){
+                                            var plot_columns = plot_data[i]['data']['columns'];
+                                            var max_fit = 0;
+                                            for(var j=0;j<plot_columns.length;j++){
+                                                if(plot_columns[j][0].endsWith('fit')) {
+                                                    var new_max = Math.max.apply(null, plot_columns[j].map(function(x){return parseFloat(x) ? x : 0}))
+                                                    if(new_max > max_fit)
+                                                        max_fit = new_max;
+                                                }
                                             }
-                                    	}
-                                    	plot_data[i]['axis']['y']['max'] = max_fit;
+                                            plot_data[i]['axis']['y']['max'] = max_fit;
+                                        }
                                     }
-                                }
-                                c3.generate(plot_data[i]);
+                                    c3.generate(plot_data[i]);
 
+                                }
+                                if(plot_data.length)
+                                    $element.css('width', chart_width+$element.find('.chart-title').outerWidth(true)+20);
                             }
-                            if(plot_data.length)
-                                $element.css('width', chart_width+$element.find('.chart-title').outerWidth(true)+20);
-                        }
-                        $('.selected').removeClass('selected');
-                        $('.current-plot').removeClass('current-plot');
-                        $(this).parent().addClass('selected');
-                        $(this).addClass('current-plot')
+                            $('.selected').removeClass('selected');
+                            $('.current-plot').removeClass('current-plot');
+                            $(this).parent().addClass('selected');
+                            $(this).addClass('current-plot')
                     });
                     $.contextMenu({
                         selector: 'tr > th',
