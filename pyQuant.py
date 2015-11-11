@@ -1114,7 +1114,7 @@ def main():
     elif args.peptide:
         peptides = set(args.peptide) if isinstance(args.peptide, list) else set([args.peptide])
     else:
-        peptides = set([])
+        peptides = None
 
     input_found = None
     if args.processed:
