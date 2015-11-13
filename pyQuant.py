@@ -1,9 +1,6 @@
 #!/usr/bin/env python
-from __future__ import division, unicode_literals
+from __future__ import division, unicode_literals, print_function
 import pyximport; pyximport.install()
-# TODO: Threading for single files. Since much time is spent in fetching m/z records, it may be pointless
-# because I/O is limiting. If so, create a thread just for I/O for processing requests the other threads
-# interface with
 
 description = """
 This will quantify labeled peaks (such as SILAC) in ms1 spectra. It relies solely on the distance between peaks,
@@ -571,8 +568,8 @@ class Worker(Process):
                     try:
                         new_col = self.msn_rt_map.iloc[self.msn_rt_map.searchsorted(combined_data.columns[-1])+1].values[0]
                     except:
-                        print combined_data.columns
-                        print self.msn_rt_map
+                        print(combined_data.columns)
+                        print(self.msn_rt_map)
                 else:
                     new_col = combined_data.columns[-1]+(combined_data.columns[-1]-combined_data.columns[-2])
                 combined_data[new_col] = 0
@@ -856,8 +853,8 @@ class Worker(Process):
                             if False and len(xdata) >= 3 and (mean_diff > 2 or (np.abs(peak_loc-common_loc) > 2 and mean_diff > 2)):
                                 # fixed mean fit
                                 if self.debug:
-                                    print quant_label, index
-                                    print common_loc, peak_loc
+                                    print(quant_label, index)
+                                    print(common_loc, peak_loc)
                                 nearest = peaks.find_nearest_index(pos_x, mean)
                                 nearest_index = np.where(xdata==pos_x[nearest])[0][0]
                                 res = peaks.fixedMeanFit(xdata, ydata, peak_index=nearest_index, debug=self.debug)
@@ -879,13 +876,13 @@ class Worker(Process):
                             try:
                                 int_val = integrate.simps(peaks.bigauss_ndim(xr, peak_params), x=xr) if self.quant_method == 'integrate' else ydata[(xdata > left) & (xdata < right)].sum()
                             except:
-                                print traceback.format_exc()
-                                print xr, peak_params
+                                print(traceback.format_exc())
+                                print(xr, peak_params)
                             try:
                                 total_int = integrate.simps(ydata[left_index:right_index], x=xdata[left_index:right_index])
                             except:
-                                print traceback.format_exc()
-                                print left_index, right_index, xdata, ydata
+                                print(traceback.format_exc())
+                                print(left_index, right_index, xdata, ydata)
                             sdr = np.log2(int_val*1./total_int+1.)
                             isotope_index = isotope_labels.loc[index, 'isotope_index']
 
