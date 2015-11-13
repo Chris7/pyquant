@@ -87,118 +87,118 @@ def fit_theo_dist(params, ny, ty):
     theo_dist += ty
     return ((exp_dist-theo_dist*scaling)**2).sum()
 
-def neg_binomial((n, p), ny):
-    if p >= 1 or p <= 0:
-        return np.inf
-    if n > len(ny) or n <= 0:
-        return np.inf
-    x = range(len(ny))
-    guess = pd.Series(ss.nbinom.pmf(x, n, p), index=x)
-    real = pd.Series(ny)
-    return ((guess-real)**2).sum()
-
-def neg_binomial2((n1,p1, prop1, n2,p2,n2_offset, prop2), ny):
-    if prop1 > 1 or prop1 <0 or prop2 < 0 or prop2 > 1 or (prop1+prop2)>1:
-        return np.inf
-    if n2_offset < 0:
-        return np.inf
-    if p1 >= 1 or p2 >= 1 or p1 <= 0 or p2 <= 0:
-        return np.inf
-    if n2 > len(ny) or n1 > len(ny) or n2 <= 0 or n1 <= 0:
-        return np.inf
-
-    # model the left peak
-    x = range(len(ny))
-    fit1 = pd.Series(ss.nbinom.pmf(x, n1, p1), index=x)*prop1
-
-    # model the right peak
-    fit2 = pd.Series(ss.nbinom.pmf(x, n2, p2, loc=n2_offset), index=x)*prop2
-    combined = fit1+fit2
-    return ((pd.Series(ny)-combined)**2).sum()
-
-def neg_binomial3((n1,p1, prop1, n2,p2,n2_offset, prop2), ny):
-    if (prop1+prop2)>1:
-        return np.inf
-    if n2_offset < n1:
-        return np.inf
-    if prop1 > 1 or prop1 <0 or prop2 < 0 or prop2 > 1 or (prop1+prop2)>1:
-        return np.inf
-    if n2_offset < 0:
-        return np.inf
-    if p1 >= 1 or p2 >= 1 or p1 <= 0 or p2 <= 0:
-        return np.inf
-    if n2 > len(ny) or n1 > len(ny) or n2 <= 0 or n1 <= 0:
-        return np.inf
-
-    # model the left peak
-    x = range(len(ny))
-    fit1 = pd.Series(ss.nbinom.pmf(x, n1, p1), index=x)
-
-    fit1 = (fit1/fit1.max()).fillna(0)
-#     data_max = ny[fit1.idxmax()]
-#     fit1 = fit1*data_max*prop1
-    fit_res = ny-fit1*prop1
-
-    fit2 = pd.Series(ss.nbinom.pmf(x, n2, p2, loc=n2_offset), index=x)
-    fit2 = (fit2/fit2.max()).fillna(0)
-#     data_max = fit_res[fit2.idxmax()]
-#     fit2 = fit2*data_max*prop2
-    fit_res -= (fit2*prop2)
-#     print fit1+fit2
-#     print ((ny-(fit1+fit2))**2).sum()
-
-
-#     fit_res = fit_res-fit2_norm*ny
-#     print 'f2',n2,p2,prop2,n2_offset,fit2_norm*ny
-#     print fit_res,
-#     return (fit_res**2).sum()
-    return abs(fit_res).sum()
-
-def fit_data(data, charge=1.0, peptide=None):
-    spacing = NEUTRON/float(charge)
-    Y = data.values
-    ny = np.array(Y, dtype=float)/np.sum(Y)
-    x_axis = range(len(ny))
-    initial_guess = np.average(x_axis, weights=ny)
-    opt_kwargs = {
-        'args': (ny,),
-        'method': 'Nelder-Mead',
-    }
-    res = optimize.minimize(neg_binomial, (initial_guess, 0.4), **opt_kwargs)
-    if res.fun > 0.1 or res.success is False:
-        old_res = res
-        opt_kwargs.update({'method': 'Powell'})
-        # try a 2 state model
-        # res = optimize.minimize(neg_binomial2, (initial_guess, 0.4, 0.5, initial_guess, 0.4, 3, 0.5), **opt_kwargs)
-        res = optimize.minimize(neg_binomial3, (initial_guess, 0.4, 0.5, initial_guess, 0.4, int(len(ny)/2), 0.5), tol=1e-10, **opt_kwargs)
-        if res.success is False:
-            res = old_res
-            n1,p1 = old_res.x
-        else:
-            n1,p1,n1prop, n2,p2,n2_offset, n2prop = res.x
-        # model the left peak
-        # fit1 = pd.Series(ss.nbinom.pmf(x_axis, n1, p1), index=data.index)*n1prop
-        # fit2 = pd.Series(ss.nbinom.pmf(x_axis, n2, p2, loc=n2_offset), index=data.index)*n2prop
-    else:
-        n1, p1 = res.x
-    # take the index of our fitted max from our data and extend it out until we're at ~0.01 of the distribution
-    x_axis = range(len(data))
-    data_x = list(data.index)
-    fit1_nonorm = pd.Series(ss.nbinom.pmf(x_axis, n1, p1), index=data_x)
-    fit1 = (fit1_nonorm/fit1_nonorm.max()).fillna(0)
-    tries=0
-    while fit1.max() < 1 or fit1_nonorm.sum() < 0.85:
-        tries+=1
-        if tries > 15:
-            sys.stderr.write('Failure on {}\n'.format(data))
-            return {'fit': pd.Series(), 'residual': np.inf}
-        data_x.append(data_x[-1]+spacing)
-        x_axis.append(len(x_axis))
-        fit1_nonorm = pd.Series(ss.nbinom.pmf(x_axis, n1, p1), index=data_x)
-        fit1 = (fit1_nonorm/fit1_nonorm.max()).fillna(0)
-    data_max = data.loc[fit1.idxmax()]
-    fitted = fit1*data_max
-    return {'fit': fitted, 'residual': res.fun}
+# def neg_binomial((n, p), ny):
+#     if p >= 1 or p <= 0:
+#         return np.inf
+#     if n > len(ny) or n <= 0:
+#         return np.inf
+#     x = range(len(ny))
+#     guess = pd.Series(ss.nbinom.pmf(x, n, p), index=x)
+#     real = pd.Series(ny)
+#     return ((guess-real)**2).sum()
+#
+# def neg_binomial2((n1,p1, prop1, n2,p2,n2_offset, prop2), ny):
+#     if prop1 > 1 or prop1 <0 or prop2 < 0 or prop2 > 1 or (prop1+prop2)>1:
+#         return np.inf
+#     if n2_offset < 0:
+#         return np.inf
+#     if p1 >= 1 or p2 >= 1 or p1 <= 0 or p2 <= 0:
+#         return np.inf
+#     if n2 > len(ny) or n1 > len(ny) or n2 <= 0 or n1 <= 0:
+#         return np.inf
+#
+#     # model the left peak
+#     x = range(len(ny))
+#     fit1 = pd.Series(ss.nbinom.pmf(x, n1, p1), index=x)*prop1
+#
+#     # model the right peak
+#     fit2 = pd.Series(ss.nbinom.pmf(x, n2, p2, loc=n2_offset), index=x)*prop2
+#     combined = fit1+fit2
+#     return ((pd.Series(ny)-combined)**2).sum()
+#
+# def neg_binomial3((n1,p1, prop1, n2,p2,n2_offset, prop2), ny):
+#     if (prop1+prop2)>1:
+#         return np.inf
+#     if n2_offset < n1:
+#         return np.inf
+#     if prop1 > 1 or prop1 <0 or prop2 < 0 or prop2 > 1 or (prop1+prop2)>1:
+#         return np.inf
+#     if n2_offset < 0:
+#         return np.inf
+#     if p1 >= 1 or p2 >= 1 or p1 <= 0 or p2 <= 0:
+#         return np.inf
+#     if n2 > len(ny) or n1 > len(ny) or n2 <= 0 or n1 <= 0:
+#         return np.inf
+#
+#     # model the left peak
+#     x = range(len(ny))
+#     fit1 = pd.Series(ss.nbinom.pmf(x, n1, p1), index=x)
+#
+#     fit1 = (fit1/fit1.max()).fillna(0)
+# #     data_max = ny[fit1.idxmax()]
+# #     fit1 = fit1*data_max*prop1
+#     fit_res = ny-fit1*prop1
+#
+#     fit2 = pd.Series(ss.nbinom.pmf(x, n2, p2, loc=n2_offset), index=x)
+#     fit2 = (fit2/fit2.max()).fillna(0)
+# #     data_max = fit_res[fit2.idxmax()]
+# #     fit2 = fit2*data_max*prop2
+#     fit_res -= (fit2*prop2)
+# #     print fit1+fit2
+# #     print ((ny-(fit1+fit2))**2).sum()
+#
+#
+# #     fit_res = fit_res-fit2_norm*ny
+# #     print 'f2',n2,p2,prop2,n2_offset,fit2_norm*ny
+# #     print fit_res,
+# #     return (fit_res**2).sum()
+#     return abs(fit_res).sum()
+#
+# def fit_data(data, charge=1.0, peptide=None):
+#     spacing = NEUTRON/float(charge)
+#     Y = data.values
+#     ny = np.array(Y, dtype=float)/np.sum(Y)
+#     x_axis = range(len(ny))
+#     initial_guess = np.average(x_axis, weights=ny)
+#     opt_kwargs = {
+#         'args': (ny,),
+#         'method': 'Nelder-Mead',
+#     }
+#     res = optimize.minimize(neg_binomial, (initial_guess, 0.4), **opt_kwargs)
+#     if res.fun > 0.1 or res.success is False:
+#         old_res = res
+#         opt_kwargs.update({'method': 'Powell'})
+#         # try a 2 state model
+#         # res = optimize.minimize(neg_binomial2, (initial_guess, 0.4, 0.5, initial_guess, 0.4, 3, 0.5), **opt_kwargs)
+#         res = optimize.minimize(neg_binomial3, (initial_guess, 0.4, 0.5, initial_guess, 0.4, int(len(ny)/2), 0.5), tol=1e-10, **opt_kwargs)
+#         if res.success is False:
+#             res = old_res
+#             n1,p1 = old_res.x
+#         else:
+#             n1,p1,n1prop, n2,p2,n2_offset, n2prop = res.x
+#         # model the left peak
+#         # fit1 = pd.Series(ss.nbinom.pmf(x_axis, n1, p1), index=data.index)*n1prop
+#         # fit2 = pd.Series(ss.nbinom.pmf(x_axis, n2, p2, loc=n2_offset), index=data.index)*n2prop
+#     else:
+#         n1, p1 = res.x
+#     # take the index of our fitted max from our data and extend it out until we're at ~0.01 of the distribution
+#     x_axis = range(len(data))
+#     data_x = list(data.index)
+#     fit1_nonorm = pd.Series(ss.nbinom.pmf(x_axis, n1, p1), index=data_x)
+#     fit1 = (fit1_nonorm/fit1_nonorm.max()).fillna(0)
+#     tries=0
+#     while fit1.max() < 1 or fit1_nonorm.sum() < 0.85:
+#         tries+=1
+#         if tries > 15:
+#             sys.stderr.write('Failure on {}\n'.format(data))
+#             return {'fit': pd.Series(), 'residual': np.inf}
+#         data_x.append(data_x[-1]+spacing)
+#         x_axis.append(len(x_axis))
+#         fit1_nonorm = pd.Series(ss.nbinom.pmf(x_axis, n1, p1), index=data_x)
+#         fit1 = (fit1_nonorm/fit1_nonorm.max()).fillna(0)
+#     data_max = data.loc[fit1.idxmax()]
+#     fitted = fit1*data_max
+#     return {'fit': fitted, 'residual': res.fun}
 
 def merge_list(starting_list):
     final_list = []

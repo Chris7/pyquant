@@ -37,7 +37,7 @@ try:
     from memory_profiler import profile as memory_profiler
 except ImportError:
     pass
-from Queue import Empty
+from compat import Queue
 
 import argparse
 from datetime import datetime, timedelta
