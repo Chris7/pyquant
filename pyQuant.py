@@ -143,15 +143,18 @@ class Reader(Process):
             d = self.scan_dict.get(scan_id)
             if not d:
                 scan = self.raw.getScan(scan_id)
-                scan_vals = np.array(scan.scans)
-                if self.spline:
-                    scan_vals[:,0] = scan_vals[:,0]/(1-self.spline(scan_vals[:,0])/1e6)
-                # add to our database
-                d = {'vals': scan_vals, 'rt': scan.rt, 'title': scan.title, 'mass': scan.mass, 'charge': scan.charge}
-                self.scan_dict[scan_id] = d
-                # the scan has been stored, delete it
-                del scan
-            if mz_start is not None or mz_end is not None:
+                if scan is not None:
+                    scan_vals = np.array(scan.scans)
+                    if self.spline:
+                        scan_vals[:,0] = scan_vals[:,0]/(1-self.spline(scan_vals[:,0])/1e6)
+                    # add to our database
+                    d = {'vals': scan_vals, 'rt': scan.rt, 'title': scan.title, 'mass': scan.mass, 'charge': scan.charge}
+                    self.scan_dict[scan_id] = d
+                    # the scan has been stored, delete it
+                    del scan
+                else:
+                    d = None
+            if d is not None and (mz_start is not None or mz_end is not None):
                 out = copy.deepcopy(d)
                 mz_start = 0 if mz_start is None else mz_start
                 mz_end = out['vals'][-1,0]+1 if mz_end is None else mz_end
@@ -323,7 +326,9 @@ class Worker(Process):
     def getScan(self, ms1, start=None, end=None):
         self.reader_in.put((self.thread, ms1, start, end))
         scan = self.reader_out.get()
-        return self.convertScan(scan)
+        if scan is None:
+            sys.stderr.write('Unable to fetch scan {}.\n'.format(ms1))
+        return self.convertScan(scan) if scan is not None else None
 
     # @memory_profiler
     def quantify_peaks(self, params):
@@ -562,7 +567,7 @@ class Worker(Process):
                     combined_data = combined_data.T
                 # bookend with zeros if there aren't any, do the right end first because pandas will by default append there
                 # if combined_data.iloc[:,-1].sum() != 0:
-                combined_data = combined_data.sort(axis='index').sort(axis='columns')
+                combined_data = combined_data.sort_index().sort_index(axis='columns')
                 start_rt = rt
                 if len(combined_data.columns) == 1:
                     try:
@@ -577,7 +582,7 @@ class Worker(Process):
                 combined_data[new_col] = 0
                 combined_data = combined_data[sorted(combined_data.columns)]
 
-                combined_data = combined_data.sort(axis='index').sort(axis='columns')
+                combined_data = combined_data.sort_index().sort_index(axis='columns')
                 quant_vals = defaultdict(dict)
                 isotope_labels = pd.DataFrame(isotope_labels).T
 
@@ -771,7 +776,7 @@ class Worker(Process):
                                 background = mean
                             #print ydata.tolist()
                             #print j, background
-                            d['sbr'] = np.mean(j/np.array(filter(lambda x: x>0, sorted(data_window, reverse=True))[:5]))#(j-np.mean(positive_y[lb:rb]))/np.std(positive_y[lb:rb])
+                            d['sbr'] = np.mean(j/(np.array(sorted(data_window, reverse=True)[:5])))#(j-np.mean(positive_y[lb:rb]))/np.std(positive_y[lb:rb])
                             d['snr'] = (j-background)/np.std(data_window)
                             valid_peaks.append(d)
                         # if we have a peaks containing our retention time, keep them and throw out ones not containing it
@@ -1458,6 +1463,8 @@ def main():
             for scan_id in scans_to_fetch:
                 reader_in.put((0, scan_id, None, None))
                 scan = reader_outs[0].get()
+                if scan is None:
+                    continue
                 scan_mzs = scan['vals']
                 mz_vals = scan_mzs[scan_mzs[:, 1] > 0][:, 1]
                 scan_mzs = scan_mzs[scan_mzs[:, 1] > 0][:, 0]
