@@ -7,6 +7,6 @@ PY3 = StrictVersion('3.0.0')
 PY2 = StrictVersion('2.7.0')
 
 if PY_FULL_VERSION >= PY3:
-    import queue as Queue
+    from queue import Empty
 elif PY_FULL_VERSION >= PY2:
-    import Queue
+    from Queue import Empty

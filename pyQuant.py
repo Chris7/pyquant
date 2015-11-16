@@ -7,46 +7,37 @@ This will quantify labeled peaks (such as SILAC) in ms1 spectra. It relies solel
  which can correct for errors due to amino acid conversions.
 """
 import sys
+import argparse
 from string import Template
 import gzip
 import base64
 import json
-import decimal
-import csv
-import math
 import os
 import copy
 import operator
 import traceback
 import pandas as pd
 import numpy as np
-import re
 import random
 from itertools import groupby
 from collections import OrderedDict, defaultdict
 from matplotlib import pyplot as plt
 from sklearn.covariance import EllipticEnvelope
-from sklearn.svm import OneClassSVM
-from sklearn.linear_model import RANSACRegressor
-from mpl_toolkits.mplot3d import Axes3D
-from multiprocessing import Process, Queue, Manager, Array
-import ctypes
+from multiprocessing import Process, Queue
+from compat import Empty
 
 try:
     from profilestats import profile
     from memory_profiler import profile as memory_profiler
 except ImportError:
     pass
-from compat import Queue
 
-import argparse
 from datetime import datetime, timedelta
 from scipy import integrate
 from scipy.stats import linregress
 from scipy.interpolate import UnivariateSpline
 from scipy.ndimage.filters import gaussian_filter1d
 
-from pythomics.templates import CustomParser
 from pythomics.proteomics.parsers import GuessIterator
 from pythomics.proteomics import config
 import peaks
@@ -57,7 +48,9 @@ RESULT_ORDER = [('peptide', 'Peptide'), ('modifications', 'Modifications'),
 ION_CUTOFF = 2
 
 
-parser = CustomParser(description=description)
+parser = argparse.ArgumentParser(description=description)
+parser.add_argument('-p', help="Threads to run", type=int, default=1)
+
 raw_group = parser.add_argument_group("Raw Data Parameters")
 raw_group.add_argument('--scan-file', help="The scan file(s) for the raw data. If not provided, assumed to be in the directory of the processed/tabbed/peaklist file.", type=argparse.FileType('r'), nargs='*')
 raw_group.add_argument('--scan-file-dir', help="The directory containing raw data.", type=str)
@@ -67,14 +60,14 @@ raw_group.add_argument('--isotope-ppm', help="The mass accuracy for the isotopic
 raw_group.add_argument('--spread', help="Assume there is spread of the isotopic label.", action='store_true')
 
 search_group = parser.add_argument_group("Search Information")
-parser.add_processed_ms(group=search_group, required=False)
+search_group.add_argument('--search-file', help='A search output or Proteome Discoverer msf file', type=argparse.FileType('rb'), required=False)
 search_group.add_argument('--skip', help="If true, skip scans with missing files in the mapping.", action='store_true')
 search_group.add_argument('--peptide', help="The peptide(s) to limit quantification to.", type=str, nargs='*')
 search_group.add_argument('--peptide-file', help="A file of peptide(s) to limit quantification to.", type=argparse.FileType('r'))
 search_group.add_argument('--scan', help="The scan(s) to limit quantification to.", type=str, nargs='*')
 
 replicate_group = parser.add_argument_group("Replicate Search")
-replicate_group.add_argument('--replicate', help="Analyze files in replicate mode. This means the dataset being quantified is from the search file of a replicate", action='store_true')
+replicate_group.add_argument('--mva', help="Analyze files in 'missing value' mode.", action='store_true')
 replicate_group.add_argument('--rt-window', help="The maximal deviation of a scan's retention time to be considered for analysis.", default=0.25, type=float)
 
 label_group = parser.add_argument_group("Labeling Information")
@@ -122,7 +115,7 @@ output_group.add_argument('--disable-stats', help="Disable confidence statistics
 output_group.add_argument('-o', '--out', nargs='?', help='The prefix for the file output', type=str)
 
 convenience_group = parser.add_argument_group('Convenience Parameters')
-convenience_group.add_argument('--neucode', help='This will select parameters specific for neucode. Note: You still must define a labeling scheme.')
+convenience_group.add_argument('--neucode', help='This will select parameters specific for neucode. Note: You still must define a labeling scheme.', action='store_true')
 convenience_group.add_argument('--isobaric-tags', help='This will select parameters specific for isobaric tag based labeling (TMT/iTRAQ).')
 convenience_group.add_argument('--mrm', help='This will select parameters specific for Selective/Multiple Reaction Monitoring (SRM/MRM).', action='store_true')
 
@@ -1060,7 +1053,7 @@ def main():
     resume = args.resume
     calc_stats = not args.disable_stats
     msn_for_id = args.msn
-    raw_data_only = not (args.processed or args.tsv)
+    raw_data_only = not (args.search_file or args.tsv)
     msn_for_quant = args.msn_quant_from if args.msn_quant_from else msn_for_id-1
     if msn_for_quant == 0:
         msn_for_quant = 1
@@ -1119,15 +1112,15 @@ def main():
         peptides = None
 
     input_found = None
-    if args.processed:
-        results = GuessIterator(args.processed.name, full=True, store=False, peptide=peptides)
+    if args.search_file:
+        results = GuessIterator(args.search_file.name, full=True, store=False, peptide=peptides)
         input_found = 'ms'
     elif args.tsv:
         results = pd.read_table(args.tsv, sep='\t')
         input_found = 'tsv'
 
-    if args.processed:
-        source_file = args.processed.name
+    if args.search_file:
+        source_file = args.search_file.name
     elif args.tsv:
         source_file = args.tsv.name
     elif args.scan_file:
@@ -1187,7 +1180,7 @@ def main():
             }
             }
             found_scans[mass_key] = d
-            if args.replicate:
+            if args.mva:
                 for i in scan_filemap:
                     raw_files[i] = d
             else:
@@ -1227,7 +1220,7 @@ def main():
             }
             found_scans[mass_key] = d#.add(mass_key)
             fname = os.path.splitext(fname)[0]
-            if args.replicate:
+            if args.mva:
                 # find the most similar name, add in a setting for this
                 import difflib
                 if fname in replicate_file_mapper:
@@ -1396,7 +1389,7 @@ def main():
         sys.stderr.write('Processing {}.\n'.format(filepath))
 
         # params in case we are doing ion search or replicate analysis
-        ion_tolerance = args.precursor_ppm/1e6 if args.replicate else args.msn_ppm/1e6
+        ion_tolerance = args.precursor_ppm/1e6 if args.mva else args.msn_ppm/1e6
         ion_search_list = []
         replicate_search_list = defaultdict(list)
         scans_to_fetch = []
@@ -1432,7 +1425,7 @@ def main():
                         'id_scan': {'id': scan_id, 'rt': scan.rt, 'charge': scan.charge, 'mass': float(scan.mass), 'product_ion': float(scan.product_ion) if args.mrm else None},
                     }
                     ion_search_list.append((spectra_to_quant, d))
-            elif args.replicate:
+            elif args.mva:
                 if scan.ms_level == msn_for_quant:
                     scans_to_fetch.append(scan_id)
             if not raw_data_only and calc_spline:
@@ -1457,8 +1450,8 @@ def main():
         reader = Reader(reader_in, reader_outs, raw_file=raw, spline=spline)
         reader.start()
         rep_map = defaultdict(set)
-        if ion_search or args.replicate:
-            ions = [i['id_scan'].get('theor_mass', i['id_scan']['mass']) for i in raw_scans] if args.replicate else raw_scans['ions']
+        if ion_search or args.mva:
+            ions = [i['id_scan'].get('theor_mass', i['id_scan']['mass']) for i in raw_scans] if args.mva else raw_scans['ions']
             last_scan_ions = set([])
             for scan_id in scans_to_fetch:
                 reader_in.put((0, scan_id, None, None))
@@ -1476,7 +1469,7 @@ def main():
                 for ion_index, (ion, nearest_mz_index) in enumerate(zip(ions, peaks.find_nearest_indices(scan_mzs, ions))):
                     nearest_mz = scan_mzs[nearest_mz_index]
                     if peaks.get_ppm(ion, nearest_mz) < ion_tolerance:
-                        if args.replicate:
+                        if args.mva:
                             d = raw_scans[ion_index]
                             scan_rt = d['id_scan']['rt']
                             if scan_rt-args.rt_window < rt < scan_rt+args.rt_window:
@@ -1486,15 +1479,15 @@ def main():
                 if ions_found:
                     # we have two options here. If we are quantifying a preceeding scan or the ion itself per scan
                     isotope_ppm = args.isotope_ppm/1e6
-                    if msn_for_quant == msn_for_id or args.replicate:
+                    if msn_for_quant == msn_for_id or args.mva:
                         for ion_dict in ions_found:
                             ion, nearest_mz = ion_dict['ion'], ion_dict['nearest_mz']
-                            if not args.replicate and ion in last_scan_ions:
+                            if not args.mva and ion in last_scan_ions:
                                 continue
                             ion_found = '{}({})'.format(ion, nearest_mz)
                             spectra_to_quant = scan_id
                             # we are quantifying the ion itself
-                            if charge == 0 or args.replicate:
+                            if charge == 0 or args.mva:
                                 # see if we can figure out the charge state
                                 charge_states = []
                                 for i in xrange(1,5):
@@ -1510,18 +1503,18 @@ def main():
                                         charge_states.append((i, peak_height))
                                 # print int(ion_dict['charge']), charge_states
                                 # print int(ion_dict['charge']), charge_states
-                                if args.replicate and int(ion_dict['charge']) not in [i[0] for i in charge_states]:
+                                if args.mva and int(ion_dict['charge']) not in [i[0] for i in charge_states]:
                                     continue
-                                elif args.replicate:
+                                elif args.mva:
                                     charge_to_use = ion_dict['charge']
                                 else:
                                     charge_to_use = sorted(charge_states, key=operator.itemgetter(1), reverse=True)[0][0] if charge_states else 1
-                                if args.replicate:
+                                if args.mva:
                                     rep_key = (ion_dict['scan_info']['id_scan']['rt'], ion_dict['scan_info']['id_scan']['mass'], charge_to_use)
                                     rep_map[rep_key].add(rt)
                             else:
                                 charge_to_use = charge
-                            if args.replicate:
+                            if args.mva:
                                 d = copy.deepcopy(ion_dict['scan_info'])
                                 d['id_scan']['id'] = scan_id
                                 theo_mass = d['id_scan'].get('theor_mass')
@@ -1542,7 +1535,7 @@ def main():
                             if key in added:
                                 continue
                             added.add(key)
-                            if args.replicate:
+                            if args.mva:
                                 replicate_search_list[(d['id_scan']['rt'], ion_dict['ion'])].append((spectra_to_quant, d))
                             # print 'adding', ion, nearest_mz, d
                     else:
@@ -1560,7 +1553,7 @@ def main():
                 last_scan_ions = set([i['ion'] for i in ions_found])
                 del scan
 
-        if args.replicate:
+        if args.mva:
             x = []
             y = []
             for i,v in rep_map.iteritems():
@@ -1577,7 +1570,7 @@ def main():
         if ion_search or all_msn:
             scan_count = len(ion_search_list)
             raw_scans = [i[1] for i in sorted(ion_search_list, key=operator.itemgetter(0))]
-        if args.replicate:
+        if args.mva:
             scan_count = len(replicate_search_list)
             raw_scans = []
             for i in replicate_search_list:
@@ -1595,7 +1588,7 @@ def main():
                             spline=spline, isotopologue_limit=isotopologue_limit, labels_needed=labels_needed,
                             quant_msn_map=filter(lambda x: x[0] == msn_for_quant, msn_map) if not args.mrm else msn_map,
                             overlapping_mz=overlapping_mz, min_resolution=args.min_resolution, min_scans=args.min_scans,
-                            mrm_pair_info=mrm_pair_info, mrm=args.mrm, peak_cutoff=args.peak_cutoff, replicate=args.replicate)
+                            mrm_pair_info=mrm_pair_info, mrm=args.mrm, peak_cutoff=args.peak_cutoff, replicate=args.mva)
             workers.append(worker)
             worker.start()
 
@@ -1633,7 +1626,7 @@ def main():
                 rt = float(msn_rt_map[msn_to_quant])
                 target_scan['rt'] = rt
 
-            if args.replicate and rep_mapper is not None:
+            if args.mva and rep_mapper is not None:
                 target_scan['rt'] = rep_mapper.predict(float(target_scan['rt']))[0]
 
             mods = target_scan.get('modifications')
@@ -1663,7 +1656,7 @@ def main():
                     pass
 
                 target_scan['theor_mass'] = target_scan.get('theor_mass', target_scan.get('mass'))-mass_shift
-                target_scan['precursor'] = target_scan['mass']-mass_shift
+                target_scan['precursor'] = target_scan['mass']-mass_shift if not args.neucode else target_scan['theor_mass']
             # key is filename, peptide, charge, target scan id, modifications
             key = (filename, target_scan.get('peptide', ''), target_scan.get('charge'), target_scan.get('id'), target_scan.get('modifications'),)
             if resume:
