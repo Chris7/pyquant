@@ -2,7 +2,6 @@ import numpy as np
 from copy import deepcopy
 cimport numpy as np
 cimport cython
-from libc.math cimport isnan, fabs
 ctypedef np.float_t FLOAT_t
 from scipy import optimize, integrate
 from scipy.interpolate import interp1d
@@ -97,7 +96,7 @@ cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_ndim(np.ndarray[FLOAT_t, ndim=1] xdata
     return data
 
 cpdef float bigauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata):
-    if any([isnan(i) for i in guess]):
+    if any([np.isnan(i) for i in guess]):
         return np.inf
     cdef np.ndarray[FLOAT_t, ndim=1] data = bigauss_ndim(xdata, guess)
     # absolute deviation as our distance metric. Empirically found to give better results than
@@ -134,8 +133,8 @@ cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.nda
     if ydata.sum() == 0:
         return None
     min_spacing = min(np.diff(xdata))/2
-    lb = fabs(peak_loc-xdata[0])
-    rb = fabs(xdata[-1]-peak_loc)
+    lb = np.fabs(peak_loc-xdata[0])
+    rb = np.fabs(xdata[-1]-peak_loc)
     if lb < min_spacing:
         lb = min_spacing*5
     if rb < min_spacing:
@@ -210,8 +209,8 @@ cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t,
     if ydata.sum() == 0:
         return None
     min_spacing = min(np.diff(xdata))/2
-    lb = fabs(peak_loc-xdata[0])
-    rb = fabs(xdata[-1]-peak_loc)
+    lb = np.fabs(peak_loc-xdata[0])
+    rb = np.fabs(xdata[-1]-peak_loc)
     if lb < min_spacing:
         lb = min_spacing*5
     if rb < min_spacing:
@@ -539,7 +538,7 @@ cdef tuple findPeak(np.ndarray[FLOAT_t, ndim=1] y, int srt):
     return left, right
 
 cpdef float get_ppm(float theoretical, float observed):
-    return fabs(theoretical-observed)/theoretical
+    return np.fabs(theoretical-observed)/theoretical
 
 cdef inline int within_tolerance(list array, float tolerance):
     for i in array:
@@ -626,7 +625,7 @@ def find_nearest_index(np.ndarray[FLOAT_t, ndim=1] array, value):
         return 0
     elif idx == len(array):
         return -1
-    elif fabs(value - array[idx-1]) < fabs(value - array[idx]):
+    elif np.fabs(value - array[idx-1]) < np.fabs(value - array[idx]):
         return idx-1
     else:
         return idx
@@ -640,7 +639,7 @@ def find_nearest_indices(np.ndarray[FLOAT_t, ndim=1] array, value):
             out.append(0)
         elif idx == len(array):
             out.append(-1)
-        elif fabs(search_value - array[idx-1]) < fabs(search_value - array[idx]):
+        elif np.fabs(search_value - array[idx-1]) < np.fabs(search_value - array[idx]):
             out.append(idx-1)
         else:
             out.append(idx)

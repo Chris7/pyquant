@@ -1,4 +1,3 @@
-import pyximport; pyximport.install()
 import math
 from collections import OrderedDict
 from operator import itemgetter

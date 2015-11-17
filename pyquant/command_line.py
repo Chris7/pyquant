@@ -1,10 +1,4 @@
 from __future__ import division, unicode_literals, print_function
-import pyximport; pyximport.install()
-
-description = """
-This will quantify labeled peaks (such as SILAC) in ms1 spectra. It relies solely on the distance between peaks,
- which can correct for errors due to amino acid conversions.
-"""
 import sys
 import argparse
 from string import Template
@@ -39,6 +33,11 @@ from scipy.ndimage.filters import gaussian_filter1d
 from pythomics.proteomics.parsers import GuessIterator
 from pythomics.proteomics import config
 import peaks
+
+description = """
+This will quantify labeled peaks (such as SILAC) in ms1 spectra. It relies solely on the distance between peaks,
+ which can correct for errors due to amino acid conversions.
+"""
 
 RESULT_ORDER = [('peptide', 'Peptide'), ('modifications', 'Modifications'),
                 ('charge', 'Charge'), ('ms1', 'MS1 Spectrum ID'), ('scan', 'MS2 Spectrum ID'), ('rt', 'Retention Time')]
