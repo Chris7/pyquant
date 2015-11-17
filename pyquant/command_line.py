@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 from __future__ import division, unicode_literals, print_function
 import pyximport; pyximport.install()
 
@@ -21,7 +20,6 @@ import numpy as np
 import random
 from itertools import groupby
 from collections import OrderedDict, defaultdict
-from matplotlib import pyplot as plt
 from sklearn.covariance import EllipticEnvelope
 from multiprocessing import Process, Queue
 from compat import Empty
@@ -627,25 +625,6 @@ class Worker(Process):
                             x = label_df['amplitude'].index.get_level_values('MZ').tolist()
                             y = label_df['amplitude'].values.tolist()
                             isotope_base['data']['columns'].append(['{} {}'.format(title, group)]+[y[x.index(i)] if i in x else 0 for i in all_x])
-                    # fname = '{2}_{0}_{1}_{3}_clusters.png'.format(peptide, ms1, self.filename, scanId)
-                    # subplot_rows = len(precursors.keys())+1
-                    # subplot_columns = pd.Series(isotope_labels['label']).value_counts().iloc[0]+1
-                    # fig = plt.figure(figsize=(subplot_columns*3 if subplot_columns*3 < 300 else 300, subplot_rows*4 if subplot_rows*4 < 300 else 300))
-                    # combined_ax = fig.add_subplot(subplot_rows, subplot_columns, 1, projection='3d')
-                    # for group, values in isotope_labels.groupby('label'):
-                    #     ax = fig.add_subplot(subplot_rows, subplot_columns, label_fig_row.get(group)*subplot_columns+1, projection='3d')
-                    #     for i in values.index:
-                    #         Y = combined_data.loc[i].name.astype(float)
-                    #         X = combined_data.loc[i].index.astype(float).values
-                    #         Z = combined_data.loc[i].fillna(0).values
-                    #         Xi,Yi = np.meshgrid(X, Y)
-                    #         ax.plot_wireframe(Yi, Xi, Z, cmap=plt.cm.coolwarm)
-                    #         combined_ax.plot_wireframe(Yi, Xi, Z, cmap=plt.cm.coolwarm)
-                    #     plt.xticks(values.index.values, ['{0:0.2f}'.format(i) for i in values.index])
-                    # if peptide:
-                    #     plt.suptitle(peptide)
-                    # elif mass:
-                    #     plt.suptitle(mass)
 
                 combined_peaks = defaultdict(dict)
                 plot_index = {}
@@ -967,13 +946,6 @@ class Worker(Process):
                                 pass
                         result_dict.update({'{}_{}_ratio'.format(silac_label1, silac_label2): ratio})
 
-                if self.html:
-                    pass
-                    # plt.tight_layout()
-                    # ax.get_figure().savefig(os.path.join(self.html['full'], fname), format='png', dpi=100)
-                    # html_images['clusters'] = os.path.join(self.html['rel'], fname)
-                if self.debug or self.html:
-                    plt.close('all')
                 if write_html:
                     result_dict.update({'html_info': html_images})
                 for silac_label, silac_data in data.iteritems():
@@ -1040,7 +1012,7 @@ def find_scan(msn_map, current_scan):
             return scan_id
     return None
 
-def main():
+def run_pyquant():
     args = parser.parse_args()
     isotopologue_limit = args.isotopologue_limit
     isotopologue_limit = isotopologue_limit if isotopologue_limit else None
@@ -1294,6 +1266,8 @@ def main():
 
     pq_dir = os.path.split(__file__)[0]
 
+    pyquant_html_file = os.path.join(pq_dir, 'static' 'pyquant_output.html')
+
     workers = []
     completed = 0
     sys.stderr.write('Beginning quantification.\n')
@@ -1341,7 +1315,7 @@ def main():
         else:
             html_out = open('{0}.html'.format(out_path), 'wb')
             template = []
-            for i in open(os.path.join(pq_dir, 'pyquant_output.html'), 'rb'):
+            for i in open(pyquant_html_file, 'rb'):
                 if 'HTML BREAK' in i:
                     break
                 template.append(i)
@@ -1720,7 +1694,7 @@ def main():
     if calc_stats:
         from scipy import stats
         import pickle
-        classifier = pickle.load(open(os.path.join(pq_dir, 'classifier.pickle'), 'rb'))
+        classifier = pickle.load(open(os.path.join(pq_dir, 'static', 'classifier.pickle'), 'rb'))
         header_mapping = []
         order_names = [i[1] for i in RESULT_ORDER]
         for i in data.columns:
@@ -1849,7 +1823,7 @@ def main():
 
         template = []
         append = False
-        for i in open(os.path.join(pq_dir, 'pyquant_output.html'), 'rb'):
+        for i in open(pyquant_html_file, 'rb'):
             if 'HTML BREAK' in i:
                 append = True
             elif append:
@@ -1858,6 +1832,3 @@ def main():
         html_out.write(html_template.safe_substitute({'html_output': base64.b64encode(gzip.zlib.compress(json.dumps(html_map), 9))}))
 
     os.remove(temp_file.name)
-
-if __name__ == "__main__":
-    sys.exit(main())
