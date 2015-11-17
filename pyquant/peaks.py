@@ -1,3 +1,7 @@
+try:
+    import pyximport; pyximport.install()
+except:
+    pass
 import math
 from collections import OrderedDict
 from operator import itemgetter
@@ -17,7 +21,7 @@ from scipy.signal import argrelmax, argrelmin
 from scipy import stats as ss
 import numpy as np
 import sys
-from cpeaks import *
+from .cpeaks import *
 
 ETNS = {1: {'C': .0110, 'H': 0.00015, 'N': 0.0037, 'O': 0.00038, 'S': 0.0075},
         2: {'O': 0.0020, 'S': .0421},
