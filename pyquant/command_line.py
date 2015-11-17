@@ -64,7 +64,7 @@ search_group.add_argument('--peptide', help="The peptide(s) to limit quantificat
 search_group.add_argument('--peptide-file', help="A file of peptide(s) to limit quantification to.", type=argparse.FileType('r'))
 search_group.add_argument('--scan', help="The scan(s) to limit quantification to.", type=str, nargs='*')
 
-replicate_group = parser.add_argument_group("Replicate Search")
+replicate_group = parser.add_argument_group("Missing Value Analysis")
 replicate_group.add_argument('--mva', help="Analyze files in 'missing value' mode.", action='store_true')
 replicate_group.add_argument('--rt-window', help="The maximal deviation of a scan's retention time to be considered for analysis.", default=0.25, type=float)
 
@@ -84,11 +84,11 @@ tsv_group.add_argument('--charge', help='The column indicating the charge state 
 tsv_group.add_argument('--source', help='The column indicating the raw file the scan is contained in.', default='Raw file')
 
 ion_search_group = parser.add_argument_group('Targetted Ion Search Parameters')
-ion_search_group.add_argument('--msn', help='The ms level to search for the ion in. Default: 2 (ms2)', type=int, default=2)
+ion_search_group.add_argument('--msn-id', help='The ms level to search for the ion in. Default: 2 (ms2)', type=int, default=2)
+ion_search_group.add_argument('--msn-quant-from', help='The ms level to quantify values from. i.e. if we are identifying an ion in ms2, we can quantify it in ms1 (or ms2). Default: msn value-1', type=int, default=None)
 ion_search_group.add_argument('--msn-ion', help='M/Z values to search for in the scans.', nargs='+', type=float)
 ion_search_group.add_argument('--msn-peaklist', help='A file containing peaks to search for in the scans.', type=argparse.FileType('rb'))
 ion_search_group.add_argument('--msn-ppm', help='The error tolerance for identifying the ion(s).', type=float, default=200)
-ion_search_group.add_argument('--msn-quant-from', help='The ms level to quantify values from. i.e. if we are identifying an ion in ms2, we can quantify it in ms1 (or ms2). Default: msn value-1', type=int, default=None)
 
 quant_parameters = parser.add_argument_group('Quantification Parameters')
 quant_parameters.add_argument('--quant-method', help='The process to use for quantification. Default: Integrate for ms1, sum for ms2+.', choices=['integrate', 'sum'], default=None)
@@ -102,10 +102,11 @@ quant_parameters.add_argument('--no-mass-accuracy-correction', help='Disables th
 quant_parameters.add_argument('--peak-cutoff', help='The threshold from the initial retention time a peak can fall by before being discarded', type=float, default=0.05)
 
 mrm_parameters = parser.add_argument_group('SRM/MRM Parameters')
-mrm_parameters.add_argument('--mrm-map', help='A file indicating light and heavy peptide pairs, and optionally the known elution time.', type=argparse.FileType('r'))
+#'A file indicating light and heavy peptide pairs, and optionally the known elution time.'
+mrm_parameters.add_argument('--mrm-map', help=argparse.SUPPRESS, type=argparse.FileType('r'))
 
 output_group = parser.add_argument_group("Output Options")
-output_group.add_argument('--debug', help="This will output debug information and graphs.", action='store_true')
+output_group.add_argument('--debug', help="This will output debug information.", action='store_true')
 output_group.add_argument('--html', help="Output a HTML table summary.", action='store_true')
 output_group.add_argument('--resume', help="Will resume from the last run. Only works if not directing output to stdout.", action='store_true')
 output_group.add_argument('--sample', help="How much of the data to sample. Enter as a decimal (ie 1.0 for everything, 0.1 for 10%%)", type=float, default=1.0)
@@ -115,7 +116,8 @@ output_group.add_argument('-o', '--out', nargs='?', help='The prefix for the fil
 convenience_group = parser.add_argument_group('Convenience Parameters')
 convenience_group.add_argument('--neucode', help='This will select parameters specific for neucode. Note: You still must define a labeling scheme.', action='store_true')
 convenience_group.add_argument('--isobaric-tags', help='This will select parameters specific for isobaric tag based labeling (TMT/iTRAQ).')
-convenience_group.add_argument('--mrm', help='This will select parameters specific for Selective/Multiple Reaction Monitoring (SRM/MRM).', action='store_true')
+#'This will select parameters specific for Selective/Multiple Reaction Monitoring (SRM/MRM).'
+convenience_group.add_argument('--mrm', help=argparse.SUPPRESS, action='store_true')
 
 
 class Reader(Process):
@@ -1024,7 +1026,7 @@ def run_pyquant():
     html = args.html
     resume = args.resume
     calc_stats = not args.disable_stats
-    msn_for_id = args.msn
+    msn_for_id = args.msn_id
     raw_data_only = not (args.search_file or args.tsv)
     msn_for_quant = args.msn_quant_from if args.msn_quant_from else msn_for_id-1
     if msn_for_quant == 0:
@@ -1369,7 +1371,7 @@ def run_pyquant():
         scans_to_fetch = []
 
         # figure out the splines for mass accuracy correction
-        calc_spline = args.no_mass_accuracy_correction is False and raw_data_only is False
+        calc_spline = args.no_mass_accuracy_correction is False and raw_data_only is False and args.neucode is False
         spline_x = []
         spline_y = []
         spline = None
