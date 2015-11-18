@@ -1,7 +1,11 @@
 import os
 from setuptools import setup, find_packages
-from Cython.Build import cythonize
-from Cython.Distutils import build_ext
+try:
+    from Cython.Build import cythonize
+    from Cython.Distutils import build_ext
+    CYTHON=True
+except ImportError:
+    CYTHON=False
 
 try:
     import numpy
@@ -28,6 +32,6 @@ setup(
         'Operating System :: OS Independent',
         'Programming Language :: Python',
     ],
-    ext_modules = cythonize("pyquant/*.pyx"),
+    ext_modules = cythonize("pyquant/*.pyx") if CYTHON else None,
     include_dirs=[numpy.get_include()] if np_install else None,
 )
