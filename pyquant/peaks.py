@@ -1,26 +1,12 @@
-try:
-    import pyximport; pyximport.install()
-except:
-    pass
-import math
-from collections import OrderedDict
-from operator import itemgetter
 from collections import Counter
 from scipy.misc import comb
-from scipy.ndimage.filters import gaussian_filter1d
-from scipy.signal import savgol_filter
-
 import pandas as pd
-from scipy import integrate
-
-from pythomics.proteomics.config import NEUTRON, RESIDUE_COMPOSITION, ELEMENTS
-
-
-from scipy import optimize
-from scipy.signal import argrelmax, argrelmin
-from scipy import stats as ss
+from pythomics.proteomics.config import RESIDUE_COMPOSITION
 import numpy as np
-import sys
+try:
+    import pyximport; pyximport.install(setup_args={'include_dirs': np.get_include()})
+except:
+    pass
 from .cpeaks import *
 
 ETNS = {1: {'C': .0110, 'H': 0.00015, 'N': 0.0037, 'O': 0.00038, 'S': 0.0075},
