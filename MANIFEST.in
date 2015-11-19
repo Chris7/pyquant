@@ -1,3 +1,4 @@
 include LICENSE.txt
 recursive-include pyquant/static *
+recursive-include * *.pyx
 recursive-exclude * *.pyc

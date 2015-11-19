@@ -32,7 +32,7 @@ replicate_group.add_argument('--rt-window', help="The maximal deviation of a sca
 label_group = pyquant_parser.add_argument_group("Labeling Information")
 label_subgroup = label_group.add_mutually_exclusive_group()
 label_subgroup.add_argument('--label-scheme', help='The file corresponding to the labeling scheme utilized.', type=argparse.FileType('r'))
-label_subgroup.add_argument('--label-method', help='Predefined labeling schemes to use.', type=str, choices=sorted(config.MS1_SCHEMES.keys()))
+label_subgroup.add_argument('--label-method', help='Predefined labeling schemes to use.', type=str, choices=sorted(config.LABEL_SCHEMES.keys()))
 label_group.add_argument('--reference-label', help='The label to use as a reference (by default all comparisons are taken).', type=str)
 
 tsv_group = pyquant_parser.add_argument_group('Tabbed File Input')
@@ -61,7 +61,11 @@ quant_parameters.add_argument('--labels-needed', help='How many labels need to b
 quant_parameters.add_argument('--min-scans', help='How many quantification scans are needed to quantify a scan.', default=1, type=int)
 quant_parameters.add_argument('--min-resolution', help='The minimal resolving power of a scan to consider for quantification. Useful for skipping low-res scans', default=0, type=float)
 quant_parameters.add_argument('--no-mass-accuracy-correction', help='Disables the mass accuracy correction.', action='store_true')
-quant_parameters.add_argument('--peak-cutoff', help='The threshold from the initial retention time a peak can fall by before being discarded', type=float, default=0.05)
+
+peak_parameters = pyquant_parser.add_argument_group('Peak Fitting Parameters')
+peak_parameters.add_argument('--peak-cutoff', help='The threshold from the initial retention time a peak can fall by before being discarded', type=float, default=0.05)
+peak_parameters.add_argument('--max-peaks', help='The maximal number of peaks to detect per scan. A lower value can help with very noisy data.', type=int, default=4)
+
 
 mrm_parameters = pyquant_parser.add_argument_group('SRM/MRM Parameters')
 #'A file indicating light and heavy peptide pairs, and optionally the known elution time.'

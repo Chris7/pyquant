@@ -101,7 +101,7 @@ cpdef float bigauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, 
     cdef np.ndarray[FLOAT_t, ndim=1] data = bigauss_ndim(xdata, guess)
     # absolute deviation as our distance metric. Empirically found to give better results than
     # residual sum of squares for this data.
-    cdef float residual = sum(np.abs(ydata-data)**2)
+    cdef float residual = sum((ydata-data)**2)
     # cdef float fit, real, res
     # cdef float residual = 0
     # for i in range(len(ydata)):
@@ -207,7 +207,7 @@ cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t,
     xdata = xdata[peak_left:peak_right]
     ydata = ydata[peak_left:peak_right]
     if ydata.sum() == 0:
-        return None
+        return None, None
     min_spacing = min(np.diff(xdata))/2
     lb = np.fabs(peak_loc-xdata[0])
     rb = np.fabs(xdata[-1]-peak_loc)
@@ -272,7 +272,9 @@ cpdef basin_stepper(np.ndarray[FLOAT_t, ndim=1] args):
     args[::4] += 0.05
     return args
 
-cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata_original, float min_dist=0, filter=False, bigauss_fit=False, rt_peak=0.0, mrm=False):
+cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata_original,
+                         float min_dist=0, filter=False, bigauss_fit=False, rt_peak=0.0, mrm=False,
+                         int max_peaks=4):
     cdef object fit_func
     cdef np.ndarray[long] row_peaks, smaller_peaks, larger_peaks
     cdef list minima, fit_accuracy, smaller_minima, larger_minima, guess, bnds
@@ -297,11 +299,17 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             rt_peak = ydata_peaks[find_nearest_index(xdata, rt_peak)]
     peaks_found = {}
     peak_width_start = 2
+    peak_width = peak_width_start
     peak_width_end = 4
-    for peak_width in xrange(peak_width_start,peak_width_end):
+    while peak_width <= peak_width_end:
         row_peaks = argrelmax(ydata_peaks, order=peak_width)[0]
         if not row_peaks.size:
             row_peaks = np.array([np.argmax(ydata)], dtype=int)
+        if row_peaks.size > max_peaks:
+            # print(peak_width, 'too narrow')
+            peak_width_end += 1
+            peak_width += 1
+            continue
         if ydata_peaks.size:
             minima = [i for i,v in enumerate(ydata_peaks) if v == 0]
         else:
@@ -309,9 +317,12 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         minima.extend([i for i in argrelmin(ydata_peaks, order=peak_width)[0] if i not in minima])
         minima.sort()
         peaks_found[peak_width] = {'peaks': row_peaks, 'minima': minima}
+        peak_width += 1
     # collapse identical orders
     final_peaks = {}
     for peak_width in xrange(peak_width_start, peak_width_end-1):
+        if peak_width not in peaks_found:
+            continue
         if peak_width == len(peaks_found):
             final_peaks[peak_width] = peaks_found[peak_width]
             continue
@@ -340,6 +351,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
     initial_bounds = [(0, 1.01), (xdata[0], xdata[-1]), (min_spacing, peak_range)]
     if bigauss_fit:
         initial_bounds.extend([(min_spacing, peak_range)])
+        # print(final_peaks)
     for peak_width, peak_info in final_peaks.items():
         row_peaks = peak_info['peaks']
         minima = peak_info['minima']
@@ -413,7 +425,8 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
                 guess.extend([sum(bnds[0])/2, average, variance])
                 if bigauss_fit:
                     guess.extend([variance])
-
+        # if bigauss_fit:
+            # print(guess)
         if not guess:
             average = np.average(xdata, weights=ydata)
             variance = np.sqrt(np.average((xdata-average)**2, weights=ydata))
@@ -441,6 +454,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             res = sorted(res, key=attrgetter('fun'))[0]
         n = len(xdata)
         k = len(res.x)
+        bic = n*np.log(res.fun/n)+k+np.log(n)
         res.bic = bic
         # if res.x[0] < bnds[0][0]:
         #     res.x[0] = bnds[0][0]
@@ -448,10 +462,11 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             res.x[2] = min_spacing
         if len(res.x) > 3 and res.x[3] < min_spacing:
             res.x[3] = min_spacing
-        bic = n*np.log(res.fun/n)+k+np.log(n)
         fit_accuracy.append((peak_width, bic, res, xdata[fitted_peaks]))
     # we want to maximize our BIC given our definition
     best_fits = sorted(fit_accuracy, key=itemgetter(1,0), reverse=True)
+    # if bigauss_fit:
+    #     print(best_fits)
     return best_fits[0][2].x, best_fits[0][2].fun
 
 cdef tuple findPeak(np.ndarray[FLOAT_t, ndim=1] y, int srt):
