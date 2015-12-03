@@ -11,11 +11,16 @@ import traceback
 import pandas as pd
 import numpy as np
 import random
+import six
+
+if six.PY3:
+    xrange = range
+
 from itertools import groupby
 from collections import OrderedDict, defaultdict
 from sklearn.covariance import EllipticEnvelope
 from multiprocessing import Process, Queue
-from compat import Empty
+from six.moves.queue import Empty
 
 try:
     from profilestats import profile
@@ -110,7 +115,7 @@ class Worker(Process):
         self.results = results
         self.mass_labels = {'Light': {}} if mass_labels is None else mass_labels
         self.shifts = {0: "Light"}
-        self.shifts.update({sum(silac_masses.keys()): silac_label for silac_label, silac_masses in self.mass_labels.iteritems()})
+        self.shifts.update({sum(silac_masses.keys()): silac_label for silac_label, silac_masses in six.iteritems(self.mass_labels)})
         self.raw_name = raw_name
         self.filename = os.path.split(self.raw_name)[1]
         self.rt_tol = 0.2 # for fitting
@@ -241,13 +246,13 @@ class Worker(Process):
         try:
             return res.groupby(level=0).sum() if not res.empty else None
         except:
-            sys.stderr.write('Converting scan error {}\n{}\n{}\n'.format(traceback.format_exc(), res, scan))
+            print('Converting scan error {}\n{}\n{}\n'.format(traceback.format_exc(), res, scan))
 
     def getScan(self, ms1, start=None, end=None):
         self.reader_in.put((self.thread, ms1, start, end))
         scan = self.reader_out.get()
         if scan is None:
-            sys.stderr.write('Unable to fetch scan {}.\n'.format(ms1))
+            print('Unable to fetch scan {}.\n'.format(ms1))
         return self.convertScan(scan) if scan is not None else None
 
     # @memory_profiler
@@ -321,7 +326,7 @@ class Worker(Process):
             if not precursors:
                 precursors = {'Precursor': 0.0}
             precursors = OrderedDict(sorted(precursors.items(), key=operator.itemgetter(1)))
-            shift_maxes = {i: j for i,j in zip(precursors.keys(), precursors.values()[1:])}
+            shift_maxes = {i: j for i,j in zip(precursors.keys(), list(precursors.values())[1:])}
             finished = set([])
             finished_isotopes = {i: set([]) for i in precursors.keys()}
             result_dict = {'peptide': target_scan.get('mod_peptide', peptide),
@@ -412,7 +417,7 @@ class Worker(Process):
                                         last_precursors[delta*-1][precursor_label] = envelope['micro_envelopes'][0]['params'][1]
                                     last_precursors[delta][precursor_label] = envelope['micro_envelopes'][0]['params'][1]
                                 added_keys = []
-                                for isotope, vals in envelope['micro_envelopes'].iteritems():
+                                for isotope, vals in six.iteritems(envelope['micro_envelopes']):
                                     if isotope in finished_isotopes[precursor_label]:
                                         continue
                                     peak_intensity = vals.get('int')
@@ -563,7 +568,6 @@ class Worker(Process):
                             x = label_df['amplitude'].index.get_level_values('MZ').tolist()
                             y = label_df['amplitude'].values.tolist()
                             isotope_base['data']['columns'].append(['{} {}'.format(title, group)]+[y[x.index(i)] if i in x else 0 for i in all_x])
-                # print(combined_data)
                 if not self.reporter_mode:
                     combined_peaks = defaultdict(dict)
 
@@ -847,7 +851,7 @@ class Worker(Process):
 
                 if write_html:
                     result_dict.update({'html_info': html_images})
-                for silac_label, silac_data in data.iteritems():
+                for silac_label, silac_data in six.iteritems(data):
                     w1 = peak_info.get(silac_label, {}).get('std', None)
                     w2 = peak_info.get(silac_label, {}).get('std2', None)
                     result_dict.update({
@@ -861,7 +865,7 @@ class Worker(Process):
                         '{}_rt_width'.format(silac_label): w1+w2 if w1 and w2 else 'NA',
                         '{}_mean_diff'.format(silac_label): np.mean(pd.Series(peak_info.get(silac_label, {}).get('mean_diff', [])).replace([np.inf, -np.inf, np.nan], 0))
                     })
-            for silac_label, silac_data in data.iteritems():
+            for silac_label, silac_data in six.iteritems(data):
                 result_dict.update({
                     '{}_precursor'.format(silac_label): silac_data['precursor'],
                     '{}_calibrated_precursor'.format(silac_label): silac_data.get('calibrated_precursor', silac_data['precursor'])
@@ -876,7 +880,7 @@ class Worker(Process):
             del combined_data
             del isotopes_chosen
         except:
-            sys.stderr.write('ERROR ON {}'.format(traceback.format_exc()))
+            print('ERROR ON {}'.format(traceback.format_exc()))
             return
 
     def run(self):
@@ -1201,7 +1205,7 @@ def run_pyquant():
         else:
             out = sys.stdout
             out_path = source_file
-        out.write('{0}\n'.format('\t'.join(headers)))
+        out.write(six.b('{0}\n'.format('\t'.join(headers))))
 
     if html:
 
@@ -1251,7 +1255,7 @@ def run_pyquant():
 
     silac_shifts = {}
     for silac_label, silac_masses in mass_labels.items():
-        for mass, aas in silac_masses.iteritems():
+        for mass, aas in six.iteritems(silac_masses):
             try:
                 silac_shifts[mass] |= aas
             except:
@@ -1455,7 +1459,7 @@ def run_pyquant():
         if args.mva:
             x = []
             y = []
-            for i,v in rep_map.iteritems():
+            for i,v in six.iteritems(rep_map):
                 for j in v:
                     x.append(i[0])
                     y.append(j)
@@ -1484,7 +1488,7 @@ def run_pyquant():
                             isotope_ppm=args.isotope_ppm, isotope_ppms=None, msn_rt_map=msn_rt_map, reporter_mode=reporter_mode,
                             reader_in=reader_in, reader_out=reader_outs[i], thread=i, quant_method=quant_method,
                             spline=spline, isotopologue_limit=isotopologue_limit, labels_needed=labels_needed,
-                            quant_msn_map=filter(lambda x: x[0] == msn_for_quant, msn_map) if not args.mrm else msn_map,
+                            quant_msn_map=[i for i in msn_map if i[0] == msn_for_quant] if not args.mrm else msn_map,
                             overlapping_mz=overlapping_mz, min_resolution=args.min_resolution, min_scans=args.min_scans,
                             mrm_pair_info=mrm_pair_info, mrm=args.mrm, peak_cutoff=args.peak_cutoff, replicate=args.mva,
                             ref_label=ref_label, max_peaks=args.max_peaks)
@@ -1592,7 +1596,8 @@ def run_pyquant():
 
         # sort by RT so we can minimize our memory footprint by throwing away scans we no longer need
         scans_to_submit.sort(key=operator.itemgetter(0))
-        map(in_queue.put, [i[1] for i in scans_to_submit])
+        for i in scans_to_submit:
+            in_queue.put(i[1])
 
         sys.stderr.write('{0} processed and placed into queue.\n'.format(filename))
 
@@ -1617,11 +1622,11 @@ def run_pyquant():
                     sys.stderr.write('\r{0:2.2f}% Completed'.format(completed/scan_count*100))
                     sys.stderr.flush()
                 res_list = [filename]+[result.get(i[0], 'NA') for i in RESULT_ORDER]
-                temp_file.write(json.dumps({'res_list': res_list, 'html': result.get('html', {})}))
-                temp_file.write('\n')
+                temp_file.write(six.b(json.dumps({'res_list': list(map(str, res_list)), 'html': result.get('html', {})})))
+                temp_file.write(six.b('\n'))
                 temp_file.flush()
                 res = '{0}\n'.format('\t'.join(map(str, res_list)))
-                out.write(res)
+                out.write(six.b(res))
                 out.flush()
         reader_in.put(None)
         del msn_map
@@ -1632,7 +1637,7 @@ def run_pyquant():
     df_data = []
     html_data = []
     for j in open(temp_file.name, 'rb'):
-        result = json.loads(j)
+        result = json.loads(j if isinstance(j, six.text_type) else j.decode('utf-8'))
         df_data.append(result['res_list'])
         html_data.append(result['html'])
     data = pd.DataFrame.from_records(df_data, columns=[i for i in headers if i != 'Confidence'])
@@ -1643,7 +1648,7 @@ def run_pyquant():
             header_mapping.append(RESULT_ORDER[order_names.index(i)][0])
         except ValueError:
             header_mapping.append(False)
-    if calc_stats:
+    if False:
         from scipy import stats
         import pickle
         classifier = pickle.load(open(os.path.join(pq_dir, 'static', 'classifier.pickle'), 'rb'))
@@ -1753,7 +1758,7 @@ def run_pyquant():
             res = '\t'.join(row.astype(str))
             to_write, html_info = table_rows([{'table': res.strip(), 'html': html_data[index], 'keys': header_mapping}])
             html_map.append(html_info)
-            html_out.write(to_write)
+            html_out.write(six.b(to_write))
             html_out.flush()
 
         template = []
@@ -1764,6 +1769,6 @@ def run_pyquant():
             elif append:
                 template.append(i)
         html_template = Template(''.join(template))
-        html_out.write(html_template.safe_substitute({'html_output': base64.b64encode(gzip.zlib.compress(json.dumps(html_map), 9))}))
+        html_out.write(six.b(html_template.safe_substitute({'html_output': base64.b64encode(gzip.zlib.compress(json.dumps(html_map), 9))})))
 
     os.remove(temp_file.name)

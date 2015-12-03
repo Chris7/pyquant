@@ -1,6 +1,7 @@
 from collections import Counter
 from scipy.misc import comb
 import pandas as pd
+import six
 from pythomics.proteomics.config import RESIDUE_COMPOSITION
 import numpy as np
 try:
@@ -8,6 +9,9 @@ try:
 except:
     pass
 from .cpeaks import *
+
+if six.PY3:
+    xrange = range
 
 ETNS = {1: {'C': .0110, 'H': 0.00015, 'N': 0.0037, 'O': 0.00038, 'S': 0.0075},
         2: {'O': 0.0020, 'S': .0421},

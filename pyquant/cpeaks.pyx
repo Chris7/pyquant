@@ -766,18 +766,19 @@ def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] 
             # because the peak location may be between two readings, we use a very tolerance search here and enforce the ppm at the peak fitting stage.
             if displacement < tolerance*5:
                 valid_locations.append((displacement, current_loc, pos))
-            if valid_locations and displacement > last_displacement:
-                # pick the peak closest to our error tolerance
-                valid_locations2[isotope_index] = valid_locations
-                isotope_index += 1
-                tolerance = isotope_ppms.get(isotope_index, isotope_ppm)/1000000.0
-                offset = spacing*isotope_index
-                displacement = get_ppm(start+offset, current_loc)
-                valid_locations = []
-                if isotopologue_limit != -1 and (len(valid_locations2) >= isotopologue_limit):
+            if last_displacement is not None:
+                if valid_locations and displacement > last_displacement:
+                    # pick the peak closest to our error tolerance
+                    valid_locations2[isotope_index] = valid_locations
+                    isotope_index += 1
+                    tolerance = isotope_ppms.get(isotope_index, isotope_ppm)/1000000.0
+                    offset = spacing*isotope_index
+                    displacement = get_ppm(start+offset, current_loc)
+                    valid_locations = []
+                    if isotopologue_limit != -1 and (len(valid_locations2) >= isotopologue_limit):
+                        break
+                elif displacement > last_displacement and not valid_locations:
                     break
-            elif last_displacement is not None and displacement > last_displacement and not valid_locations:
-                break
             last_displacement = displacement
             pos += 1
 

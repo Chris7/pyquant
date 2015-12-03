@@ -1,6 +1,7 @@
 __author__ = 'chris'
 from unittest import TestCase
 import pandas as pd
+import multiprocessing
 import os
 import numpy as np
 import subprocess
@@ -27,7 +28,7 @@ class EColiTest(TestCase):
         os.rmdir(self.out_dir)
 
     def test_pyquant(self):
-        com = [self.executable, '--search-file', self.search_file, '--scan-file', self.mzml, '-p', '8', '-o', self.output, '--sample', '0.5']
+        com = [self.executable, '--search-file', self.search_file, '--scan-file', self.mzml, '-p', str(multiprocessing.cpu_count()), '-o', self.output, '--sample', '0.5']
         subprocess.call(com)
         pyquant = pd.read_table(self.output)
         label = 'Medium'
@@ -38,5 +39,5 @@ class EColiTest(TestCase):
         # the median is robust, we care about the standard deviation since changes to the backend can alter the peak width
         r_mean, r_std = np.median(pyquant.loc[pyquant['Class'] == 'R', pq_sel]), np.std(pyquant.loc[pyquant['Class'] == 'R', pq_sel])
         k_mean, k_std = np.median(pyquant.loc[pyquant['Class'] == 'K', pq_sel]), np.std(pyquant.loc[pyquant['Class'] == 'K', pq_sel])
-        assert r_std < self.r_std
-        assert k_std < self.k_std
+        self.assertLess(r_std, self.r_std)
+        self.assertLess(k_std, self.k_std)
