@@ -17,11 +17,13 @@ class EColiTest(TestCase):
         except IOError:
             pass
         self.output = os.path.join(self.out_dir, 'pqtest')
+        self.output_stats = os.path.join(self.out_dir, 'pqtest_stats')
         self.r_std = 0.6
         self.k_std = 0.7
 
     def tearDown(self):
         os.remove(self.output)
+        os.remove(self.output_stats)
         os.rmdir(self.out_dir)
 
     def test_pyquant(self):
