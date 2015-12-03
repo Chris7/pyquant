@@ -1,4 +1,5 @@
 import numpy as np
+import sys
 from copy import deepcopy
 cimport numpy as np
 cimport cython
@@ -274,14 +275,14 @@ cpdef basin_stepper(np.ndarray[FLOAT_t, ndim=1] args):
 
 cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata_original,
                          float min_dist=0, filter=False, bigauss_fit=False, rt_peak=0.0, mrm=False,
-                         int max_peaks=4):
+                         int max_peaks=4, debug=False):
     cdef object fit_func
     cdef np.ndarray[long] row_peaks, smaller_peaks, larger_peaks
     cdef list minima, fit_accuracy, smaller_minima, larger_minima, guess, bnds
     cdef dict peaks_found, final_peaks, peak_info
     cdef int peak_width, last_peak, next_peak, left, right, i, v
-    cdef float peak_min, peak_max, rel_peak, average, variance
-    cdef np.ndarray[FLOAT_t] peak_values, peak_indices, ydata, ydata_peaks
+    cdef float peak_min, peak_max, rel_peak, average, variance, best_rss
+    cdef np.ndarray[FLOAT_t] peak_values, peak_indices, ydata, ydata_peaks, best_fit
 
     ydata = ydata_original/ydata_original.max()
 
@@ -292,11 +293,13 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             ydata_peaks[ydata_peaks<0] = 0
     ydata_peaks[np.isnan(ydata_peaks)] = 0
     mapper = interp1d(xdata, ydata_peaks)
-    if rt_peak > 0:
+    if rt_peak != 0:
         try:
             rt_peak = mapper(rt_peak)
         except ValueError:
             rt_peak = ydata_peaks[find_nearest_index(xdata, rt_peak)]
+        ydata_peaks = np.where(ydata_peaks > rt_peak*0.9, ydata_peaks, 0)
+
     peaks_found = {}
     peak_width_start = 2
     peak_width = peak_width_start
@@ -305,7 +308,9 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         row_peaks = argrelmax(ydata_peaks, order=peak_width)[0]
         if not row_peaks.size:
             row_peaks = np.array([np.argmax(ydata)], dtype=int)
-        if row_peaks.size > max_peaks:
+        if debug:
+            sys.stderr.write('{}'.format(row_peaks))
+        if max_peaks != -1 and row_peaks.size > max_peaks:
             # print(peak_width, 'too narrow')
             peak_width_end += 1
             peak_width += 1
@@ -317,31 +322,37 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         minima.extend([i for i in argrelmin(ydata_peaks, order=peak_width)[0] if i not in minima])
         minima.sort()
         peaks_found[peak_width] = {'peaks': row_peaks, 'minima': minima}
+        if row_peaks.size > 1:
+            peak_width_end += 1
         peak_width += 1
     # collapse identical orders
+    if debug:
+        sys.stderr.write('found: {}\n'.format(peaks_found))
     final_peaks = {}
-    for peak_width in xrange(peak_width_start, peak_width_end-1):
+    for peak_width in xrange(peak_width_start, peak_width_end):
+        if debug:
+            sys.stderr.write('checking {}\n'.format(peak_width))
         if peak_width not in peaks_found:
-            continue
-        if peak_width == len(peaks_found):
-            final_peaks[peak_width] = peaks_found[peak_width]
             continue
         smaller_peaks, smaller_minima = peaks_found[peak_width]['peaks'],peaks_found[peak_width]['minima']
         larger_peaks, larger_minima = peaks_found[peak_width+1]['peaks'],peaks_found[peak_width+1]['minima']
+        if debug:
+            sys.stderr.write('{}: {} ---- {}\n'.format(peak_width, smaller_peaks, larger_peaks))
         if set(smaller_peaks) == set(larger_peaks) and set(smaller_minima) ==  set(larger_minima):
             final_peaks[peak_width+1] = peaks_found[peak_width+1]
             if peak_width in final_peaks:
                 del final_peaks[peak_width]
         else:
             final_peaks[peak_width] = peaks_found[peak_width]
+            if peak_width == peak_width_end-1:
+                final_peaks[peak_width+1] = peaks_found[peak_width+1]
 
     cdef tuple args
     cdef dict opts
-    cdef list routines, best_fits
+    cdef list routines, results
     cdef str routine
     cdef object res
-    cdef int n, k
-    cdef float bic
+    cdef float bic, n, k, lowest_bic
     cdef float min_val
 
     fit_accuracy = []
@@ -352,6 +363,9 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
     if bigauss_fit:
         initial_bounds.extend([(min_spacing, peak_range)])
         # print(final_peaks)
+    lowest_bic = 9999.
+    if debug:
+        sys.stderr.write('final peaks: {}\n'.format(final_peaks))
     for peak_width, peak_info in final_peaks.items():
         row_peaks = peak_info['peaks']
         minima = peak_info['minima']
@@ -362,8 +376,6 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         fitted_peaks = []
         for peak_num, peak_index in enumerate(row_peaks):
             if peak_index in skip_peaks:
-                continue
-            if rt_peak and ydata_peaks[peak_index] < rt_peak*0.9:
                 continue
             next_peak = len(xdata)-1 if peak_index == row_peaks[-1] else row_peaks[peak_num+1]
             # if there is a peak within 1 point of this and it is taller, skip this one
@@ -425,8 +437,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
                 guess.extend([sum(bnds[0])/2, average, variance])
                 if bigauss_fit:
                     guess.extend([variance])
-        # if bigauss_fit:
-            # print(guess)
+
         if not guess:
             average = np.average(xdata, weights=ydata)
             variance = np.sqrt(np.average((xdata-average)**2, weights=ydata))
@@ -437,37 +448,39 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
                 guess.extend([variance])
 
         args = (xdata, ydata)
-        opts = {'maxiter': 1000}
+        opts = {'maxiter': 1000, 'eps': 1e-5}
         fit_func = bigauss_func if bigauss_fit else gauss_func
         routines = ['SLSQP', 'TNC', 'L-BFGS-B']
         routine = routines.pop(0)
         if len(bnds) == 0:
             bnds = deepcopy(initial_bounds)
-        res = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts)]
-        while not res[-1].success and routines:
+        results = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts)]
+        while not results[-1].success and routines:
             routine = routines.pop(0)
-            res.append(optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts))
+            results.append(optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts))
             # print routine, res[-1]
-        if res[-1].success:
-            res = res[-1]
+        if results[-1].success:
+            res = results[-1]
         else:
-            res = sorted(res, key=attrgetter('fun'))[0]
+            res = sorted(results, key=attrgetter('fun'))[0]
         n = len(xdata)
         k = len(res.x)
-        bic = n*np.log(res.fun/n)+k+np.log(n)
+        bic = n*np.log(res.fun/n)+k*np.log(n)
         res.bic = bic
-        # if res.x[0] < bnds[0][0]:
-        #     res.x[0] = bnds[0][0]
         if res.x[2] < min_spacing:
             res.x[2] = min_spacing
         if len(res.x) > 3 and res.x[3] < min_spacing:
             res.x[3] = min_spacing
-        fit_accuracy.append((peak_width, bic, res, xdata[fitted_peaks]))
-    # we want to maximize our BIC given our definition
-    best_fits = sorted(fit_accuracy, key=itemgetter(1,0), reverse=True)
-    # if bigauss_fit:
-    #     print(best_fits)
-    return best_fits[0][2].x, best_fits[0][2].fun
+        if bic < lowest_bic:
+            if debug:
+                sys.stderr.write('{} < {}'.format(bic, lowest_bic))
+            best_fit = np.copy(res.x)
+            best_rss = res.fun
+            lowest_bic = bic
+        if debug:
+            sys.stderr.write('{} - best: {}'.format(res, best_fit))
+
+    return best_fit, best_rss
 
 cdef tuple findPeak(np.ndarray[FLOAT_t, ndim=1] y, int srt):
     # check our SNR, if it's low, lessen our window

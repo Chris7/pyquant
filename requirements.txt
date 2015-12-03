@@ -5,3 +5,6 @@ cython
 lxml
 scikit-learn
 patsy
+nose
+coveralls
+tox
