@@ -6,7 +6,7 @@ from setuptools import find_packages
 os.chdir(os.path.normpath(os.path.join(os.path.abspath(__file__), os.pardir)))
 
 setup(
-    name='pyquant',
+    name='pyquant-ms',
     version='0.1.0',
     packages=find_packages(),
     scripts=['scripts/pyQuant'],
