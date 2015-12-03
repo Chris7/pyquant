@@ -14,7 +14,7 @@ class EColiTest(TestCase):
         self.out_dir = 'pq_tests'
         try:
             os.mkdir(self.out_dir)
-        except IOError:
+        except OSError:
             pass
         self.output = os.path.join(self.out_dir, 'pqtest')
         self.output_stats = os.path.join(self.out_dir, 'pqtest_stats')
