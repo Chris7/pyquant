@@ -640,8 +640,20 @@ class Worker(Process):
                             xdata = values.index.values.astype(float)
                             ydata = values.fillna(0).values.astype(float)
                             if sum(ydata>0) >= self.min_scans:
-                                peak_x = np.copy(xdata[merged_lb:merged_rb])
-                                peak_y = np.copy(ydata[merged_lb:merged_rb])
+                                # this step is to add in a term on the border if possible
+                                # otherwise, there are no penalties on the variance if it is
+                                # at the border since the data does not exist. We only add for lower values to avoid
+                                # including monster peaks we may be explicitly excluding above
+                                fit_lb = merged_lb
+                                fit_rb = merged_rb
+                                if fit_rb+1 < len(ydata) and ydata[fit_rb+1] <= ydata[fit_rb-1]:
+                                    fit_rb += 1
+                                if fit_lb != 0 and ydata[fit_lb] >= ydata[fit_lb-1]:
+                                    fit_lb -= 1
+                                if quant_label == 'Medium':
+                                    print(merged_lb, merged_rb, ydata)
+                                peak_x = np.copy(xdata[fit_lb:fit_rb])
+                                peak_y = np.copy(ydata[fit_lb:fit_rb])
                                 if peak_x.size <= 1 or sum(peak_y>0) < self.min_scans:
                                     continue
                                 peak_positive_y = peak_y>0
