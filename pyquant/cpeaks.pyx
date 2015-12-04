@@ -380,7 +380,8 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
     cdef dict opts
     cdef list routines, results
     cdef str routine
-    cdef object res
+    cdef object res, best_res
+    best_res = 0
     cdef float bic, n, k, lowest_bic
     cdef float min_val
 
@@ -501,10 +502,23 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             res.x[2] = min_spacing
         if len(res.x) > 3 and res.x[3] < min_spacing:
             res.x[3] = min_spacing
+        # does this data contain our rt peak?
+        res._contains_rt = False
+        if rt_peak != 0:
+            for i in xrange(1, len(res.x), 4):
+                mean = res.x[i]
+                lstd = res.x[i+1]
+                rstd = res.x[i+2]
+                if mean-lstd*4 < rt_peak < mean+rstd*4:
+                    res._contains_rt = True
+
         if bic < lowest_bic:
             if debug:
                 sys.stderr.write('{} < {}'.format(bic, lowest_bic))
+            if res._contains_rt == False and best_res != 0 and best_res._contains_rt == True:
+                    continue
             best_fit = np.copy(res.x)
+            best_res = res
             best_rss = res.fun
             lowest_bic = bic
         if debug:
