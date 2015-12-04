@@ -28,7 +28,7 @@ class EColiTest(TestCase):
         os.rmdir(self.out_dir)
 
     def test_pyquant(self):
-        com = [self.executable, '--search-file', self.search_file, '--scan-file', self.mzml, '-p', str(multiprocessing.cpu_count()), '-o', self.output, '--sample', '0.5']
+        com = [self.executable, '--search-file', self.search_file, '--scan-file', self.mzml, '-p', str(multiprocessing.cpu_count()), '-o', self.output]
         subprocess.call(com)
         pyquant = pd.read_table(self.output)
         label = 'Medium'

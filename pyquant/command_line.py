@@ -1648,7 +1648,7 @@ def run_pyquant():
             header_mapping.append(RESULT_ORDER[order_names.index(i)][0])
         except ValueError:
             header_mapping.append(False)
-    if False:
+    if calc_stats and six.PY2:
         from scipy import stats
         import pickle
         classifier = pickle.load(open(os.path.join(pq_dir, 'static', 'classifier.pickle'), 'rb'))
