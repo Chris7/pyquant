@@ -650,8 +650,6 @@ class Worker(Process):
                                     fit_rb += 1
                                 if fit_lb != 0 and ydata[fit_lb] >= ydata[fit_lb-1]:
                                     fit_lb -= 1
-                                if quant_label == 'Medium':
-                                    print(merged_lb, merged_rb, ydata)
                                 peak_x = np.copy(xdata[fit_lb:fit_rb])
                                 peak_y = np.copy(ydata[fit_lb:fit_rb])
                                 if peak_x.size <= 1 or sum(peak_y>0) < self.min_scans:
