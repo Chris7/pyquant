@@ -19,7 +19,7 @@ class EColiTest(TestCase):
             pass
         self.output = os.path.join(self.out_dir, 'pqtest')
         self.output_stats = os.path.join(self.out_dir, 'pqtest_stats')
-        self.r_std = 0.6
+        self.r_std = 0.5
         self.k_std = 0.7
 
     def tearDown(self):

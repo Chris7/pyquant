@@ -38,7 +38,7 @@ cpdef float gauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, nd
     cdef np.ndarray[FLOAT_t, ndim=1] data = gauss_ndim(xdata, guess)
     # absolute deviation as our distance metric. Empirically found to give better results than
     # residual sum of squares for this data.
-    cdef float residual = sum((data-ydata)**2)
+    cdef float residual = sum((ydata-data)**2)
     return residual
 
 cpdef np.ndarray[FLOAT_t, ndim=2] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
@@ -65,16 +65,16 @@ cpdef np.ndarray[FLOAT_t, ndim=2] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params
             amp_exp_term = amp*exp_term
             prefix = 2*amp_exp_term
             # jac[i-3] += sum(prefix*(amp-ly*exp_term))
-            jac[i-3] += sum(2*exp_term*(amp_exp_term-ly))
-            jac[i-2] += sum(2*amp*(lx-mu)*exp_term*(amp_exp_term-ly)/sigma1**2)
-            jac[i-1] += sum(2*amp*((lx-mu)**2)*exp_term*(amp_exp_term-ly)/sigma1**3)
+            jac[i-3] += sum(-2*exp_term*(ly-amp_exp_term))
+            jac[i-2] += sum((-2*amp*(lx-mu)*exp_term*(ly-amp_exp_term))/(sigma1**2))
+            jac[i-1] += sum((-2*amp*((lx-mu)**2)*exp_term*(ly-amp_exp_term))/(sigma1**3))
             exp_term = np.exp(-((rx-mu)**2)/(2*sigma2**2))
             amp_exp_term = amp*exp_term
             prefix = 2*amp_exp_term
             # There is NO right side contribution to the jacobian of the amplitude because rx is defined as
             # x>mu, therefore anything by the right side of the bigaussian function does not change the amplitude
-            jac[i-2] += sum(2*amp*(rx-mu)*exp_term*(amp_exp_term-ry)/sigma2**2)
-            jac[i] += sum(2*amp*((rx-mu)**2)*exp_term*(amp_exp_term-ry)/sigma2**3)
+            jac[i-2] += sum((-2*amp*(rx-mu)*exp_term*(ry-amp_exp_term))/sigma2**2)
+            jac[i] += sum((-2*amp*((rx-mu)**2)*exp_term*(ry-amp_exp_term))/(sigma2**3))
     return jac.transpose()
 
 cpdef np.ndarray[FLOAT_t, ndim=2] gauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
@@ -256,15 +256,17 @@ cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t,
             variance = 0.05
     if variance > xdata[peak_index]-peak_min or variance > peak_max-xdata[peak_index]:
         variance = xdata[peak_index]-peak_min
+    if variance < min_spacing:
+        variance = min_spacing
     cdef np.ndarray[FLOAT_t] guess = np.array([rel_peak, peak_loc, variance, variance])
     args = (xdata, ydata)
-    base_opts = {'maxiter': 1000, 'ftol': 1e-20}
+    base_opts = {'maxiter': 1000}
     routines = [('SLSQP', base_opts), ('TNC', base_opts), ('L-BFGS-B', base_opts)]
     routine, opts = routines.pop(0)
     if debug:
-        print guess, bnds
+        print('guess and bounds', guess, bnds)
     try:
-        results = [optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, tol=1e-20, jac=bigauss_jac)]
+        results = [optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, jac=bigauss_jac)]
     except ValueError:
         print 'fitting error'
         import traceback
@@ -274,9 +276,9 @@ cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t,
         print ydata.tolist()
         print bnds
         results = []
-    while routines and results[-1].success == False:
+    while routines:# and results[-1].success == False:
         routine, opts = routines.pop(0)
-        results.append(optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, tol=1e-20, jac=bigauss_jac))
+        results.append(optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, jac=bigauss_jac))
     # cdef int n = len(xdata)
     cdef float lowest = -1
     cdef np.ndarray[FLOAT_t] best
@@ -386,7 +388,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
     cdef float min_val
 
     fit_accuracy = []
-    min_spacing = min(np.diff(xdata))/10
+    min_spacing = min(np.diff(xdata))/2
     peak_range = xdata[-1]-xdata[0]
     # initial bound setup
     initial_bounds = [(0, 1.01), (xdata[0], xdata[-1]), (min_spacing, peak_range)]
@@ -485,6 +487,8 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         if len(bnds) == 0:
             bnds = deepcopy(initial_bounds)
         jacobian = bigauss_jac if bigauss_fit else gauss_jac
+        if debug:
+            print('guess and bnds', guess, bnds)
         results = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=jacobian)]
         while not results[-1].success and routines:
             routine = routines.pop(0)
@@ -509,10 +513,10 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
                 mean = res.x[i]
                 lstd = res.x[i+1]
                 rstd = res.x[i+2]
-                if mean-lstd*4 < rt_peak < mean+rstd*4:
+                if mean-lstd*2 < rt_peak < mean+rstd*2:
                     res._contains_rt = True
 
-        if bic < lowest_bic:
+        if bic < lowest_bic or (best_res._contains_rt == False and res._contains_rt == True):
             if debug:
                 sys.stderr.write('{} < {}'.format(bic, lowest_bic))
             if res._contains_rt == False and best_res != 0 and best_res._contains_rt == True:
