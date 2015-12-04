@@ -207,6 +207,10 @@ cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t,
         peak_index -= peak_left-1
     else:
         peak_index -= peak_left
+    if debug:
+        print('left is', peak_left, 'right is', peak_right)
+        print('x', xdata.tolist(), 'becomes', xdata[peak_left:peak_right].tolist())
+        print('y', ydata.tolist(), 'becomes', ydata[peak_left:peak_right].tolist())
     xdata = xdata[peak_left:peak_right]
     ydata = ydata[peak_left:peak_right]
     if ydata.sum() == 0:
@@ -241,7 +245,7 @@ cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t,
     if debug:
         print guess, bnds
     try:
-        results = [optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, tol=1e-20)]
+        results = [optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, tol=1e-20, jac=bigauss_jac)]
     except ValueError:
         print 'fitting error'
         import traceback
@@ -251,18 +255,22 @@ cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t,
         print ydata.tolist()
         print bnds
         results = []
-    while routines:
+    while routines and results[-1].success == False:
         routine, opts = routines.pop(0)
-        results.append(optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, tol=1e-20))
+        results.append(optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, tol=1e-20, jac=bigauss_jac))
     # cdef int n = len(xdata)
     cdef float lowest = -1
     cdef np.ndarray[FLOAT_t] best
+    if debug:
+        print('fitting results', results)
     best_fit = results[0]
     for i in results:
         if within_bounds(i.x, bnds):
             if lowest == -1 or i.fun < lowest:
                 best_fit = i
     best_fit.x[0]*=mval
+    if debug:
+        print('best fit', best_fit)
     # cdef int k = len(best.x)
     # cdef float bic = n*np.log(best.fun/n)+k+np.log(n)
     # best.bic = bic

@@ -614,8 +614,8 @@ class Worker(Process):
 
                     peak_index = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean'])
                     peak_location = merged_x[peak_index]
-                    merged_lb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean']-valid_peaks[0]['std']*2)
-                    merged_rb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean']+valid_peaks[0]['std2']*2)
+                    merged_lb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean']-valid_peaks[0]['std'])
+                    merged_rb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean']+valid_peaks[0]['std2'])
                     merged_rb = len(merged_x) if merged_rb == -1 else merged_rb+1
 
                     for row_num, (index, values) in enumerate(combined_data.iterrows()):
@@ -627,10 +627,11 @@ class Worker(Process):
                             peak_y = np.copy(ydata[merged_lb:merged_rb])
                             if peak_x.size <= 1 or sum(peak_y>0) < self.min_scans:
                                 continue
-                            # peak_positive_y = peak_y>0
-                            # nearest_positive_peak = peaks.find_nearest(peak_x[peak_positive_y], valid_peaks[0]['mean'])
-                            # peak_location = peaks.find_nearest_index(peak_x, nearest_positive_peak)
-                            fit, residual = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=np.argmax(peak_y))
+                            peak_positive_y = peak_y>0
+                            nearest_positive_peak = peaks.find_nearest(peak_x[peak_positive_y], peak_location)
+                            sub_peak_location = peaks.find_nearest_index(peak_x, nearest_positive_peak)
+                            sub_peak_index = sub_peak_location if peak_y[sub_peak_location] else np.argmax(peak_y)
+                            fit, residual = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=sub_peak_index)
                             if fit is None:
                                 continue
                             rt_means = fit[1::4]
@@ -1651,6 +1652,7 @@ def run_pyquant():
     if calc_stats and six.PY2:
         from scipy import stats
         import pickle
+        import numpy as np
         classifier = pickle.load(open(os.path.join(pq_dir, 'static', 'classifier.pickle'), 'rb'))
         data = data.replace('NA', np.nan)
         for silac_label1 in mass_labels.keys():
