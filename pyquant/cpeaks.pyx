@@ -38,7 +38,7 @@ cpdef float gauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, nd
     cdef np.ndarray[FLOAT_t, ndim=1] data = gauss_ndim(xdata, guess)
     # absolute deviation as our distance metric. Empirically found to give better results than
     # residual sum of squares for this data.
-    cdef float residual = sum(np.abs(ydata-data)**2)
+    cdef float residual = sum((data-ydata)**2)
     return residual
 
 cpdef np.ndarray[FLOAT_t, ndim=2] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
@@ -60,17 +60,19 @@ cpdef np.ndarray[FLOAT_t, ndim=2] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params
             lx = x[x<=mu]
             ly = y[x<=mu]
             rx = x[x>mu]
-            ry = x[x>mu]
-            exp_term = np.exp(-(lx-mu)**2/(2*sigma1**2))
+            ry = y[x>mu]
+            exp_term = np.exp(-((lx-mu)**2)/(2*sigma1**2))
             amp_exp_term = amp*exp_term
             prefix = 2*amp_exp_term
-            jac[i-3] += sum(prefix*(amp-ly*exp_term))
+            # jac[i-3] += sum(prefix*(amp-ly*exp_term))
+            jac[i-3] += sum(2*exp_term*(amp_exp_term-ly))
             jac[i-2] += sum(2*amp*(lx-mu)*exp_term*(amp_exp_term-ly)/sigma1**2)
             jac[i-1] += sum(2*amp*((lx-mu)**2)*exp_term*(amp_exp_term-ly)/sigma1**3)
-            exp_term = np.exp(-(rx-mu)**2/(2*sigma2**2))
+            exp_term = np.exp(-((rx-mu)**2)/(2*sigma2**2))
             amp_exp_term = amp*exp_term
             prefix = 2*amp_exp_term
-            jac[i-3] += sum(prefix*(amp-ry*exp_term))
+            # There is NO right side contribution to the jacobian of the amplitude because rx is defined as
+            # x>mu, therefore anything by the right side of the bigaussian function does not change the amplitude
             jac[i-2] += sum(2*amp*(rx-mu)*exp_term*(amp_exp_term-ry)/sigma2**2)
             jac[i] += sum(2*amp*((rx-mu)**2)*exp_term*(amp_exp_term-ry)/sigma2**3)
     return jac.transpose()
@@ -448,16 +450,16 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
                 guess.extend([variance])
 
         args = (xdata, ydata)
-        opts = {'maxiter': 1000, 'eps': 1e-5}
+        opts = {'maxiter': 1000}
         fit_func = bigauss_func if bigauss_fit else gauss_func
         routines = ['SLSQP', 'TNC', 'L-BFGS-B']
         routine = routines.pop(0)
         if len(bnds) == 0:
             bnds = deepcopy(initial_bounds)
-        results = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts)]
+        results = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=bigauss_jac)]
         while not results[-1].success and routines:
             routine = routines.pop(0)
-            results.append(optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts))
+            results.append(optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=bigauss_jac))
             # print routine, res[-1]
         if results[-1].success:
             res = results[-1]
