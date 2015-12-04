@@ -77,6 +77,25 @@ cpdef np.ndarray[FLOAT_t, ndim=2] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params
             jac[i] += sum(2*amp*((rx-mu)**2)*exp_term*(amp_exp_term-ry)/sigma2**3)
     return jac.transpose()
 
+cpdef np.ndarray[FLOAT_t, ndim=2] gauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
+    cdef np.ndarray[FLOAT_t, ndim=2] jac
+    cdef float amp, mu, sigma1
+    jac = np.zeros([len(params), 1])
+    for i in xrange(len(params)):
+        if i%3 == 0:
+            amp = params[i]
+        elif i%3 == 1:
+            mu = params[i]
+        elif i%3 == 2:
+            sigma = params[i]
+            exp_term = np.exp(-((x-mu)**2)/(2*sigma**2))
+            amp_exp_term = amp*exp_term
+            prefix = 2*amp_exp_term
+            jac[i-2] += sum(2*exp_term*(amp_exp_term-y))
+            jac[i-1] += sum(2*amp*(x-mu)*exp_term*(amp_exp_term-y)/sigma**2)
+            jac[i] += sum(2*amp*((x-mu)**2)*exp_term*(amp_exp_term-y)/sigma**3)
+    return jac.transpose()
+
 cdef np.ndarray[FLOAT_t, ndim=1] bigauss(np.ndarray[FLOAT_t, ndim=1] x, float amp, float mu, float stdl, float stdr):
     cdef float sigma1 = stdl/1.177
     cdef float sigma2 = stdr/1.177
@@ -286,7 +305,7 @@ cpdef basin_stepper(np.ndarray[FLOAT_t, ndim=1] args):
 cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata_original,
                          float min_dist=0, filter=False, bigauss_fit=False, rt_peak=0.0, mrm=False,
                          int max_peaks=4, debug=False):
-    cdef object fit_func
+    cdef object fit_func, jacobian
     cdef np.ndarray[long] row_peaks, smaller_peaks, larger_peaks
     cdef list minima, fit_accuracy, smaller_minima, larger_minima, guess, bnds
     cdef dict peaks_found, final_peaks, peak_info
@@ -464,10 +483,11 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         routine = routines.pop(0)
         if len(bnds) == 0:
             bnds = deepcopy(initial_bounds)
-        results = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=bigauss_jac)]
+        jacobian = bigauss_jac if bigauss_fit else gauss_jac
+        results = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=jacobian)]
         while not results[-1].success and routines:
             routine = routines.pop(0)
-            results.append(optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=bigauss_jac))
+            results.append(optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=jacobian))
             # print routine, res[-1]
         if results[-1].success:
             res = results[-1]
@@ -651,7 +671,6 @@ def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] yda
         if not fit:
             pass
         ret_dict = {'int': int_val if fit else 0, 'int2': int_val, 'bounds': (left, right), 'params': peak, 'error': sorted_peaks[0][1]}
-
     return ret_dict
 
 def find_nearest(np.ndarray[FLOAT_t, ndim=1] array, value):
