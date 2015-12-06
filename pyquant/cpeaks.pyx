@@ -353,8 +353,8 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         minima.extend([i for i in argrelmin(ydata_peaks, order=peak_width)[0] if i not in minima])
         minima.sort()
         peaks_found[peak_width] = {'peaks': row_peaks, 'minima': minima}
-        if row_peaks.size > 1:
-            peak_width_end += 1
+        # if row_peaks.size > 1:
+        #     peak_width_end += 1
         peak_width += 1
     # collapse identical orders
     if debug:
@@ -500,7 +500,9 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             res = sorted(results, key=attrgetter('fun'))[0]
         n = len(xdata)
         k = len(res.x)
-        bic = n*np.log(res.fun/n)+k*np.log(n)
+        # this is actually incorrect, but works better...
+        # bic = n*np.log(res.fun/n)+k+np.log(n)
+        bic = 2*k+2*np.log(res.fun/n)
         res.bic = bic
         if res.x[2] < min_spacing:
             res.x[2] = min_spacing
