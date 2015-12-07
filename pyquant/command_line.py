@@ -581,7 +581,7 @@ class Worker(Process):
                     while rt_attempts < 4 and not found_rt:
                         res, residual = peaks.findAllPeaks(merged_x, fitting_y, filter=True, bigauss_fit=True, rt_peak=start_rt, max_peaks=self.max_peaks)
                         rt_peak = peaks.bigauss_ndim(np.array([rt]), res)[0]
-                        found_rt = rt_peak > 0.02 or rt_peak*fitting_y.max() > 100000
+                        found_rt = rt_peak > 0.05# or rt_peak*fitting_y.max() > 100000
                         if not found_rt:
                             # if self.debug:
                             print('cannot find rt for', peptide, rt_peak)
@@ -631,8 +631,8 @@ class Worker(Process):
 
                         peak_index = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean'])
                         peak_location = merged_x[peak_index]
-                        merged_lb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean']-valid_peaks[0]['std'])
-                        merged_rb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean']+valid_peaks[0]['std2'])
+                        merged_lb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean']-valid_peaks[0]['std']*2)
+                        merged_rb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean']+valid_peaks[0]['std2']*2)
                         merged_rb = len(merged_x) if merged_rb == -1 else merged_rb+1
 
                         for row_num, (index, values) in enumerate(combined_data.iterrows()):
@@ -646,9 +646,9 @@ class Worker(Process):
                                 # including monster peaks we may be explicitly excluding above
                                 fit_lb = merged_lb
                                 fit_rb = merged_rb
-                                if fit_rb+1 < len(ydata) and ydata[fit_rb+1] <= ydata[fit_rb-1]:
+                                while fit_rb+1 < len(ydata) and ydata[fit_rb+1] <= ydata[fit_rb-1]:
                                     fit_rb += 1
-                                if fit_lb != 0 and ydata[fit_lb] >= ydata[fit_lb-1]:
+                                while fit_lb != 0 and ydata[fit_lb] >= ydata[fit_lb-1]:
                                     fit_lb -= 1
                                 peak_x = np.copy(xdata[fit_lb:fit_rb])
                                 peak_y = np.copy(ydata[fit_lb:fit_rb])
@@ -658,7 +658,7 @@ class Worker(Process):
                                 nearest_positive_peak = peaks.find_nearest(peak_x[peak_positive_y], peak_location)
                                 sub_peak_location = peaks.find_nearest_index(peak_x, nearest_positive_peak)
                                 sub_peak_index = sub_peak_location if peak_y[sub_peak_location] else np.argmax(peak_y)
-                                fit, residual = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=sub_peak_index)
+                                fit, residual = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=sub_peak_index, debug=self.debug)
                                 if fit is None:
                                     continue
                                 rt_means = fit[1::4]

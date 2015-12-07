@@ -264,6 +264,7 @@ cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t,
     base_opts = {'maxiter': 1000}
     routines = [('SLSQP', base_opts), ('TNC', base_opts), ('L-BFGS-B', base_opts)]
     routine, opts = routines.pop(0)
+
     if debug:
         print('guess and bounds', guess, bnds)
     try:
