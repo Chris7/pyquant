@@ -37,13 +37,13 @@ class EColiTest(TestCase):
         pyquant.loc[((pyquant['Peptide'].str.upper().str.count('K')==1) & (pyquant['Peptide'].str.upper().str.count('R')==0)),'Class'] = 'K'
         pyquant[pq_sel] = np.log2(pyquant[pq_sel]+0.000001)
         # the median is robust, we care about the standard deviation since changes to the backend can alter the peak width
-        r_mean, r_std = np.median(pyquant.loc[pyquant['Class'] == 'R', pq_sel]), np.std(pyquant.loc[pyquant['Class'] == 'R', pq_sel])
-        k_mean, k_std = np.median(pyquant.loc[pyquant['Class'] == 'K', pq_sel]), np.std(pyquant.loc[pyquant['Class'] == 'K', pq_sel])
+        r_std = np.std(pyquant.loc[pyquant['Class'] == 'R', pq_sel])
+        k_std = np.std(pyquant.loc[pyquant['Class'] == 'K', pq_sel])
         self.assertLess(r_std, self.r_std)
         self.assertLess(k_std, self.k_std)
         label = 'Heavy'
         pq_sel = '{}/Light'.format(label)
         pyquant[pq_sel] = np.log2(pyquant[pq_sel]+0.000001)
         # the median is robust, we care about the standard deviation since changes to the backend can alter the peak width
-        r_mean, r_stdh = np.median(pyquant.loc[pyquant['Class'] == 'R', pq_sel]), np.std(pyquant.loc[pyquant['Class'] == 'R', pq_sel])
-        k_mean, k_std = np.median(pyquant.loc[pyquant['Class'] == 'K', pq_sel]), np.std(pyquant.loc[pyquant['Class'] == 'K', pq_sel])
+        r_stdh = np.std(pyquant.loc[pyquant['Class'] == 'R', pq_sel])
+        k_stdh = np.std(pyquant.loc[pyquant['Class'] == 'K', pq_sel])

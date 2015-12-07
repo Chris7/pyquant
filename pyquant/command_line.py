@@ -659,7 +659,7 @@ class Worker(Process):
                                 sub_peak_location = peaks.find_nearest_index(peak_x, nearest_positive_peak)
                                 sub_peak_index = sub_peak_location if peak_y[sub_peak_location] else np.argmax(peak_y)
                                 # fit, residual = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=sub_peak_index, debug=self.debug)
-                                fit, residual = peaks.findAllPeaks(peak_x, peak_y, bigauss_fit=True, filter=True, rt_peak=nearest_positive_peak)
+                                fit, residual = peaks.findAllPeaks(xdata, ydata, bigauss_fit=True, filter=True, rt_peak=nearest_positive_peak)
                                 if fit is None:
                                     continue
                                 rt_means = fit[1::4]
@@ -719,8 +719,13 @@ class Worker(Process):
                                     # else:
                                     #     valid_peak = [j[0] for j in sorted([(i, i['amp']) for i in xic_peaks], key=operator.itemgetter(1), reverse=True)[:3]]
                                 else:
+                                    # if not to_remove:
+                                    #     xic_peaks = [xic_peaks[i] for i in to_keep]
+                                    # else:
                                     for i in reversed(to_remove):
                                         del xic_peaks[i]
+                                # if quant_label == 'Heavy':
+                                #     print(quant_label, index, to_remove,to_keep, xic_peaks)
                                 combined_peaks[quant_label][index] = xic_peaks# if valid_peak is None else [valid_peak]
 
                             if self.html:

@@ -518,11 +518,11 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
                 if mean-lstd*2 < rt_peak < mean+rstd*2:
                     res._contains_rt = True
 
-        if bic < lowest_bic or (best_res._contains_rt == False and res._contains_rt == True):
+        if bic < lowest_bic or (getattr(best_res, '_contains_rt', False) and res._contains_rt == True):
             if debug:
                 sys.stderr.write('{} < {}'.format(bic, lowest_bic))
             if res._contains_rt == False and best_res != 0 and best_res._contains_rt == True:
-                    continue
+                continue
             best_fit = np.copy(res.x)
             best_res = res
             best_rss = res.fun
