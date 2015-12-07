@@ -73,6 +73,7 @@ cpdef np.ndarray[FLOAT_t, ndim=2] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params
             prefix = 2*amp_exp_term
             # There is NO right side contribution to the jacobian of the amplitude because rx is defined as
             # x>mu, therefore anything by the right side of the bigaussian function does not change the amplitude
+            jac[i-3] += sum(-2*exp_term*(ry-amp_exp_term))
             jac[i-2] += sum((-2*amp*(rx-mu)*exp_term*(ry-amp_exp_term))/sigma2**2)
             jac[i] += sum((-2*amp*((rx-mu)**2)*exp_term*(ry-amp_exp_term))/(sigma2**3))
     return jac.transpose()
