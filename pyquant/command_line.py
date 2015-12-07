@@ -658,11 +658,12 @@ class Worker(Process):
                                 nearest_positive_peak = peaks.find_nearest(peak_x[peak_positive_y], peak_location)
                                 sub_peak_location = peaks.find_nearest_index(peak_x, nearest_positive_peak)
                                 sub_peak_index = sub_peak_location if peak_y[sub_peak_location] else np.argmax(peak_y)
-                                fit, residual = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=sub_peak_index, debug=self.debug)
+                                # fit, residual = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=sub_peak_index, debug=self.debug)
+                                fit, residual = peaks.findAllPeaks(peak_x, peak_y, bigauss_fit=True, filter=True, rt_peak=nearest_positive_peak)
                                 if fit is None:
                                     continue
                                 rt_means = fit[1::4]
-                                rt_amps = fit[::4]
+                                rt_amps = fit[::4]*peak_y.max()
                                 rt_std = fit[2::4]
                                 rt_std2 = fit[3::4]
                                 xic_peaks = []

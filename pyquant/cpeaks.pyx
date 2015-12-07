@@ -65,22 +65,22 @@ cpdef np.ndarray[FLOAT_t, ndim=2] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params
             amp_exp_term = amp*exp_term
             prefix = 2*amp_exp_term
             # jac[i-3] += sum(prefix*(amp-ly*exp_term))
-            jac[i-3] += sum(-2*exp_term*(ly-amp_exp_term))
-            jac[i-2] += sum((-2*amp*(lx-mu)*exp_term*(ly-amp_exp_term))/(sigma1**2))
-            jac[i-1] += sum((-2*amp*((lx-mu)**2)*exp_term*(ly-amp_exp_term))/(sigma1**3))
+            jac[i-3, 0] += sum(-2*exp_term*(ly-amp_exp_term))
+            jac[i-2, 0] += sum((-2*amp*(lx-mu)*exp_term*(ly-amp_exp_term))/(sigma1**2))
+            jac[i-1, 0] += sum((-2*amp*((lx-mu)**2)*exp_term*(ly-amp_exp_term))/(sigma1**3))
             exp_term = np.exp(-((rx-mu)**2)/(2*sigma2**2))
             amp_exp_term = amp*exp_term
             prefix = 2*amp_exp_term
             # There is NO right side contribution to the jacobian of the amplitude because rx is defined as
             # x>mu, therefore anything by the right side of the bigaussian function does not change the amplitude
-            jac[i-3] += sum(-2*exp_term*(ry-amp_exp_term))
-            jac[i-2] += sum((-2*amp*(rx-mu)*exp_term*(ry-amp_exp_term))/sigma2**2)
-            jac[i] += sum((-2*amp*((rx-mu)**2)*exp_term*(ry-amp_exp_term))/(sigma2**3))
+            jac[i-3, 0] += sum(-2*exp_term*(ry-amp_exp_term))
+            jac[i-2, 0] += sum((-2*amp*(rx-mu)*exp_term*(ry-amp_exp_term))/sigma2**2)
+            jac[i, 0] += sum((-2*amp*((rx-mu)**2)*exp_term*(ry-amp_exp_term))/(sigma2**3))
     return jac.transpose()
 
 cpdef np.ndarray[FLOAT_t, ndim=2] gauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
     cdef np.ndarray[FLOAT_t, ndim=2] jac
-    cdef float amp, mu, sigma1
+    cdef float amp, mu, sigma
     jac = np.zeros([len(params), 1])
     for i in xrange(len(params)):
         if i%3 == 0:
@@ -91,10 +91,9 @@ cpdef np.ndarray[FLOAT_t, ndim=2] gauss_jac(np.ndarray[FLOAT_t, ndim=1] params, 
             sigma = params[i]
             exp_term = np.exp(-((x-mu)**2)/(2*sigma**2))
             amp_exp_term = amp*exp_term
-            prefix = 2*amp_exp_term
-            jac[i-2] += sum(2*exp_term*(amp_exp_term-y))
-            jac[i-1] += sum(2*amp*(x-mu)*exp_term*(amp_exp_term-y)/sigma**2)
-            jac[i] += sum(2*amp*((x-mu)**2)*exp_term*(amp_exp_term-y)/sigma**3)
+            jac[i-2, 0] += sum(-2*exp_term*(y-amp_exp_term))
+            jac[i-1, 0] += sum(-2*amp*(x-mu)*exp_term*(y-amp_exp_term)/(sigma**2))
+            jac[i, 0] += sum(-2*amp*((x-mu)**2)*exp_term*(y-amp_exp_term)/(sigma**3))
     return jac.transpose()
 
 cdef np.ndarray[FLOAT_t, ndim=1] bigauss(np.ndarray[FLOAT_t, ndim=1] x, float amp, float mu, float stdl, float stdr):
@@ -314,7 +313,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
     cdef list minima, fit_accuracy, smaller_minima, larger_minima, guess, bnds
     cdef dict peaks_found, final_peaks, peak_info
     cdef int peak_width, last_peak, next_peak, left, right, i, v
-    cdef float peak_min, peak_max, rel_peak, average, variance, best_rss
+    cdef float peak_min, peak_max, rel_peak, average, variance, best_rss, rt_peak_val
     cdef np.ndarray[FLOAT_t] peak_values, peak_indices, ydata, ydata_peaks, best_fit
 
     ydata = ydata_original/ydata_original.max()
@@ -328,10 +327,10 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
     mapper = interp1d(xdata, ydata_peaks)
     if rt_peak != 0:
         try:
-            rt_peak = mapper(rt_peak)
+            rt_peak_val = mapper(rt_peak)
         except ValueError:
-            rt_peak = ydata_peaks[find_nearest_index(xdata, rt_peak)]
-        ydata_peaks = np.where(ydata_peaks > rt_peak*0.9, ydata_peaks, 0)
+            rt_peak_val = ydata_peaks[find_nearest_index(xdata, rt_peak)]
+        ydata_peaks = np.where(ydata_peaks > rt_peak_val*0.9, ydata_peaks, 0)
 
     peaks_found = {}
     peak_width_start = 2
@@ -413,13 +412,12 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
                 continue
             next_peak = len(xdata)-1 if peak_index == row_peaks[-1] else row_peaks[peak_num+1]
             # if there is a peak within 1 point of this and it is taller, skip this one
-            if rt_peak:
-                if peak_index != row_peaks[-1]:
-                    if xdata[next_peak]-xdata[peak_index] < 0.1 or next_peak-peak_index <= 2:
-                        if ydata_peaks[next_peak] < ydata_peaks[peak_index]:
-                            skip_peaks.add(next_peak)
-                        else:
-                            continue
+            if peak_index != row_peaks[-1]:
+                if xdata[next_peak]-xdata[peak_index] < 0.1 or next_peak-peak_index <= 2:
+                    if ydata_peaks[next_peak] < ydata_peaks[peak_index]:
+                        skip_peaks.add(next_peak)
+                    else:
+                        continue
             fitted_peaks.append(peak_index)
             peak_min, peak_max = xdata[peak_index]-0.2, xdata[peak_index]+0.2
 
