@@ -7,6 +7,9 @@ test:
 	coverage report
 
 testintegration:
-	nosetests -i integration* pyquant.tests
+	nosetests -i integration.* pyquant.tests
+
+testmanual:
+	nosetests -i .*manual.* pyquant.tests
 
 testall: test testintegration
