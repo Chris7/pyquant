@@ -16,7 +16,7 @@ import six
 if six.PY3:
     xrange = range
 
-from itertools import groupby
+from itertools import groupby, combinations
 from collections import OrderedDict, defaultdict
 from sklearn.covariance import EllipticEnvelope
 from multiprocessing import Process, Queue
@@ -103,7 +103,7 @@ class Worker(Process):
                  reader_in=None, reader_out=None, thread=None, fitting_run=False, msn_rt_map=None, reporter_mode=False,
                  spline=None, isotopologue_limit=-1, labels_needed=1, overlapping_mz=False, min_resolution=0, min_scans=3,
                  quant_msn_map=None, mrm=False, mrm_pair_info=None, peak_cutoff=0.05, ratio_cutoff=1, replicate=False,
-                 ref_label=None, max_peaks=4):
+                 ref_label=None, max_peaks=4, parser_args=None):
         super(Worker, self).__init__()
         self.precision = precision
         self.precursor_ppm = precursor_ppm
@@ -141,6 +141,7 @@ class Worker(Process):
         self.ratio_cutoff = 1
         self.ref_label = ref_label
         self.max_peaks = max_peaks
+        self.parser_args = parser_args
         if mrm:
             self.quant_mrm_map = {label: list(group) for label, group in groupby(self.quant_msn_map, key=operator.itemgetter(0))}
 
@@ -231,7 +232,7 @@ class Worker(Process):
                         #     common_peaks[indexer[0]][indexer[1]][indexer[2]]['std2'] = x2_std
                         # else:
                         #     to_delete.add(indexer)
-        # print to_delete
+        # print('\nreplacing outliers\n', common_peaks, to_delete, x1_inliers, x2_inliers)
         for i in sorted(set(to_delete), key=operator.itemgetter(0,1,2), reverse=True):
             del common_peaks[i[0]][i[1]][i[2]]
         return x1_mean
@@ -659,11 +660,12 @@ class Worker(Process):
                                 sub_peak_location = peaks.find_nearest_index(peak_x, nearest_positive_peak)
                                 sub_peak_index = sub_peak_location if peak_y[sub_peak_location] else np.argmax(peak_y)
                                 # fit, residual = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=sub_peak_index, debug=self.debug)
-                                fit, residual = peaks.findAllPeaks(xdata, ydata, bigauss_fit=True, filter=True, rt_peak=nearest_positive_peak)
+                                fit, residual = peaks.findAllPeaks(xdata, ydata, bigauss_fit=True, filter=True,
+                                                                   rt_peak=nearest_positive_peak, debug=self.debug)
                                 if fit is None:
                                     continue
                                 rt_means = fit[1::4]
-                                rt_amps = fit[::4]*peak_y.max()
+                                rt_amps = fit[::4]*ydata.max()
                                 rt_std = fit[2::4]
                                 rt_std2 = fit[3::4]
                                 xic_peaks = []
@@ -724,8 +726,10 @@ class Worker(Process):
                                     # else:
                                     for i in reversed(to_remove):
                                         del xic_peaks[i]
-                                # if quant_label == 'Heavy':
-                                #     print(quant_label, index, to_remove,to_keep, xic_peaks)
+                                if self.debug:
+                                    print(quant_label, index)
+                                    print(fit)
+                                    print(to_remove,to_keep, xic_peaks)
                                 combined_peaks[quant_label][index] = xic_peaks# if valid_peak is None else [valid_peak]
 
                             if self.html:
@@ -839,7 +843,35 @@ class Worker(Process):
                                     rt_base['data']['columns'].insert(i, ['{0} {1} fit'.format(quant_label, index)]+np.nan_to_num(peaks.bigauss_ndim(xdata, peak_params)).tolist())
                         del combined_peaks
                 write_html = True if self.ratio_cutoff == 0 else False
+
+                # # Some experimental code that tries to compare the XIC with the theoretical distribution
+                # # Currently disabled as it reduces the number of datapoints to infer SILAC ratios and results in poorer
+                # # comparisons -- though there might be merit to intensity based estimates with this.
+                if self.parser_args.theo_xic and self.mono and theo_dist is not None:
+                    # Compare the extracted XIC with the theoretical abundance of each isotope:
+                    # To do this, we take the residual of all combinations of isotopes
+                    for quant_label in quant_vals:
+                        isotopes = quant_vals[quant_label].keys()
+                        isotope_ints = {i: quant_vals[quant_label][i] for i in isotopes}
+                        isotope_residuals = []
+                        for num_of_isotopes in xrange(2, len(isotopes)+1):
+                            for combo in combinations(isotopes, num_of_isotopes):
+                                chosen_isotopes = np.array([isotope_ints[i] for i in combo])
+                                chosen_isotopes /= chosen_isotopes.max()
+                                chosen_dist = np.array([theo_dist[i] for i in combo])
+                                chosen_dist /= chosen_dist.max()
+                                res = sum((chosen_dist-chosen_isotopes)**2)
+                                isotope_residuals.append((res, combo))
+                        # this weird sorting is to put the favorable values as the lowest values
+                        if isotope_residuals:
+                            kept_keys = sorted(isotope_residuals, key=lambda x: (0 if x[0]<0.1 else 1, len(isotopes)-len(x[1]), x[0]))[0][1]
+                            # print(quant_label, kept_keys)
+                            for i in isotopes:
+                                if i not in kept_keys:
+                                    del quant_vals[quant_label][i]
+
                 for silac_label1 in data.keys():
+                    # TODO: check if peaks overlap before taking ratio
                     qv1 = quant_vals.get(silac_label1)
                     for silac_label2 in data.keys():
                         if self.ref_label is not None and str(silac_label2.lower()) != self.ref_label.lower():
@@ -1128,7 +1160,7 @@ def run_pyquant():
             if not peptides and (sample != 1.0 and random.random() > sample):
                 continue
             specId = scan.id
-            if args.scan and specId not in scans_to_select:
+            if scans_to_select and str(specId) not in scans_to_select:
                 continue
             fname = scan.file
             mass_key = (fname, specId, peptide)
@@ -1525,7 +1557,7 @@ def run_pyquant():
                             quant_msn_map=[i for i in msn_map if i[0] == msn_for_quant] if not args.mrm else msn_map,
                             overlapping_mz=overlapping_mz, min_resolution=args.min_resolution, min_scans=args.min_scans,
                             mrm_pair_info=mrm_pair_info, mrm=args.mrm, peak_cutoff=args.peak_cutoff, replicate=args.mva,
-                            ref_label=ref_label, max_peaks=args.max_peaks)
+                            ref_label=ref_label, max_peaks=args.max_peaks, parser_args=args)
             workers.append(worker)
             worker.start()
 
@@ -1750,6 +1782,7 @@ def run_pyquant():
 
                 try:
                     fit_data = data.loc[:, cols]
+                    # print(np.log2)
                     fit_data.loc[:,(label2_int, label1_int, label2_pint, label1_pint)] = np.log2(fit_data.loc[:,(label2_int, label1_int, label2_pint, label1_pint)])
                     from sklearn import preprocessing
                     from patsy import dmatrix
