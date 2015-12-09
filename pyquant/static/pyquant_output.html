@@ -26,6 +26,7 @@
                 margin-bottom: 0;
                 vertical-align: middle;
                 line-height: 8;
+                width: 80px;
             }
             .viewer-content {
                 overflow-x: scroll;
@@ -196,14 +197,13 @@
                           <a href="#"><i class="fa fa-gift fa-lg"></i> Plot Options <span class="arrow"></span></a>
                         </li>
                         <ul class="sub-menu collapse" id="plotinfo">
-                            <div class="form-group">
-                                <label for="exampleInputEmail1">Email address</label>
-                                <input type="email" class="form-control" id="exampleInputEmail1" placeholder="Email">
-                            </div>
-                            <li>
-                                <input class="plot-options" name="max-y" type="radio" value="max-all" />Set Y axis maximum to maximum value across all plots
-                                <input class="plot-options" name="max-y" type="radio" value="max-data" />Set Y axis maximum to maximum value in data
-                                <input class="plot-options" name="max-y" type="radio" value="fitted" checked />Set Y axis maximum to maximum fitted value in data
+                            <li class="form-group">
+                                <label for="plot-max-y">Plot MaxY Settings</label>
+                                <select id="plot-max-y" class="form-control plot-options" name="max-y">
+                                    <option value="max-all">Set Y axis maximum to maximum value across all plots</option>
+                                    <option value="max-data">Set Y axis maximum to maximum value in data</option>
+                                    <option value="fitted" selected>Set Y axis maximum to maximum fitted value in data</option>
+                                </select>
                             </li>
                         </ul>
 

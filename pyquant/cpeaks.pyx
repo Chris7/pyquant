@@ -1,4 +1,5 @@
 import numpy as np
+import sys
 from copy import deepcopy
 cimport numpy as np
 cimport cython
@@ -37,7 +38,7 @@ cpdef float gauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, nd
     cdef np.ndarray[FLOAT_t, ndim=1] data = gauss_ndim(xdata, guess)
     # absolute deviation as our distance metric. Empirically found to give better results than
     # residual sum of squares for this data.
-    cdef float residual = sum(np.abs(ydata-data)**2)
+    cdef float residual = sum((ydata-data)**2)
     return residual
 
 cpdef np.ndarray[FLOAT_t, ndim=2] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
@@ -59,19 +60,40 @@ cpdef np.ndarray[FLOAT_t, ndim=2] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params
             lx = x[x<=mu]
             ly = y[x<=mu]
             rx = x[x>mu]
-            ry = x[x>mu]
-            exp_term = np.exp(-(lx-mu)**2/(2*sigma1**2))
+            ry = y[x>mu]
+            exp_term = np.exp(-((lx-mu)**2)/(2*sigma1**2))
             amp_exp_term = amp*exp_term
             prefix = 2*amp_exp_term
-            jac[i-3] += sum(prefix*(amp-ly*exp_term))
-            jac[i-2] += sum(2*amp*(lx-mu)*exp_term*(amp_exp_term-ly)/sigma1**2)
-            jac[i-1] += sum(2*amp*((lx-mu)**2)*exp_term*(amp_exp_term-ly)/sigma1**3)
-            exp_term = np.exp(-(rx-mu)**2/(2*sigma2**2))
+            # jac[i-3] += sum(prefix*(amp-ly*exp_term))
+            jac[i-3, 0] += sum(-2*exp_term*(ly-amp_exp_term))
+            jac[i-2, 0] += sum((-2*amp*(lx-mu)*exp_term*(ly-amp_exp_term))/(sigma1**2))
+            jac[i-1, 0] += sum((-2*amp*((lx-mu)**2)*exp_term*(ly-amp_exp_term))/(sigma1**3))
+            exp_term = np.exp(-((rx-mu)**2)/(2*sigma2**2))
             amp_exp_term = amp*exp_term
             prefix = 2*amp_exp_term
-            jac[i-3] += sum(prefix*(amp-ry*exp_term))
-            jac[i-2] += sum(2*amp*(rx-mu)*exp_term*(amp_exp_term-ry)/sigma2**2)
-            jac[i] += sum(2*amp*((rx-mu)**2)*exp_term*(amp_exp_term-ry)/sigma2**3)
+            # There is NO right side contribution to the jacobian of the amplitude because rx is defined as
+            # x>mu, therefore anything by the right side of the bigaussian function does not change the amplitude
+            jac[i-3, 0] += sum(-2*exp_term*(ry-amp_exp_term))
+            jac[i-2, 0] += sum((-2*amp*(rx-mu)*exp_term*(ry-amp_exp_term))/sigma2**2)
+            jac[i, 0] += sum((-2*amp*((rx-mu)**2)*exp_term*(ry-amp_exp_term))/(sigma2**3))
+    return jac.transpose()
+
+cpdef np.ndarray[FLOAT_t, ndim=2] gauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
+    cdef np.ndarray[FLOAT_t, ndim=2] jac
+    cdef float amp, mu, sigma
+    jac = np.zeros([len(params), 1])
+    for i in xrange(len(params)):
+        if i%3 == 0:
+            amp = params[i]
+        elif i%3 == 1:
+            mu = params[i]
+        elif i%3 == 2:
+            sigma = params[i]
+            exp_term = np.exp(-((x-mu)**2)/(2*sigma**2))
+            amp_exp_term = amp*exp_term
+            jac[i-2, 0] += sum(-2*exp_term*(y-amp_exp_term))
+            jac[i-1, 0] += sum(-2*amp*(x-mu)*exp_term*(y-amp_exp_term)/(sigma**2))
+            jac[i, 0] += sum(-2*amp*((x-mu)**2)*exp_term*(y-amp_exp_term)/(sigma**3))
     return jac.transpose()
 
 cdef np.ndarray[FLOAT_t, ndim=1] bigauss(np.ndarray[FLOAT_t, ndim=1] x, float amp, float mu, float stdl, float stdr):
@@ -204,6 +226,10 @@ cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t,
         peak_index -= peak_left-1
     else:
         peak_index -= peak_left
+    if debug:
+        print('left is', peak_left, 'right is', peak_right)
+        print('x', xdata.tolist(), 'becomes', xdata[peak_left:peak_right].tolist())
+        print('y', ydata.tolist(), 'becomes', ydata[peak_left:peak_right].tolist())
     xdata = xdata[peak_left:peak_right]
     ydata = ydata[peak_left:peak_right]
     if ydata.sum() == 0:
@@ -230,15 +256,18 @@ cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t,
             variance = 0.05
     if variance > xdata[peak_index]-peak_min or variance > peak_max-xdata[peak_index]:
         variance = xdata[peak_index]-peak_min
+    if variance < min_spacing:
+        variance = min_spacing
     cdef np.ndarray[FLOAT_t] guess = np.array([rel_peak, peak_loc, variance, variance])
     args = (xdata, ydata)
-    base_opts = {'maxiter': 1000, 'ftol': 1e-20}
+    base_opts = {'maxiter': 1000}
     routines = [('SLSQP', base_opts), ('TNC', base_opts), ('L-BFGS-B', base_opts)]
     routine, opts = routines.pop(0)
+
     if debug:
-        print guess, bnds
+        print('guess and bounds', guess, bnds)
     try:
-        results = [optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, tol=1e-20)]
+        results = [optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, jac=bigauss_jac)]
     except ValueError:
         print 'fitting error'
         import traceback
@@ -248,18 +277,22 @@ cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t,
         print ydata.tolist()
         print bnds
         results = []
-    while routines:
+    while routines:# and results[-1].success == False:
         routine, opts = routines.pop(0)
-        results.append(optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, tol=1e-20))
+        results.append(optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, jac=bigauss_jac))
     # cdef int n = len(xdata)
     cdef float lowest = -1
     cdef np.ndarray[FLOAT_t] best
+    if debug:
+        print('fitting results', results)
     best_fit = results[0]
     for i in results:
         if within_bounds(i.x, bnds):
             if lowest == -1 or i.fun < lowest:
                 best_fit = i
     best_fit.x[0]*=mval
+    if debug:
+        print('best fit', best_fit)
     # cdef int k = len(best.x)
     # cdef float bic = n*np.log(best.fun/n)+k+np.log(n)
     # best.bic = bic
@@ -274,14 +307,14 @@ cpdef basin_stepper(np.ndarray[FLOAT_t, ndim=1] args):
 
 cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata_original,
                          float min_dist=0, filter=False, bigauss_fit=False, rt_peak=0.0, mrm=False,
-                         int max_peaks=4):
-    cdef object fit_func
+                         int max_peaks=4, debug=False):
+    cdef object fit_func, jacobian
     cdef np.ndarray[long] row_peaks, smaller_peaks, larger_peaks
     cdef list minima, fit_accuracy, smaller_minima, larger_minima, guess, bnds
     cdef dict peaks_found, final_peaks, peak_info
     cdef int peak_width, last_peak, next_peak, left, right, i, v
-    cdef float peak_min, peak_max, rel_peak, average, variance
-    cdef np.ndarray[FLOAT_t] peak_values, peak_indices, ydata, ydata_peaks
+    cdef float peak_min, peak_max, rel_peak, average, variance, best_rss, rt_peak_val
+    cdef np.ndarray[FLOAT_t] peak_values, peak_indices, ydata, ydata_peaks, best_fit
 
     ydata = ydata_original/ydata_original.max()
 
@@ -292,11 +325,13 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             ydata_peaks[ydata_peaks<0] = 0
     ydata_peaks[np.isnan(ydata_peaks)] = 0
     mapper = interp1d(xdata, ydata_peaks)
-    if rt_peak > 0:
+    if rt_peak != 0:
         try:
-            rt_peak = mapper(rt_peak)
+            rt_peak_val = mapper(rt_peak)
         except ValueError:
-            rt_peak = ydata_peaks[find_nearest_index(xdata, rt_peak)]
+            rt_peak_val = ydata_peaks[find_nearest_index(xdata, rt_peak)]
+        ydata_peaks = np.where(ydata_peaks > rt_peak_val*0.9, ydata_peaks, 0)
+
     peaks_found = {}
     peak_width_start = 2
     peak_width = peak_width_start
@@ -305,7 +340,9 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         row_peaks = argrelmax(ydata_peaks, order=peak_width)[0]
         if not row_peaks.size:
             row_peaks = np.array([np.argmax(ydata)], dtype=int)
-        if row_peaks.size > max_peaks:
+        if debug:
+            sys.stderr.write('{}'.format(row_peaks))
+        if max_peaks != -1 and row_peaks.size > max_peaks:
             # print(peak_width, 'too narrow')
             peak_width_end += 1
             peak_width += 1
@@ -317,41 +354,51 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         minima.extend([i for i in argrelmin(ydata_peaks, order=peak_width)[0] if i not in minima])
         minima.sort()
         peaks_found[peak_width] = {'peaks': row_peaks, 'minima': minima}
+        # if row_peaks.size > 1:
+        #     peak_width_end += 1
         peak_width += 1
     # collapse identical orders
+    if debug:
+        sys.stderr.write('found: {}\n'.format(peaks_found))
     final_peaks = {}
-    for peak_width in xrange(peak_width_start, peak_width_end-1):
+    for peak_width in xrange(peak_width_start, peak_width_end):
+        if debug:
+            sys.stderr.write('checking {}\n'.format(peak_width))
         if peak_width not in peaks_found:
-            continue
-        if peak_width == len(peaks_found):
-            final_peaks[peak_width] = peaks_found[peak_width]
             continue
         smaller_peaks, smaller_minima = peaks_found[peak_width]['peaks'],peaks_found[peak_width]['minima']
         larger_peaks, larger_minima = peaks_found[peak_width+1]['peaks'],peaks_found[peak_width+1]['minima']
+        if debug:
+            sys.stderr.write('{}: {} ---- {}\n'.format(peak_width, smaller_peaks, larger_peaks))
         if set(smaller_peaks) == set(larger_peaks) and set(smaller_minima) ==  set(larger_minima):
             final_peaks[peak_width+1] = peaks_found[peak_width+1]
             if peak_width in final_peaks:
                 del final_peaks[peak_width]
         else:
             final_peaks[peak_width] = peaks_found[peak_width]
+            if peak_width == peak_width_end-1:
+                final_peaks[peak_width+1] = peaks_found[peak_width+1]
 
     cdef tuple args
     cdef dict opts
-    cdef list routines, best_fits
+    cdef list routines, results
     cdef str routine
-    cdef object res
-    cdef int n, k
-    cdef float bic
+    cdef object res, best_res
+    best_res = 0
+    cdef float bic, n, k, lowest_bic
     cdef float min_val
 
     fit_accuracy = []
-    min_spacing = min(np.diff(xdata))/10
+    min_spacing = min(np.diff(xdata))/2
     peak_range = xdata[-1]-xdata[0]
     # initial bound setup
     initial_bounds = [(0, 1.01), (xdata[0], xdata[-1]), (min_spacing, peak_range)]
     if bigauss_fit:
         initial_bounds.extend([(min_spacing, peak_range)])
         # print(final_peaks)
+    lowest_bic = 9999.
+    if debug:
+        sys.stderr.write('final peaks: {}\n'.format(final_peaks))
     for peak_width, peak_info in final_peaks.items():
         row_peaks = peak_info['peaks']
         minima = peak_info['minima']
@@ -363,17 +410,14 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         for peak_num, peak_index in enumerate(row_peaks):
             if peak_index in skip_peaks:
                 continue
-            if rt_peak and ydata_peaks[peak_index] < rt_peak*0.9:
-                continue
             next_peak = len(xdata)-1 if peak_index == row_peaks[-1] else row_peaks[peak_num+1]
             # if there is a peak within 1 point of this and it is taller, skip this one
-            if rt_peak:
-                if peak_index != row_peaks[-1]:
-                    if xdata[next_peak]-xdata[peak_index] < 0.1 or next_peak-peak_index <= 2:
-                        if ydata_peaks[next_peak] < ydata_peaks[peak_index]:
-                            skip_peaks.add(next_peak)
-                        else:
-                            continue
+            if peak_index != row_peaks[-1]:
+                if xdata[next_peak]-xdata[peak_index] < 0.1 or next_peak-peak_index <= 2:
+                    if ydata_peaks[next_peak] < ydata_peaks[peak_index]:
+                        skip_peaks.add(next_peak)
+                    else:
+                        continue
             fitted_peaks.append(peak_index)
             peak_min, peak_max = xdata[peak_index]-0.2, xdata[peak_index]+0.2
 
@@ -425,8 +469,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
                 guess.extend([sum(bnds[0])/2, average, variance])
                 if bigauss_fit:
                     guess.extend([variance])
-        # if bigauss_fit:
-            # print(guess)
+
         if not guess:
             average = np.average(xdata, weights=ydata)
             variance = np.sqrt(np.average((xdata-average)**2, weights=ydata))
@@ -443,31 +486,51 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         routine = routines.pop(0)
         if len(bnds) == 0:
             bnds = deepcopy(initial_bounds)
-        res = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts)]
-        while not res[-1].success and routines:
+        jacobian = bigauss_jac if bigauss_fit else gauss_jac
+        if debug:
+            print('guess and bnds', guess, bnds)
+        results = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=jacobian)]
+        while not results[-1].success and routines:
             routine = routines.pop(0)
-            res.append(optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts))
+            results.append(optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=jacobian))
             # print routine, res[-1]
-        if res[-1].success:
-            res = res[-1]
+        if results[-1].success:
+            res = results[-1]
         else:
-            res = sorted(res, key=attrgetter('fun'))[0]
+            res = sorted(results, key=attrgetter('fun'))[0]
         n = len(xdata)
         k = len(res.x)
-        bic = n*np.log(res.fun/n)+k+np.log(n)
+        # this is actually incorrect, but works better...
+        # bic = n*np.log(res.fun/n)+k+np.log(n)
+        bic = 2*k+2*np.log(res.fun/n)
         res.bic = bic
-        # if res.x[0] < bnds[0][0]:
-        #     res.x[0] = bnds[0][0]
         if res.x[2] < min_spacing:
             res.x[2] = min_spacing
         if len(res.x) > 3 and res.x[3] < min_spacing:
             res.x[3] = min_spacing
-        fit_accuracy.append((peak_width, bic, res, xdata[fitted_peaks]))
-    # we want to maximize our BIC given our definition
-    best_fits = sorted(fit_accuracy, key=itemgetter(1,0), reverse=True)
-    # if bigauss_fit:
-    #     print(best_fits)
-    return best_fits[0][2].x, best_fits[0][2].fun
+        # does this data contain our rt peak?
+        res._contains_rt = False
+        if rt_peak != 0:
+            for i in xrange(1, len(res.x), 4):
+                mean = res.x[i]
+                lstd = res.x[i+1]
+                rstd = res.x[i+2]
+                if mean-lstd*2 < rt_peak < mean+rstd*2:
+                    res._contains_rt = True
+
+        if bic < lowest_bic or (getattr(best_res, '_contains_rt', False) and res._contains_rt == True):
+            if debug:
+                sys.stderr.write('{} < {}'.format(bic, lowest_bic))
+            if res._contains_rt == False and best_res != 0 and best_res._contains_rt == True:
+                continue
+            best_fit = np.copy(res.x)
+            best_res = res
+            best_rss = res.fun
+            lowest_bic = bic
+        if debug:
+            sys.stderr.write('{} - best: {}'.format(res, best_fit))
+
+    return best_fit, best_rss
 
 cdef tuple findPeak(np.ndarray[FLOAT_t, ndim=1] y, int srt):
     # check our SNR, if it's low, lessen our window
@@ -628,7 +691,6 @@ def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] yda
         if not fit:
             pass
         ret_dict = {'int': int_val if fit else 0, 'int2': int_val, 'bounds': (left, right), 'params': peak, 'error': sorted_peaks[0][1]}
-
     return ret_dict
 
 def find_nearest(np.ndarray[FLOAT_t, ndim=1] array, value):
@@ -753,18 +815,19 @@ def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] 
             # because the peak location may be between two readings, we use a very tolerance search here and enforce the ppm at the peak fitting stage.
             if displacement < tolerance*5:
                 valid_locations.append((displacement, current_loc, pos))
-            if valid_locations and displacement > last_displacement:
-                # pick the peak closest to our error tolerance
-                valid_locations2[isotope_index] = valid_locations
-                isotope_index += 1
-                tolerance = isotope_ppms.get(isotope_index, isotope_ppm)/1000000.0
-                offset = spacing*isotope_index
-                displacement = get_ppm(start+offset, current_loc)
-                valid_locations = []
-                if isotopologue_limit != -1 and (len(valid_locations2) >= isotopologue_limit):
+            if last_displacement is not None:
+                if valid_locations and displacement > last_displacement:
+                    # pick the peak closest to our error tolerance
+                    valid_locations2[isotope_index] = valid_locations
+                    isotope_index += 1
+                    tolerance = isotope_ppms.get(isotope_index, isotope_ppm)/1000000.0
+                    offset = spacing*isotope_index
+                    displacement = get_ppm(start+offset, current_loc)
+                    valid_locations = []
+                    if isotopologue_limit != -1 and (len(valid_locations2) >= isotopologue_limit):
+                        break
+                elif displacement > last_displacement and not valid_locations:
                     break
-            elif last_displacement is not None and displacement > last_displacement and not valid_locations:
-                break
             last_displacement = displacement
             pos += 1
 
