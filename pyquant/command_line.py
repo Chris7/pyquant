@@ -986,7 +986,7 @@ def run_pyquant():
     isotopologue_limit = args.isotopologue_limit
     isotopologue_limit = isotopologue_limit if isotopologue_limit else None
     labels_needed = args.labels_needed
-    overlapping_mz = args.overlapping_mz
+    overlapping_mz = args.overlapping_labels
     threads = args.p
     skip = args.skip
     out = args.out

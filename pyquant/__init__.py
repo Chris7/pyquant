@@ -57,7 +57,7 @@ quant_parameters = pyquant_parser.add_argument_group('Quantification Parameters'
 quant_parameters.add_argument('--quant-method', help='The process to use for quantification. Default: Integrate for ms1, sum for ms2+.', choices=['integrate', 'sum'], default=None)
 quant_parameters.add_argument('--reporter-ion', help='Indicates that reporter ions are being used. As such, we only analyze a single scan.', action='store_true')
 quant_parameters.add_argument('--isotopologue-limit', help='How many isotopologues to quantify', type=int, default=-1)
-quant_parameters.add_argument('--overlapping-mz', help='This declares the mz values will overlap. It is useful for data such as neucode, but not needed for only SILAC labeling.', action='store_true')
+quant_parameters.add_argument('--overlapping-labels', help='This declares the mz values of labels will overlap. It is useful for data such as neucode, but not needed for only SILAC labeling.', action='store_true')
 quant_parameters.add_argument('--labels-needed', help='How many labels need to be detected to quantify a scan (ie if you have a 2 state experiment and set this to 2, it will only quantify scans where both occur.', default=1, type=int)
 quant_parameters.add_argument('--min-scans', help='How many quantification scans are needed to quantify a scan.', default=1, type=int)
 quant_parameters.add_argument('--min-resolution', help='The minimal resolving power of a scan to consider for quantification. Useful for skipping low-res scans', default=0, type=float)
@@ -84,6 +84,7 @@ convenience_group = pyquant_parser.add_argument_group('Convenience Parameters')
 convenience_group.add_argument('--neucode', help='This will select parameters specific for neucode. Note: You still must define a labeling scheme.', action='store_true')
 convenience_group.add_argument('--isobaric-tags', help='This will select parameters specific for isobaric tag based labeling (TMT/iTRAQ).', action='store_true')
 convenience_group.add_argument('--ms3', help='This will select parameters specific for ms3 based quantification.', action='store_true')
+convenience_group.add_argument('--maxquant', help='This will select parameters specific for a MaxQuant evidence file.', action='store_true')
 #'This will select parameters specific for Selective/Multiple Reaction Monitoring (SRM/MRM).'
 convenience_group.add_argument('--mrm', help=argparse.SUPPRESS, action='store_true')
 
