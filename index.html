@@ -7,6 +7,28 @@
     <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen">
     <link rel="stylesheet" type="text/css" href="stylesheets/github-dark.css" media="screen">
     <link rel="stylesheet" type="text/css" href="stylesheets/print.css" media="print">
+    <link rel="stylesheet" type="text/css" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css" media="screen">
+    <style>
+      .carousel-control {
+        background: none !important;
+      }
+      .glyphicon-chevron-right, .glyphicon-chevron-left {
+        color: grey !important;
+      }
+
+      .left.carousel-control {
+        width: 30px;
+      }
+      .left.carousel-control > span {
+        margin-left: 0 !important;
+        left: 0;
+      }
+      .nav-tabs>li.active>a, .nav-tabs>li.active>a:focus {
+        border: none;
+        background: none;
+        font-weight: bold;
+      }
+    </style>
     <!--[if lt IE 9]>
     <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
     <![endif]-->
@@ -42,7 +64,10 @@
             <br>
             <h4>Windows Installation</h4>
               <p>
-                The difficult aspect of building on is setting up a compilation environment on windows. To ease this pain, we recommend using the <a href="https://www.continuum.io/why-anaconda">Anaconda python 2.7 distribution</a>.<br>
+                The difficult aspect of building on is setting up a compilation environment on windows. Those unfamiliar with compilation on Windows should seek
+                someone comfortable with doing so.<br>
+
+                To ease this pain, we recommend using the <a href="https://www.continuum.io/why-anaconda">Anaconda python 2.7 distribution</a>.<br>
                 The steps here should be followed to get a working Cython installation on Windows:<br>
                 <a href="https://github.com/cython/cython/wiki/InstallingOnWindows">https://github.com/cython/cython/wiki/InstallingOnWindows</a>
                 <br>
@@ -50,6 +75,26 @@
                 <ol style="padding-left: 30px;">
                   <li>conda install cython</li>
                   <li>Install <a href="http://www.microsoft.com/en-us/download/confirmation.aspx?id=44266">Microsoft Visual C++ Compiler for Python 2.7</a></li>
+                  <li>Patch C:\Anaconda2\Lib\distutils\msvc9compiler.py with the following code:
+<pre>
+def find_vcvarsall(version):
+    """Find the vcvarsall.bat file
+
+    At first it tries to find the productdir of VS 2008 in the registry. If
+    that fails it falls back to the VS90COMNTOOLS env var.
+    """
+    vsbase = VS_BASE % version
+    vcpath = os.environ['ProgramFiles']
+    vcpath = os.path.join(vcpath, 'Common Files', 'Microsoft',
+        'Visual C++ for Python', '9.0', 'vcvarsall.bat')
+    if os.path.isfile(vcpath): return vcpath
+    vcpath = os.path.join(os.environ['LOCALAPPDATA'], 'Programs', 'Common', 'Microsoft', 'Visual C++ for Python', '9.0', 'vcvarsall.bat')
+    if os.path.isfile(vcpath): return vcpath
+    ...
+</pre>
+
+                  </li>
+
                   <li>Install pyquant via pip install pyquant</li>
                 </ol>
             </p>
@@ -59,43 +104,213 @@
           <div>
             <p>Below are the parameters for use with PyQuant</p>
 
+            <div id="carousel-example-generic" class="carousel slide nav nav-tabs" data-interval="false">
+
+              <!-- Wrapper for slides -->
+              <div class="carousel-inner" role="listbox">
+                <div class="item active">
+                  <ul class="nav nav-tabs"  role="tablist">
+                      <li role="presentation" class="active in"><a href="#convenience-info" role="tab" data-toggle="tab">Convenience Parameters</a></li>
+                      <li role="presentation" class=""><a href="#output-info" role="tab" data-toggle="tab">Output Options</a></li>
+                      <li role="presentation" class=""><a href="#search-info" role="tab" data-toggle="tab">Search File Info</a></li>
+                  </ul>
+                </div>
+                <div class="item">
+                  <ul class="nav nav-tabs"  role="tablist">
+                    <li role="presentation" class=""><a href="#raw-info" role="tab" data-toggle="tab">Raw Data Parameters</a></li>
+                    <li role="presentation" class=""><a href="#peak-info" role="tab" data-toggle="tab">Peak Fitting Parameters</a></li>
+                    <li role="presentation" class=""><a href="#label-info" role="tab" data-toggle="tab">Labeling Information</a></li>
+                  </ul>
+                </div>
+                <div class="item">
+                  <ul class="nav nav-tabs item"  role="tablist">
+                    <li role="presentation" class=""><a href="#tsv-info" role="tab" data-toggle="tab">Tabbed File Input</a></li>
+                    <li role="presentation" class=""><a href="#mva-info" role="tab" data-toggle="tab">Missing Value Analysis</a></li>
+                    <li role="presentation" class=""><a href="#targeted-info" role="tab" data-toggle="tab">Targeted Ion Search</a></li>
+                  </ul>
+                </div>
+                <div class="item">
+                  <ul class="nav nav-tabs item"  role="tablist">
+                    <li role="presentation" class=""><a href="#quant-info" role="tab" data-toggle="tab">Quantification Parameters</a></li>
+                  </ul>
+                </div>
+              </div>
+
+              <!-- Controls -->
+              <a class="left carousel-control" href="#carousel-example-generic" role="button" data-slide="prev">
+                <span class="glyphicon glyphicon-chevron-left" aria-hidden="true"></span>
+                <span class="sr-only">Previous</span>
+              </a>
+              <a class="right carousel-control" href="#carousel-example-generic" role="button" data-slide="next">
+                <span class="glyphicon glyphicon-chevron-right" aria-hidden="true"></span>
+                <span class="sr-only">Next</span>
+              </a>
+            </div>
+
+            <div>
+              <div id="paramTabContent" class="tab-content">
+                <div role="tabpanel" class="tab-pane fade" id="raw-info">
+                  <dl class="dl-horizontal">
+                    <dt>scan-file</dt>
+                    <dd>The scan file(s) for the raw data. If not provided, assumed to be in the directory of the processed/tabbed/peaklist file.</dd>
+                    <dt>scan-file-dir</dt>
+                    <dd>The directory containing raw data.</dd>
+                    <dt>precision</dt>
+                    <dd>The precision for storing m/z values. Defaults to 6 decimal places.</dd>
+                    <dt>precursor-ppm</dt>
+                    <dd>The mass accuracy for the first monoisotopic peak in ppm.</dd>
+                    <dt>isotope-ppm</dt>
+                    <dd>The mass accuracy for the isotopic cluster.</dd>
+                    <dt>spread</dt>
+                    <dd>Assume there is spread of the isotopic label.</dd>
+                  </dl>
+                </div>
+                <div role="tabpanel" class="tab-pane fade" id="search-info">
+                  <dl class="dl-horizontal">
+                    <dt>search-file</dt>
+                    <dd>A search output or Proteome Discoverer msf file</dd>
+                    <dt>skip</dt>
+                    <dd>If true, skip scans with missing files in the mapping.</dd>
+                    <dt>peptide</dt>
+                    <dd>The peptide(s) to limit quantification to.</dd>
+                    <dt>peptide-file</dt>
+                    <dd>A file of peptide(s) to limit quantification to.</dd>
+                    <dt>scan</dt>
+                    <dd>The scan(s) to limit quantification to.</dd>
+                  </dl>
+
+                </div>
+                <div role="tabpanel" class="tab-pane fade" id="mva-info">
+                  <dl class="dl-horizontal">
+                    <dt>mva</dt>
+                    <dd>Analyze files in 'missing value' mode.</dd>
+                    <dt>rt-window</dt>
+                    <dd>The maximal deviation of a scan's retention time to be considered for analysis.</dd>
+                  </dl>
+
+                </div>
+                <div role="tabpanel" class="tab-pane fade" id="label-info">
+                  <dl class="dl-horizontal">
+                    <dt>label-scheme</dt>
+                    <dd>The file corresponding to the labeling scheme utilized.</dd>
+                    <dt>label-method</dt>
+                    <dd>Predefined labeling schemes to use.</dd>
+                    <dt>reference-label</dt>
+                    <dd>The label to use as a reference (by default all comparisons are taken).</dd>
+                  </dl>
+
+                </div>
+                <div role="tabpanel" class="tab-pane fade" id="tsv-info">
+                  <dl class="dl-horizontal">
+                    <dt>tsv</dt>
+                    <dd>A delimited file containing scan information.</dd>
+                    <dt>label</dt>
+                    <dd>The column indicating the label state of the peptide. If not found, entry assumed to be light variant.</dd>
+                    <dt>peptide-col</dt>
+                    <dd>The column indicating the peptide.</dd>
+                    <dt>rt</dt>
+                    <dd>The column indicating the retention time.</dd>
+                    <dt>mz</dt>
+                    <dd>The column indicating the MZ value of the precursor ion. This is not the MH+.</dd>
+                    <dt>scan-col</dt>
+                    <dd>The column indicating the scan corresponding to the ion.</dd>
+                    <dt>charge</dt>
+                    <dd>The column indicating the charge state of the ion.</dd>
+                    <dt>source</dt>
+                    <dd>The column indicating the raw file the scan is contained in.</dd>
+                  </dl>
+
+                </div>
+                <div role="tabpanel" class="tab-pane fade" id="targeted-info">
+                  <dl class="dl-horizontal">
+                    <dt>msn-id</dt>
+                    <dd>The ms level to search for the ion in. Default: 2 (ms2)</dd>
+                    <dt>msn-quant-from</dt>
+                    <dd>The ms level to quantify values from. i.e. if we are identifying an ion in ms2, we can quantify it in ms1 (or ms2). Default: msn value-1</dd>
+                    <dt>msn-ion</dt>
+                    <dd>M/Z values to search for in the scans.</dd>
+                    <dt>msn-peaklist</dt>
+                    <dd>A file containing peaks to search for in the scans.</dd>
+                    <dt>msn-ppm</dt>
+                    <dd>The error tolerance for identifying the ion(s).</dd>
+                  </dl>
+
+                </div>
+                <div role="tabpanel" class="tab-pane fade" id="quant-info">
+                  <dl class="dl-horizontal">
+                    <dt>quant-method</dt>
+                    <dd>The process to use for quantification. Default: Integrate for ms1, sum for ms2+.</dd>
+                    <dt>reporter-ion</dt>
+                    <dd>Indicates that reporter ions are being used. As such, we only analyze a single scan.</dd>
+                    <dt>isotopologue-limit</dt>
+                    <dd>How many isotopologues to quantify</dd>
+                    <dt>overlapping-mz</dt>
+                    <dd>This declares the mz values will overlap. It is useful for data such as neucode, but not needed for only SILAC labeling.</dd>
+                    <dt>labels-needed</dt>
+                    <dd>How many labels need to be detected to quantify a scan (ie if you have a 2 state experiment and set this to 2, it will only quantify scans where both occur.</dd>
+                    <dt>min-scans</dt>
+                    <dd>How many quantification scans are needed to quantify a scan.</dd>
+                    <dt>min-resolution</dt>
+                    <dd>The minimal resolving power of a scan to consider for quantification. Useful for skipping low-res scans</dd>
+                    <dt>no-mass-accuracy-correction</dt>
+                    <dd>Disables the mass accuracy correction.</dd>
+                  </dl>
+                </div>
+                <div role="tabpanel" class="tab-pane fade" id="peak-info">
+                  <dl class="dl-horizontal">
+                    <dt>peak-cutoff</dt>
+                    <dd>The threshold from the initial retention time a peak can fall by before being discarded</dd>
+                    <dt>max-peaks</dt>
+                    <dd>The maximal number of peaks to find in the XIC. A lower value is useful for noisy ms<sup>1</sup>.</dd>
+                  </dl>
+                </div>
+                <div role="tabpanel" class="tab-pane fade" id="output-info">
+                  <dl class="dl-horizontal">
+                    <dt>html</dt>
+                    <dd>Output a HTML summary.</dd>
+                    <dt>resume</dt>
+                    <dd>Will resume from the last run. Only works if not directing output to stdout.</dd>
+                    <dt>sample</dt>
+                    <dd>How much of the data to sample. Enter as a decimal (ie 1.0 for everything, 0.1 for 10%)</dd>
+                    <dt>disable-stats</dt>
+                    <dd>Disable confidence statistics on data.</dd>
+                    <dt>out</dt>
+                    <dd>The prefix for the file output</dd>
+                  </dl>
+                </div>
+                <div role="tabpanel" class="tab-pane fade active in" id="convenience-info">
+                   <dl class="dl-horizontal">
+                    <dt>neucode</dt>
+                    <dd>This will select parameters suitable for NeuCode data.</dd>
+                    <dt>isobaric-tags</dt>
+                    <dd>This will select parameters suitable for iTRAQ or TMT based data.</dd>
+                    <dt>ms3</dt>
+                    <dd>This will select parameters suitable for ms<sup>3</sup> based TMT quantification.</dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
           </div>
 
           <h3><a class="anchor" href="#usage" aria-hidden="true"><span class="octicon octicon-link"></span></a>Usage Instructions</h3>
           <div>
             <p>Here are some common cases and the commands used to run the given analysis</p>
-            <table>
-              <thead>
-              <th>Scenario</th>
-              <th>Command</th>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>SILAC</td>
-                  <td><code></code></td>
-                </tr>
-                <tr>
-                  <td>MS<sup>3</sup> based TMT</td>
-                  <td><code>--isobaric-tags --ms3 --label-method TMT10 --search-file xxx_.msf --reference-label 128N --precursor-ppm 10</code></td>
-                </tr>
-                <tr>
-                  <td>*</td>
-                  <td><code>--* --resolution 200000</code></td>
-                </tr>
-                <tr>
-                  <td></td>
-                  <td><code></code></td>
-                </tr>
-                <tr>
-                  <td></td>
-                  <td><code></code></td>
-                </tr>
-                <tr>
-                  <td></td>
-                  <td><code></code></td>
-                </tr>
-              </tbody>
-            </table>
+            <dl class="dl-horizontal">
+              <dt>SILAC</dt>
+              <dd><code></code></dd>
+            </dl>
+            <dl class="dl-horizontal">
+              <dt>MS<sup>3</sup> based TMT</dt>
+              <dd><code>--isobaric-tags --ms3 --label-method TMT10 --search-file xxx_.msf --reference-label 128N --precursor-ppm 10</code></dd>
+            </dl>
+            <dl class="dl-horizontal">
+              <dt>*</dt>
+              <dd><code>--* --resolution 200000</code></dd>
+            </dl>
+            <dl class="dl-horizontal">
+              <dt>iTRAQ</dt>
+              <dd><code>--label-method iTRAQ8 --isobaric-tags --search-file xxx_.msf --reference-label 114 --precursor-ppm 20</code></dd>
+            </dl>
 
           </div>
         </section>
@@ -108,5 +323,8 @@
         
       </div>
     </div>
+    <script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
+    <script src="javascripts/main.js"></script>
   </body>
 </html>
