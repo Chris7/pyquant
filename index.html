@@ -286,6 +286,8 @@ def find_vcvarsall(version):
                     <dd>This will select parameters suitable for iTRAQ or TMT based data.</dd>
                     <dt>ms3</dt>
                     <dd>This will select parameters suitable for ms<sup>3</sup> based TMT quantification.</dd>
+                    <dt>maxquant</dt>
+                    <dd>This will select parameters suitable for providing a MaxQuant 'evidence' txt file to PyQuant.</dd>
                   </dl>
                 </div>
               </div>
@@ -297,15 +299,15 @@ def find_vcvarsall(version):
             <p>Here are some common cases and the commands used to run the given analysis</p>
             <dl class="dl-horizontal">
               <dt>SILAC</dt>
-              <dd><code></code></dd>
+              <dd><code>--search-file xxx_evidence.txt --label-method K8R10 --maxquant</code></dd>
             </dl>
             <dl class="dl-horizontal">
               <dt>MS<sup>3</sup> based TMT</dt>
               <dd><code>--isobaric-tags --ms3 --label-method TMT10 --search-file xxx_.msf --reference-label 128N --precursor-ppm 10</code></dd>
             </dl>
             <dl class="dl-horizontal">
-              <dt>*</dt>
-              <dd><code>--* --resolution 200000</code></dd>
+              <dt>Neucode</dt>
+              <dd><code>--neucode --resolution 200000 --search-file xxx.pep.xml --label-scheme neucode.tsv --overlapping-labels</code></dd>
             </dl>
             <dl class="dl-horizontal">
               <dt>iTRAQ</dt>
