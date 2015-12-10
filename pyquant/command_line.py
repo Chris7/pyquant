@@ -1094,13 +1094,22 @@ def run_pyquant():
             scan_filemap[os.path.splitext(os.path.split(raw_file)[1])[0]] = os.path.abspath(raw_file)
 
     if input_found == 'tsv':
-        peptide_col = args.peptide_col
-        scan_col = args.scan_col
-        precursor_col = args.mz
-        rt_col = args.rt
-        charge_col = args.charge
-        file_col = args.source
-        label_col = args.label
+        if args.maxquant:
+            peptide_col = "Sequence"
+            scan_col = "MS/MS Scan Number"
+            precursor_col = "m/z"
+            rt_col = 'Retention time'
+            charge_col = 'Charge'
+            file_col = 'Raw file'
+            label_col = 'Labeling State'
+        else:
+            peptide_col = args.peptide_col
+            scan_col = args.scan_col
+            precursor_col = args.mz
+            rt_col = args.rt
+            charge_col = args.charge
+            file_col = args.source
+            label_col = args.label
         for index, row in enumerate(results.iterrows()):
             if index%1000 == 0:
                 sys.stderr.write('.')
@@ -1208,28 +1217,29 @@ def run_pyquant():
             del scan
 
     labels = mass_labels.keys()
-    for silac_label in labels:
-        RESULT_ORDER.extend([('{}_intensity'.format(silac_label), '{} Intensity'.format(silac_label)),
-                             ('{}_precursor'.format(silac_label), '{} Precursor'.format(silac_label)),
-                             ('{}_calibrated_precursor'.format(silac_label), '{} Calibrated Precursor'.format(silac_label)),
-                             ('{}_isotopes'.format(silac_label), '{} Isotopes Found'.format(silac_label)),
-                             ])
-        if not reporter_mode:
-            RESULT_ORDER.extend([('{}_rt_width'.format(silac_label), '{} RT Width'.format(silac_label)),
-                                 ('{}_mean_diff'.format(silac_label), '{} Mean Offset'.format(silac_label)),
-                                 ('{}_peak_intensity'.format(silac_label), '{} Peak Intensity'.format(silac_label)),
-                                 ('{}_snr'.format(silac_label), '{} SNR'.format(silac_label)),
-                                 ('{}_sbr'.format(silac_label), '{} SBR'.format(silac_label)),
-                                 ('{}_sdr'.format(silac_label), '{} Density'.format(silac_label)),
-                                 ('{}_residual'.format(silac_label), '{} Residual'.format(silac_label)),
-                                ])
-        for silac_label2 in labels:
-            if silac_label != silac_label2 and (ref_label is None or ref_label.lower() == silac_label2.lower()):
-                RESULT_ORDER.extend([('{}_{}_ratio'.format(silac_label, silac_label2), '{}/{}'.format(silac_label, silac_label2)),
-                                     ])
-                if calc_stats:
-                    RESULT_ORDER.extend([('{}_{}_confidence'.format(silac_label, silac_label2), '{}/{} Confidence'.format(silac_label, silac_label2)),
+    if labels:
+        for silac_label in labels:
+            RESULT_ORDER.extend([('{}_intensity'.format(silac_label), '{} Intensity'.format(silac_label)),
+                                 ('{}_precursor'.format(silac_label), '{} Precursor'.format(silac_label)),
+                                 ('{}_calibrated_precursor'.format(silac_label), '{} Calibrated Precursor'.format(silac_label)),
+                                 ('{}_isotopes'.format(silac_label), '{} Isotopes Found'.format(silac_label)),
+                                 ])
+            if not reporter_mode:
+                RESULT_ORDER.extend([('{}_rt_width'.format(silac_label), '{} RT Width'.format(silac_label)),
+                                     ('{}_mean_diff'.format(silac_label), '{} Mean Offset'.format(silac_label)),
+                                     ('{}_peak_intensity'.format(silac_label), '{} Peak Intensity'.format(silac_label)),
+                                     ('{}_snr'.format(silac_label), '{} SNR'.format(silac_label)),
+                                     ('{}_sbr'.format(silac_label), '{} SBR'.format(silac_label)),
+                                     ('{}_sdr'.format(silac_label), '{} Density'.format(silac_label)),
+                                     ('{}_residual'.format(silac_label), '{} Residual'.format(silac_label)),
+                                    ])
+            for silac_label2 in labels:
+                if silac_label != silac_label2 and (ref_label is None or ref_label.lower() == silac_label2.lower()):
+                    RESULT_ORDER.extend([('{}_{}_ratio'.format(silac_label, silac_label2), '{}/{}'.format(silac_label, silac_label2)),
                                          ])
+                    if calc_stats:
+                        RESULT_ORDER.extend([('{}_{}_confidence'.format(silac_label, silac_label2), '{}/{} Confidence'.format(silac_label, silac_label2)),
+                                             ])
 
     if scan_filemap and raw_data_only:
         # determine if we want to do ms1 ion detection, ms2 ion detection, all ms2 of each file

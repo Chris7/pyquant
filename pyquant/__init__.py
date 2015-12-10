@@ -39,10 +39,10 @@ label_group.add_argument('--reference-label', help='The label to use as a refere
 tsv_group = pyquant_parser.add_argument_group('Tabbed File Input')
 tsv_group.add_argument('--tsv', help='A delimited file containing scan information.', type=argparse.FileType('r'))
 tsv_group.add_argument('--label', help='The column indicating the label state of the peptide. If not found, entry assumed to be light variant.', default='Labeling State')
-tsv_group.add_argument('--peptide-col', help='The column indicating the peptide.', default='Sequence')
+tsv_group.add_argument('--peptide-col', help='The column indicating the peptide.', default='Peptide')
 tsv_group.add_argument('--rt', help='The column indicating the retention time.', default='Retention time')
-tsv_group.add_argument('--mz', help='The column indicating the MZ value of the precursor ion. This is not the MH+.', default='m/z')
-tsv_group.add_argument('--scan-col', help='The column indicating the scan corresponding to the ion.', default='MS/MS Scan Number')
+tsv_group.add_argument('--mz', help='The column indicating the MZ value of the precursor ion. This is not the MH+.', default='Light Precursor')
+tsv_group.add_argument('--scan-col', help='The column indicating the scan corresponding to the ion.', default='MS2 Spectrum ID')
 tsv_group.add_argument('--charge', help='The column indicating the charge state of the ion.', default='Charge')
 tsv_group.add_argument('--source', help='The column indicating the raw file the scan is contained in.', default='Raw file')
 
