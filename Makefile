@@ -4,7 +4,7 @@ testenv:
 
 test:
 	nosetests --with-coverage --cover-erase --cover-package=pyquant pyquant.tests
-	coverage report
+	coverage report --omit=pyquant/tests*
 
 testintegration:
 	nosetests -i integration.* pyquant.tests

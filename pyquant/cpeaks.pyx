@@ -94,6 +94,7 @@ cpdef np.ndarray[FLOAT_t, ndim=2] gauss_jac(np.ndarray[FLOAT_t, ndim=1] params, 
             jac[i-2, 0] += sum(-2*exp_term*(y-amp_exp_term))
             jac[i-1, 0] += sum(-2*amp*(x-mu)*exp_term*(y-amp_exp_term)/(sigma**2))
             jac[i, 0] += sum(-2*amp*((x-mu)**2)*exp_term*(y-amp_exp_term)/(sigma**3))
+    # print(params, jac)
     return jac.transpose()
 
 cdef np.ndarray[FLOAT_t, ndim=1] bigauss(np.ndarray[FLOAT_t, ndim=1] x, float amp, float mu, float stdl, float stdr):
@@ -310,11 +311,13 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
                          int max_peaks=4, debug=False):
     cdef object fit_func, jacobian
     cdef np.ndarray[long] row_peaks, smaller_peaks, larger_peaks
+    cdef np.ndarray[long] minima_array
     cdef list minima, fit_accuracy, smaller_minima, larger_minima, guess, bnds
     cdef dict peaks_found, final_peaks, peak_info
-    cdef int peak_width, last_peak, next_peak, left, right, i, v
-    cdef float peak_min, peak_max, rel_peak, average, variance, best_rss, rt_peak_val
+    cdef int peak_width, last_peak, next_peak, left, right, i, v, minima_index, left_stop, right_stop, right_stop_index
+    cdef float peak_min, peak_max, rel_peak, average, variance, best_rss, rt_peak_val, minima_value
     cdef np.ndarray[FLOAT_t] peak_values, peak_indices, ydata, ydata_peaks, best_fit
+
 
     ydata = ydata_original/ydata_original.max()
 
@@ -331,6 +334,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         except ValueError:
             rt_peak_val = ydata_peaks[find_nearest_index(xdata, rt_peak)]
         ydata_peaks = np.where(ydata_peaks > rt_peak_val*0.9, ydata_peaks, 0)
+    ydata_peaks /= ydata_peaks.max()
 
     peaks_found = {}
     peak_width_start = 2
@@ -401,7 +405,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         sys.stderr.write('final peaks: {}\n'.format(final_peaks))
     for peak_width, peak_info in final_peaks.items():
         row_peaks = peak_info['peaks']
-        minima = peak_info['minima']
+        minima_array = np.array(peak_info['minima'])
         guess = []
         bnds = []
         last_peak = -1
@@ -410,7 +414,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         for peak_num, peak_index in enumerate(row_peaks):
             if peak_index in skip_peaks:
                 continue
-            next_peak = len(xdata)-1 if peak_index == row_peaks[-1] else row_peaks[peak_num+1]
+            next_peak = len(xdata) if peak_index == row_peaks[-1] else row_peaks[peak_num+1]
             # if there is a peak within 1 point of this and it is taller, skip this one
             if peak_index != row_peaks[-1]:
                 if xdata[next_peak]-xdata[peak_index] < 0.1 or next_peak-peak_index <= 2:
@@ -423,27 +427,32 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
 
             peak_min = xdata[0] if peak_min < xdata[0] else peak_min
             peak_max = xdata[-1] if peak_max > xdata[-1] else peak_max
-            rel_peak = ydata_peaks[peak_index]/sum(ydata_peaks[row_peaks])
+            rel_peak = ydata_peaks[peak_index]
             bnds.extend([(rel_peak, 1.01), (peak_min, peak_max), (min_spacing, peak_range)])
             if bigauss_fit:
                 bnds.extend([(min_spacing, peak_range)])
             # find the points around it to estimate the std of the peak
-            left = 0
-            for i,v in enumerate(minima):
-                if v >= peak_index:
-                    if i != 0:
-                        left = minima[i-1]
+            left = np.searchsorted(minima_array, peak_index)-1
+            left_stop = np.searchsorted(minima_array, last_peak) if last_peak != -1 else -1
+            for i in xrange(left, left_stop, -1):
+                minima_index = minima_array[i]
+                minima_value = ydata_peaks[minima_index]
+                if minima_value > rel_peak or minima_value < rel_peak*0.1 or ydata_peaks[minima_index-1]*0.9>minima_value:
                     break
-                left = v
-            if last_peak != -1 and left < last_peak:
-                left = last_peak
+                left = minima_index
             last_peak = peak_index
-            right = len(xdata)
-            for right in minima:
-                if right > peak_index or right >= next_peak:
-                    if right < len(xdata) and right != next_peak:
-                        right += 1
+            right = np.searchsorted(minima_array, peak_index)+1
+            right_stop = np.searchsorted(minima_array, next_peak)
+            for i in xrange(right, right_stop):
+                minima_index = minima_array[i]
+                minima_value = ydata_peaks[minima_index]
+                if minima_value > rel_peak or minima_value < rel_peak*0.1 or (minima_index+1 < ydata_peaks.size and ydata_peaks[minima_index+1]*0.9>minima_value):
                     break
+                right = minima_index
+            if right >= minima_array[-1]:
+                right = minima_array[-1]
+            elif right_stop <= right:
+                right = minima_array[right]
             if right > next_peak:
                 right = next_peak
             if right < peak_index:
@@ -511,10 +520,13 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         # does this data contain our rt peak?
         res._contains_rt = False
         if rt_peak != 0:
-            for i in xrange(1, len(res.x), 4):
+            for i in xrange(1, res.x.size, 4 if bigauss_fit else 3):
                 mean = res.x[i]
                 lstd = res.x[i+1]
-                rstd = res.x[i+2]
+                if bigauss_fit:
+                    rstd = res.x[i+2]
+                else:
+                    rstd = lstd
                 if mean-lstd*2 < rt_peak < mean+rstd*2:
                     res._contains_rt = True
 
