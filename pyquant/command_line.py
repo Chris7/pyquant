@@ -1319,13 +1319,17 @@ def run_pyquant():
 
     skip_map = set([])
     if resume:
-        with open('{}.tmp'.format(out.name), 'rb') as temp_file:
-            for index, entry in enumerate(temp_file):
-                info = json.loads(entry)['res_list']
-                # key is filename, peptide, charge, target scan id, modifications
-                key = tuple(map(str, (info[0], info[1], info[3], info[5], info[2])))
-                skip_map.add(key)
-        temp_file = open('{}.tmp'.format(out.name), 'ab')
+        resume_name = '{}.tmp'.format(out.name)
+        if os.path.exists(resume_name):
+            with open(resume_name, 'rb') as temp_file:
+                for index, entry in enumerate(temp_file):
+                    info = json.loads(entry)['res_list']
+                    # key is filename, peptide, charge, target scan id, modifications
+                    key = tuple(map(str, (info[0], info[1], info[3], info[5], info[2])))
+                    skip_map.add(key)
+            temp_file = open(resume_name, 'ab')
+        else:
+            temp_file = open(resume_name, 'wb')
     else:
         temp_file = open('{}.tmp'.format(out.name), 'wb')
 

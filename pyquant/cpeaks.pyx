@@ -452,7 +452,10 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             if right >= minima_array[-1]:
                 right = minima_array[-1]
             elif right_stop <= right:
-                right = minima_array[right]
+                if right < minima_array.size:
+                    right = minima_array[right]
+                else:
+                    right = -1
             if right > next_peak:
                 right = next_peak
             if right < peak_index:
