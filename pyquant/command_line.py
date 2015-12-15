@@ -1797,7 +1797,7 @@ def run_pyquant():
                 try:
                     fit_data = data.loc[:, cols]
                     # print(np.log2)
-                    fit_data.loc[:,(label2_int, label1_int, label2_pint, label1_pint)] = np.log2(fit_data.loc[:,(label2_int, label1_int, label2_pint, label1_pint)])
+                    fit_data.loc[:,(label2_int, label1_int, label2_pint, label1_pint)] = np.log2(fit_data.loc[:,(label2_int, label1_int, label2_pint, label1_pint)].astype(float))
                     from sklearn import preprocessing
                     from patsy import dmatrix
                     fit_data = fit_data.replace([np.inf, -np.inf], np.nan)
