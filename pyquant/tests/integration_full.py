@@ -10,8 +10,8 @@ import subprocess
 class EColiTest(TestCase):
     def setUp(self):
         self.executable = os.path.abspath(os.path.join(__file__, '..', '..', '..', 'scripts', 'pyQuant'))
-        self.search_file = "/media/chris/data/Dropbox/Manuscripts/SILAC Fix/EColi/PD/SILAC 1_2_4.msf"
-        self.mzml =  "/media/chris/data/Dropbox/Manuscripts/SILAC Fix/EColi/Chris_Ecoli_1-2-4.mzML"
+        self.search_file = os.path.join(__file__, 'data', 'SILAC_1_2_4.msf')
+        self.mzml =  os.path.join(__file__, 'data', 'Chris_Ecoli_1-2-4.mzML')
         self.out_dir = 'pq_tests'
         try:
             os.mkdir(self.out_dir)
