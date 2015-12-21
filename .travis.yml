@@ -19,6 +19,7 @@ before_install:
   - tar -zxvf git-lfs-linux-amd64-1.1.0.tar.gz
   - cd git-lfs-1.1.0
   - sudo bash install.sh
+  - cd ..
   - git lfs pull
 install:
   - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION atlas numpy scipy nose pandas statsmodels lxml
