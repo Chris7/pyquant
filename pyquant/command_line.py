@@ -38,6 +38,24 @@ from pythomics.proteomics.parsers import GuessIterator
 from pythomics.proteomics import config
 from . import peaks
 
+# def line_profiler(view=None, extra_view=None):
+#     import line_profiler
+#
+#     def wrapper(view):
+#         def wrapped(*args, **kwargs):
+#             prof = line_profiler.LineProfiler()
+#             prof.add_function(view)
+#             if extra_view:
+#                 [prof.add_function(v) for v in extra_view]
+#             with prof:
+#                 resp = view(*args, **kwargs)
+#             prof.print_stats()
+#             return resp
+#         return wrapped
+#     if view:
+#         return wrapper(view)
+#     return wrapper
+
 description = """
 This will quantify labeled peaks (such as SILAC) in ms1 spectra. It relies solely on the distance between peaks,
  which can correct for errors due to amino acid conversions.
@@ -55,15 +73,16 @@ class Reader(Process):
         self.outgoing = outgoing
         self.scan_dict = {}
         self.access_times = {}
-        self.raw = raw_file
+        self.raw_path = raw_file
         self.spline = spline
 
     def run(self):
+        raw = GuessIterator(self.raw_path, full=True, store=False)
         for scan_request in iter(self.incoming.get, None):
             thread, scan_id, mz_start, mz_end = scan_request
             d = self.scan_dict.get(scan_id)
             if not d:
-                scan = self.raw.getScan(scan_id)
+                scan = raw.getScan(scan_id)
                 if scan is not None:
                     scan_vals = np.array(scan.scans)
                     if self.spline:
@@ -157,6 +176,7 @@ class Worker(Process):
         slope, intercept, r_value, p_value, std_err = linregress(xrange(len(data)),data)
         return np.abs(slope) < 0.2 if self.mono else np.abs(slope) < 0.1
 
+    # @line_profiler
     def replaceOutliers(self, common_peaks, combined_data):
         x = []
         y = []
@@ -982,6 +1002,8 @@ def find_scan(msn_map, current_scan):
 
 def run_pyquant():
     from . import pyquant_parser
+    # for some reason this is being undefined in windows
+    import numpy as np
     args = pyquant_parser.parse_args()
     isotopologue_limit = args.isotopologue_limit
     isotopologue_limit = isotopologue_limit if isotopologue_limit else None
@@ -1430,7 +1452,7 @@ def run_pyquant():
             else:
                 spline = None
 
-        reader = Reader(reader_in, reader_outs, raw_file=raw, spline=spline)
+        reader = Reader(reader_in, reader_outs, raw_file=filepath, spline=spline)
         reader.start()
         rep_map = defaultdict(set)
         if ion_search or args.mva:

@@ -12,7 +12,7 @@ from operator import itemgetter, attrgetter
 from collections import OrderedDict
 from pythomics.proteomics.config import NEUTRON
 
-cdef int within_bounds(np.ndarray[FLOAT_t, ndim=1] res, list bnds):
+cdef int within_bounds(np.ndarray[FLOAT_t, ndim=1] res, np.ndarray[FLOAT_t, ndim=2] bnds):
     for i,j in zip(res, bnds):
         if j[0] is not None and i < j[0]:
             return 0
@@ -45,8 +45,9 @@ cpdef np.ndarray[FLOAT_t, ndim=2] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params
     cdef np.ndarray[FLOAT_t, ndim=2] jac
     cdef np.ndarray[FLOAT_t, ndim=1] lx, ly, rx, ry, a_jac, mu_jac, s1_jac, s2_jac
     cdef float amp, mu, stdl, stdr, sigma1, sigma2
-    jac = np.zeros([len(params), 1])
-    for i in xrange(len(params)):
+    cdef int i
+    jac = np.zeros((params.shape[0], 1))
+    for i in xrange(params.shape[0]):
         if i%4 == 0:
             amp = params[i]
         elif i%4 == 1:
@@ -142,6 +143,7 @@ cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.nda
     cdef float peak_loc = xdata[peak_index]
     cdef int peak_left, peak_right
     cdef float peak_min, peak_max, average, variance
+    cdef np.ndarray[FLOAT_t, ndim=1] bnds
 
     ydata /= ydata.max()
     peak_left, peak_right = findPeak(convolve(ydata, kaiser(10, 14), mode='same'), peak_index)
@@ -162,7 +164,7 @@ cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.nda
         lb = min_spacing*5
     if rb < min_spacing:
         rb = min_spacing*5
-    bnds = [(rel_peak*0.75, 1.01) if rel_peak > 0 else (0.0, 1.0), (xdata[0], xdata[-1]), (min_spacing, lb), (min_spacing, rb)]
+    bnds = np.array([(rel_peak*0.75, 1.01) if rel_peak > 0 else (0.0, 1.0), (xdata[0], xdata[-1]), (min_spacing, lb), (min_spacing, rb)])
     #print bnds, xdata, peak_loc
     average = np.average(xdata, weights=ydata)
     variance = np.sqrt(np.average((xdata-average)**2, weights=ydata))
@@ -200,6 +202,7 @@ cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.nda
     cdef float lowest = -1
     cdef np.ndarray[FLOAT_t] best
     best = results[0].x
+
     for i in results:
         if within_bounds(i.x, bnds):
             if lowest == -1 or i.fun < lowest:
@@ -216,6 +219,8 @@ cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t,
     cdef int peak_left, peak_right
     cdef np.ndarray[FLOAT_t, ndim=1] conv_y
     cdef float peak_min, peak_max, average, variance
+    cdef np.ndarray[FLOAT_t, ndim=1] bnds
+
     mval = ydata.max()
     conv_y = gaussian_filter1d(convolve(ydata, kaiser(10, 14), mode='same'), 3, mode='constant')
     rel_peak = conv_y[peak_index]/conv_y.max()
@@ -242,7 +247,7 @@ cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t,
         lb = min_spacing*5
     if rb < min_spacing:
         rb = min_spacing*5
-    bnds = [(rel_peak*0.75, 1.01) if rel_peak > 0 else (0.0, 1.0), (xdata[0], xdata[-1]), (min_spacing, lb), (min_spacing, rb)]
+    bnds = np.array([(rel_peak*0.75, 1.01) if rel_peak > 0 else (0.0, 1.0), (xdata[0], xdata[-1]), (min_spacing, lb), (min_spacing, rb)])
     #print bnds, xdata, peak_loc
     average = np.average(xdata, weights=ydata)
     variance = np.sqrt(np.average((xdata-average)**2, weights=ydata))
@@ -306,17 +311,18 @@ cpdef basin_stepper(np.ndarray[FLOAT_t, ndim=1] args):
     args[::4] += 0.05
     return args
 
+@cython.boundscheck(False)
 cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata_original,
                          float min_dist=0, filter=False, bigauss_fit=False, rt_peak=0.0, mrm=False,
                          int max_peaks=4, debug=False):
     cdef object fit_func, jacobian
-    cdef np.ndarray[long] row_peaks, smaller_peaks, larger_peaks
-    cdef np.ndarray[long] minima_array
+    cdef np.ndarray[long, ndim=1] row_peaks, smaller_peaks, larger_peaks
+    cdef np.ndarray[long, ndim=1] minima_array
     cdef list minima, fit_accuracy, smaller_minima, larger_minima, guess, bnds
     cdef dict peaks_found, final_peaks, peak_info
     cdef int peak_width, last_peak, next_peak, left, right, i, v, minima_index, left_stop, right_stop, right_stop_index
     cdef float peak_min, peak_max, rel_peak, average, variance, best_rss, rt_peak_val, minima_value
-    cdef np.ndarray[FLOAT_t] peak_values, peak_indices, ydata, ydata_peaks, best_fit
+    cdef np.ndarray[FLOAT_t, ndim=1] peak_values, peak_indices, ydata, ydata_peaks, best_fit
 
 
     ydata = ydata_original/ydata_original.max()
@@ -341,7 +347,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
     peak_width = peak_width_start
     peak_width_end = 4
     while peak_width <= peak_width_end:
-        row_peaks = argrelmax(ydata_peaks, order=peak_width)[0]
+        row_peaks = np.array(argrelmax(ydata_peaks, order=peak_width)[0], dtype=int)
         if not row_peaks.size:
             row_peaks = np.array([np.argmax(ydata)], dtype=int)
         if debug:
