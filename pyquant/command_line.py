@@ -153,7 +153,7 @@ class Worker(Process):
         self.min_resolution = min_resolution
         self.min_scans = min_scans
         self.quant_msn_map = quant_msn_map
-        self.mrm = mrm
+        self.mrm = mrm and parser_args.msn_quant_from == 2
         self.mrm_pair_info = mrm_pair_info
         self.peak_cutoff = peak_cutoff
         self.replicate = replicate
@@ -260,7 +260,11 @@ class Worker(Process):
     def convertScan(self, scan):
         import numpy as np
         scan_vals = scan['vals']
-        res = pd.Series(scan_vals[:, 1].astype(np.uint64), index=np.round(scan_vals[:, 0], self.precision), name=int(scan['title']) if self.mrm else scan['rt'], dtype='uint64')
+        if self.mrm:
+            scan_rt = scan['rt'] if scan['rt'] else int(scan['title'])
+        else:
+            scan_rt = scan['rt']
+        res = pd.Series(scan_vals[:, 1].astype(np.uint64), index=np.round(scan_vals[:, 0], self.precision), name=scan_rt, dtype='uint64')
         del scan_vals
         # due to precision, we have multiple m/z values at the same place. We can eliminate this by grouping them and summing them.
         # Summation is the correct choice here because we are combining values of a precision higher than we care about.
@@ -373,7 +377,7 @@ class Worker(Process):
             while True:
                 if len(finished) == len(precursors.keys()) and delta != -1:
                     break
-                map_to_search = self.quant_mrm_map[mass] if self.mrm else self.quant_msn_map
+                map_to_search = self.quant_mrm_map[mass] if (self.mrm and self.parser_args.msn_quant_from == 2) else self.quant_msn_map
                 if current_scan is None:
                     current_scan = initial_scan
                 else:
@@ -381,12 +385,13 @@ class Worker(Process):
                         current_scan = scans_to_quant.pop()
                     elif scans_to_quant is None:
                         current_scan = find_prior_scan(map_to_search, current_scan) if delta == -1 else find_next_scan(map_to_search, current_scan)
+                # print('scan to get is', current_scan)
                 found = set([])
                 if current_scan is not None:
                     if current_scan in scans_to_skip:
                         continue
                     else:
-                        df = self.getScan(current_scan, start=None if self.mrm else precursor-5, end=None if self.mrm else precursor+highest_shift)
+                        df = self.getScan(current_scan, start=None if (self.mrm and self.parser_args.msn_quant_from == 2) else precursor-5, end=None if self.mrm else precursor+highest_shift)
                         # check if it's a low res scan, if so skip it
                         if self.min_resolution and df is not None:
                             scan_resolution = np.average(df.index[1:]/np.array([df.index[i]-df.index[i-1] for i in xrange(1,len(df))]))
@@ -398,12 +403,12 @@ class Worker(Process):
                         labels_found = set([])
                         xdata = df.index.values.astype(float)
                         ydata = df.fillna(0).values.astype(float)
-                        iterator = precursors.items() if not self.mrm else [(mrm_label, 0)]
+                        iterator = precursors.items() if not (self.mrm and self.parser_args.msn_quant_from == 2) else [(mrm_label, 0)]
                         for precursor_label, precursor_shift in iterator:
                             if precursor_label in finished:
                                 continue
                             selected = {}
-                            if self.mrm:
+                            if self.mrm and self.parser_args.msn_quant_from == 2:
                                 labels_found.add(precursor_label)
                                 for i,j in zip(xdata, ydata):
                                     selected[i] = j
@@ -428,6 +433,7 @@ class Worker(Process):
                                                               isotope_ppms=self.isotope_ppms if self.fitting_run else None, quant_method=self.quant_method,
                                                               theo_dist=theo_dist if self.mono or precursor_shift == 0.0 else None, label=precursor_label, skip_isotopes=finished_isotopes[precursor_label],
                                                               last_precursor=last_precursors[delta].get(precursor_label, measured_precursor), isotopologue_limit=self.isotopologue_limit)
+                                # print('envelope is', envelope)
                                 if not envelope['envelope']:
                                 #    finished.add(precursor_label)
                                     continue
@@ -481,7 +487,7 @@ class Worker(Process):
                                     if i[0] == df.name:
                                         del isotopes_chosen[i]
                         del df
-
+                # print('data found', found, 'cs', current_scan)
                 if not found or (np.abs(ms_index) > 7 and self.flat_slope(combined_data, delta)):
                     not_found += 1
                     # the 25 check is in case we're in something crazy. We should already have the elution profile of the ion
@@ -494,8 +500,9 @@ class Worker(Process):
                             finished = set([])
                             finished_isotopes = {i: set([]) for i in precursors.keys()}
                             ms_index = 0
+                            # print('proceeding with', current_scan)
                         else:
-                            if self.mrm:
+                            if self.mrm and self.parser_args.msn_quant_from == 2:
                                 if mrm_info is not None and mrm_labels:
                                     mrm_label = mrm_labels.pop() if mrm_info is not None else 'Light'
                                     mass = mass if mrm_info is None else mrm_info[mrm_label]
@@ -606,6 +613,7 @@ class Worker(Process):
                         if not found_rt:
                             # if self.debug:
                             print('cannot find rt for', peptide, rt_peak)
+                            print(rt, res, merged_x[0], fitting_y[0])
                             # destroy our peaks, keep searching
                             res[::4] = res[::4]*fitting_y.max()
                             fitting_y -= peaks.bigauss_ndim(merged_x, res)
@@ -1395,8 +1403,9 @@ def run_pyquant():
         spline = None
 
         scan_info_map = defaultdict(dict)
-
         for index, scan in enumerate(raw):
+            if sample < random.random():
+                continue
             if index % 100 == 0:
                 sys.stderr.write('.')
             if scan is None:
@@ -1638,8 +1647,8 @@ def run_pyquant():
                     scan_info = scan_info_map[scanId]
                     scan_to_quant = scan_info['parent']
                     try:
-                        scan_to_quant_ms = scan_info[scan_to_quant]['msn']
-                        while scan_to_quant and scan_to_quant != msn_for_quant:
+                        scan_to_quant_ms = scan_info_map[scan_to_quant]['msn']
+                        while scan_to_quant and scan_to_quant_ms != msn_for_quant:
                             scan_info = scan_info_map[scanId]
                             scan_to_quant = scan_info['parent']
                             scan_to_quant_ms = scan_info[scan_to_quant]['msn']
