@@ -1306,7 +1306,6 @@ def run_pyquant():
         out.write(six.b('{0}\n'.format('\t'.join(headers))))
 
     if html:
-
         def table_rows(html_list, res=None):
             # each item is a string like a\tb\tc
             if html_list:
@@ -1496,16 +1495,15 @@ def run_pyquant():
                                 # see if we can figure out the charge state
                                 charge_states = []
                                 for i in xrange(1,5):
-                                    to_add = True
+                                    charge_peaks_found = 0
                                     peak_height = 0
                                     for j in xrange(1,3):
-                                        next_peak = ion+peaks.NEUTRON/float(i)*j
+                                        next_peak = ion+peaks.NEUTRON/float(i)*float(j)
                                         closest_mz = peaks.find_nearest_index(scan_mzs, next_peak)
-                                        if peaks.get_ppm(next_peak, scan_mzs[closest_mz]) > isotope_ppm*1.5:
-                                            to_add = False
-                                        peak_height += mz_vals[closest_mz]
-                                    if to_add:
-                                        charge_states.append((i, peak_height))
+                                        if peaks.get_ppm(next_peak, scan_mzs[closest_mz]) < isotope_ppm*1.5:
+                                            charge_peaks_found += 1
+                                            peak_height += mz_vals[closest_mz]
+                                    charge_states.append((charge_peaks_found, i, peak_height))
                                 # print int(ion_dict['charge']), charge_states
                                 # print int(ion_dict['charge']), charge_states
                                 if args.mva and int(ion_dict['charge']) not in [i[0] for i in charge_states]:
@@ -1513,7 +1511,7 @@ def run_pyquant():
                                 elif args.mva:
                                     charge_to_use = ion_dict['charge']
                                 else:
-                                    charge_to_use = sorted(charge_states, key=operator.itemgetter(1), reverse=True)[0][0] if charge_states else 1
+                                    charge_to_use = sorted(charge_states, key=operator.itemgetter(0, 2), reverse=True)[0][1] if charge_states else 1
                                 if args.mva:
                                     rep_key = (ion_dict['scan_info']['id_scan']['rt'], ion_dict['scan_info']['id_scan']['mass'], charge_to_use)
                                     rep_map[rep_key].add(rt)
@@ -1542,6 +1540,8 @@ def run_pyquant():
                             added.add(key)
                             if args.mva:
                                 replicate_search_list[(d['id_scan']['rt'], ion_dict['ion'])].append((spectra_to_quant, d))
+                            else:
+                                ion_search_list.append((spectra_to_quant, d))
                             # print 'adding', ion, nearest_mz, d
                     else:
                         # we are identifying the ion in a particular scan, and quantifying a preceeding scan
