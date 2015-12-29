@@ -1,34 +1,25 @@
 __author__ = 'chris'
+import os
 from unittest import TestCase
 import pandas as pd
 import multiprocessing
-import os
 import numpy as np
 import subprocess
 
+from .mixins import FileMixins
+from . import config
 
-class EColiTest(TestCase):
+
+class EColiTest(FileMixins, TestCase):
     def setUp(self):
-        self.executable = os.path.abspath(os.path.join(__file__, '..', '..', '..', 'scripts', 'pyQuant'))
-        self.search_file = os.path.join(__file__, 'data', 'SILAC_1_2_4.msf')
-        self.mzml =  os.path.join(__file__, 'data', 'Chris_Ecoli_1-2-4.mzML')
-        self.out_dir = 'pq_tests'
-        try:
-            os.mkdir(self.out_dir)
-        except OSError:
-            pass
-        self.output = os.path.join(self.out_dir, 'pqtest')
-        self.output_stats = os.path.join(self.out_dir, 'pqtest_stats')
+        super(EColiTest, self).setUp()
+        self.output = os.path.join(self.out_dir, 'pqtest2')
+        self.output_stats = '{}_stats'.format(self.output)
         self.r_std = 0.5
         self.k_std = 0.7
 
-    def tearDown(self):
-        os.remove(self.output)
-        os.remove(self.output_stats)
-        os.rmdir(self.out_dir)
-
     def test_pyquant(self):
-        com = [self.executable, '--search-file', self.search_file, '--scan-file', self.mzml, '-p', str(multiprocessing.cpu_count()), '-o', self.output]
+        com = [self.executable, '--search-file', self.search_file, '--scan-file', self.mzml, '-p', str(config.CORES), '-o', self.output, '--html', '--precursor-ppm', '2']
         subprocess.call(com)
         pyquant = pd.read_table(self.output)
         label = 'Medium'

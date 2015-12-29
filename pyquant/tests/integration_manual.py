@@ -2,9 +2,12 @@ __author__ = 'chris'
 from unittest import TestCase
 import pandas as pd
 import multiprocessing
-import os
 import numpy as np
+import os
 import subprocess
+
+from .mixins import FileMixins
+from . import config
 
 
 peps_scans = (
@@ -64,20 +67,14 @@ peps_scans = (
 )
 
 
-class EColiManualTest(TestCase):
+class EColiManualTest(FileMixins, TestCase):
     def setUp(self):
-        self.executable = os.path.abspath(os.path.join(__file__, '..', '..', '..', 'scripts', 'pyQuant'))
-        self.search_file = os.path.join(__file__, 'data', 'SILAC_1_2_4.msf')
-        self.mzml =  os.path.join(__file__, 'data', 'Chris_Ecoli_1-2-4.mzML')
-        self.out_dir = 'pq_manual'
-        try:
-            os.mkdir(self.out_dir)
-        except OSError:
-            pass
+        super(EColiManualTest, self).setUp()
         self.output = os.path.join(self.out_dir, 'pqtest_manual')
+        self.output_stats = os.path.join(self.out_dir, 'pqtest_stats')
 
     def test_pyquant_manual(self):
-        com = [self.executable, '--search-file', self.search_file, '--scan-file', self.mzml, '--html', '-p', str(multiprocessing.cpu_count()), '-o', self.output]
+        com = [self.executable, '--search-file', self.search_file, '--scan-file', self.mzml, '--html', '-p', str(config.CORES), '-o', self.output]
         peptides, scans = zip(*map(lambda x: x.split(' '),peps_scans))
         com.extend(['--peptide'])
         com.extend(peptides)

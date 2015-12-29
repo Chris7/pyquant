@@ -646,7 +646,7 @@ cdef inline int within_tolerance(list array, float tolerance):
     return 0
 
 def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, pos, ppm=None,
-              start_mz=None, calc_start_mz=None, isotope=0, spacing=0, quant_method='integrate'):
+              start_mz=None, calc_start_mz=None, isotope=0, spacing=0, quant_method='integrate', fragment_scan=False):
     """
         We want to find the boundaries of our isotopic clusters. Basically we search until our gradient
         changes, this assumes it's roughly gaussian and there is little interference
@@ -660,6 +660,7 @@ def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] yda
     cdef int right, left
     cdef np.ndarray[FLOAT_t, ndim=1] new_x, new_y, lr
     if len(df_empty_index) == 0:
+        # I don't think this code is ever executed and can't imagine the data that would go this route.
         right = pos+1
         left = pos
         peak = (ydata[pos], xdata[pos], 0.01)
@@ -679,7 +680,7 @@ def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] yda
         sorted_peaks = sorted([(peaks[i*3:(i+1)*3], get_ppm(start_mz+offset, v)) for i,v in enumerate(peaks[1::3])], key=itemgetter(1))
         fit = True
 
-        if not within_tolerance(sorted_peaks, tolerance):
+        if fragment_scan == False and not within_tolerance(sorted_peaks, tolerance):
             if calc_start_mz is not None:
                 sorted_peaks2 = sorted([(peaks[i*3:(i+1)*3], get_ppm(calc_start_mz+offset, v)) for i,v in enumerate(peaks[1::3])], key=itemgetter(1))
                 if filter(lambda x: x[1]<tolerance, sorted_peaks2):
@@ -711,7 +712,7 @@ def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] yda
         int_val = integrate.simps(gauss(lr, peak_gauss[0], peak_gauss[1], peak_gauss[2]), x=lr) if quant_method == 'integrate' else ydata[(xdata > left_peak) & (xdata < right_peak)].sum()
         if not fit:
             pass
-        ret_dict = {'int': int_val if fit else 0, 'int2': int_val, 'bounds': (left, right), 'params': peak, 'error': sorted_peaks[0][1]}
+        ret_dict = {'int': int_val if fit or fragment_scan == True else 0, 'int2': int_val, 'bounds': (left, right), 'params': peak, 'error': sorted_peaks[0][1]}
     return ret_dict
 
 def find_nearest(np.ndarray[FLOAT_t, ndim=1] array, value):
@@ -743,8 +744,8 @@ def find_nearest_indices(np.ndarray[FLOAT_t, ndim=1] array, value):
             out.append(idx)
     return out
 
-def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, measured_mz=None, theo_mz=None, max_mz=None, precursor_ppm=5, isotope_ppm=2.5, isotope_ppms=None, charge=2, debug=False,
-                 isotope_offset=0, isotopologue_limit=-1, theo_dist=None, label=None, skip_isotopes=None, last_precursor=None, quant_method='integrate', reporter_mode=False):
+cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, measured_mz=None, theo_mz=None, max_mz=None, precursor_ppm=5, isotope_ppm=2.5, isotope_ppms=None, charge=2, debug=False,
+                 isotope_offset=0, isotopologue_limit=-1, theo_dist=None, label=None, skip_isotopes=None, last_precursor=None, quant_method='integrate', reporter_mode=False, fragment_scan=False):
     # returns the envelope of isotopic peaks as well as micro envelopes  of each individual cluster
     cdef float spacing = NEUTRON/float(charge)
     start_mz = measured_mz if isotope_offset == 0 else measured_mz+isotope_offset*NEUTRON/float(charge)
@@ -759,6 +760,8 @@ def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] 
 
     cdef np.ndarray[FLOAT_t] non_empty = xdata[ydata>0]
     if len(non_empty) == 0:
+        if debug:
+            print('data is empty')
         return empty_dict
     first_mz = find_nearest(non_empty, start_mz)
     attempts = 0
@@ -767,46 +770,53 @@ def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] 
     isotope_index = 0
     use_theo = False
     # This is purposefully verbose to be more explicit
-    while get_ppm(start_mz, first_mz) > tolerance:
-        # let's try using our theoretical mass
-        first_mz = find_nearest(non_empty, theo_mz)
-        if get_ppm(theo_mz, first_mz) > tolerance:
-            # let's check our last boundary
-            if last_precursor is not None:
-                first_mz = find_nearest(non_empty, last_precursor)
-                if get_ppm(last_precursor, first_mz) > tolerance:
-                    # repeat all of that for the next isotopic index
-                    start_mz += spacing
-                    initial_mz += spacing
-                    theo_mz += spacing
-                    last_precursor += spacing
-                    isotope_index += 1
+    if fragment_scan == False:
+        while get_ppm(start_mz, first_mz) > tolerance:
+            # let's try using our theoretical mass
+            first_mz = find_nearest(non_empty, theo_mz)
+            if get_ppm(theo_mz, first_mz) > tolerance:
+                # let's check our last boundary
+                if last_precursor is not None:
+                    first_mz = find_nearest(non_empty, last_precursor)
+                    if get_ppm(last_precursor, first_mz) > tolerance:
+                        # repeat all of that for the next isotopic index
+                        start_mz += spacing
+                        initial_mz += spacing
+                        theo_mz += spacing
+                        last_precursor += spacing
+                        isotope_index += 1
+                    else:
+                        start_mz = last_precursor
+                        break
                 else:
-                    start_mz = last_precursor
-                    break
+                    start_mz += spacing
+                    theo_mz += spacing
+                    initial_mz += spacing
+                    isotope_index += 1
             else:
-                start_mz += spacing
-                theo_mz += spacing
-                initial_mz += spacing
-                isotope_index += 1
-        else:
-            use_theo = True
-            break
-        tolerance = isotope_ppms.get(isotope_index, isotope_ppm)/1000000.0
-        if isotope_index == 2 or (max_mz is not None and first_mz >= max_mz):
-            return empty_dict
+                use_theo = True
+                break
+            tolerance = isotope_ppms.get(isotope_index, isotope_ppm)/1000000.0
+            if isotope_index == 2 or (max_mz is not None and first_mz >= max_mz):
+                if debug:
+                    print('unable to find start ion')
+                return empty_dict
 
     isotope_index += isotope_offset
     start_index = find_nearest_index(xdata, first_mz)
-    start_info = findMicro(xdata, ydata, start_index, ppm=tolerance, start_mz=start_mz, calc_start_mz=theo_mz, quant_method=quant_method)
+    if debug:
+        print('fs', fragment_scan, start_index, first_mz, start_mz, non_empty, xdata[start_index])
+    start_info = findMicro(xdata, ydata, start_index, ppm=tolerance, start_mz=start_mz, calc_start_mz=theo_mz, quant_method=quant_method, fragment_scan=fragment_scan)
     start_error = start_info['error']
 
     if 'params' in start_info:
-        if start_info['error'] > tolerance:
+        if fragment_scan == False and start_info['error'] > tolerance:
             start = last_precursor if last_precursor is not None else theo_mz if use_theo else start_mz
         else:
             start = start_info['params'][1]
     else:
+        if debug:
+            print('empty start info', start_info)
         return empty_dict
 
     valid_locations2 = OrderedDict()
@@ -831,8 +841,8 @@ def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] 
                 displacement = last_displacement+tolerance if last_displacement is not None else tolerance*2
             else:
                 displacement = get_ppm(start+offset, current_loc)
-            if debug:
-                print pos, start, current_loc, displacement, last_displacement, displacement > last_displacement, last_displacement < tolerance, isotope_index, offset
+            # if debug:
+            #     print pos, start, current_loc, displacement, last_displacement, displacement > last_displacement, last_displacement < tolerance, isotope_index, offset
             # because the peak location may be between two readings, we use a very tolerance search here and enforce the ppm at the peak fitting stage.
             if displacement < tolerance*5:
                 valid_locations.append((displacement, current_loc, pos))
@@ -907,6 +917,8 @@ def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] 
                 theo_ratio = theo_int/theo_dist[isotope_index]
                 data_ratio = ref_int/isotope_intensity
                 if np.abs(np.log2(data_ratio/theo_ratio)) > 0.5:
+                    if debug:
+                        print('pattern1 loss', isotope_index, theo_ratio, data_ratio)
                     env_dict.pop(isotope_index)
                     micro_dict.pop(isotope_index)
                     ppm_dict.pop(isotope_index)
@@ -928,6 +940,7 @@ def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] 
                         # the pattern broke, remove isotopes beyond this point
                         remove = True
                     if remove:
+                        print('pattern2.1 loss', j[0], isotope_pattern)
                         env_dict.pop(j[0])
                         micro_dict.pop(j[0])
                         ppm_dict.pop(j[0])
@@ -950,6 +963,7 @@ def findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] 
                         else:
                             shift = True
                     if remove:
+                        print('pattern2.2 loss', j[0], isotope_pattern)
                         env_dict.pop(j[0])
                         micro_dict.pop(j[0])
                         ppm_dict.pop(j[0])

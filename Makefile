@@ -16,7 +16,7 @@ test:
 	coverage report --omit=pyquant/tests*
 
 testintegration:
-	nosetests -i integration.* pyquant.tests
+	nosetests -i integration_.* pyquant.tests
 
 testmanual:
 	nosetests -i .*manual.* pyquant.tests

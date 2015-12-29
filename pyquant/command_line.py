@@ -348,7 +348,6 @@ class Worker(Process):
                 precursors = {'Precursor': 0.0}
             precursors = OrderedDict(sorted(precursors.items(), key=operator.itemgetter(1)))
             shift_maxes = {i: j for i,j in zip(precursors.keys(), list(precursors.values())[1:])}
-            finished = set([])
             finished_isotopes = {i: set([]) for i in precursors.keys()}
             result_dict = {'peptide': target_scan.get('mod_peptide', peptide),
                            'scan': scanId, 'ms1': ms1, 'charge': charge,
@@ -371,8 +370,6 @@ class Worker(Process):
             last_peak_height = {i: defaultdict(int) for i in precursors.keys()}
             low_int_isotopes = defaultdict(int)
             while True:
-                if len(finished) == len(precursors.keys()) and delta != -1:
-                    break
                 map_to_search = self.quant_mrm_map[mass] if self.mrm else self.quant_msn_map
                 if current_scan is None:
                     current_scan = initial_scan
@@ -400,8 +397,6 @@ class Worker(Process):
                         ydata = df.fillna(0).values.astype(float)
                         iterator = precursors.items() if not self.mrm else [(mrm_label, 0)]
                         for precursor_label, precursor_shift in iterator:
-                            if precursor_label in finished:
-                                continue
                             selected = {}
                             if self.mrm:
                                 labels_found.add(precursor_label)
@@ -425,14 +420,13 @@ class Worker(Process):
                                 shift_max = self.get_calibrated_mass(precursor+shift_max/float(charge)) if shift_max is not None and self.overlapping_mz is False else None
                                 envelope = peaks.findEnvelope(xdata, ydata, measured_mz=measured_precursor, theo_mz=theoretical_precursor, max_mz=shift_max,
                                                               charge=charge, precursor_ppm=self.precursor_ppm, isotope_ppm=self.isotope_ppm, reporter_mode=self.reporter_mode,
-                                                              isotope_ppms=self.isotope_ppms if self.fitting_run else None, quant_method=self.quant_method,
+                                                              isotope_ppms=self.isotope_ppms if self.fitting_run else None, quant_method=self.quant_method, debug=self.debug,
                                                               theo_dist=theo_dist if self.mono or precursor_shift == 0.0 else None, label=precursor_label, skip_isotopes=finished_isotopes[precursor_label],
-                                                              last_precursor=last_precursors[delta].get(precursor_label, measured_precursor), isotopologue_limit=self.isotopologue_limit)
+                                                              last_precursor=last_precursors[delta].get(precursor_label, measured_precursor), isotopologue_limit=self.isotopologue_limit, fragment_scan=current_scan == initial_scan)
                                 if not envelope['envelope']:
-                                #    finished.add(precursor_label)
+                                    if self.debug:
+                                        print('envelope empty', envelope, measured_precursor, initial_scan, current_scan, last_precursors)
                                     continue
-                                #if precursor_label == 'Medium':
-                                 #   print df.name, envelope
                                 if 0 in envelope['micro_envelopes'] and envelope['micro_envelopes'][0].get('int'):
                                     if ms_index == 0:
                                         last_precursors[delta*-1][precursor_label] = envelope['micro_envelopes'][0]['params'][1]
@@ -442,14 +436,11 @@ class Worker(Process):
                                     if isotope in finished_isotopes[precursor_label]:
                                         continue
                                     peak_intensity = vals.get('int')
-                                    # if precursor_label == 'Medium':
-                                    #     print peak_intensity, last_peak_height[precursor_label][isotope]
-                                    # check the slope to see if we're just going off endlessly
-                                    # if precursor_label == 'Light':
-                                    #     print precursor_label, isotope, self.peak_cutoff, peak_intensity, low_int_isotopes[(precursor_label, isotope)], last_peak_height[precursor_label][isotope]
                                     if peak_intensity == 0 or (self.peak_cutoff and peak_intensity < last_peak_height[precursor_label][isotope]*self.peak_cutoff):
                                         low_int_isotopes[(precursor_label, isotope)] += 1
                                         if low_int_isotopes[(precursor_label, isotope)] >= 2:
+                                            if self.debug:
+                                                print('finished with isotope', precursor_label, envelope)
                                             finished_isotopes[precursor_label].add(isotope)
                                         else:
                                             labels_found.add(precursor_label)
@@ -484,15 +475,13 @@ class Worker(Process):
 
                 if not found or (np.abs(ms_index) > 7 and self.flat_slope(combined_data, delta)):
                     not_found += 1
-                    # the 25 check is in case we're in something crazy. We should already have the elution profile of the ion
-                    # of interest, else we're in an LC contaminant that will never end.
                     if current_scan is None or not_found >= 2:
                         not_found = 0
                         if delta == -1:
                             delta = 1
                             current_scan = initial_scan
-                            finished = set([])
                             finished_isotopes = {i: set([]) for i in precursors.keys()}
+                            last_peak_height = {i: defaultdict(int) for i in precursors.keys()}
                             ms_index = 0
                         else:
                             if self.mrm:
@@ -503,7 +492,6 @@ class Worker(Process):
                                     current_scan = self.quant_mrm_map[mass][0][1]
                                     last_peak_height = {i: defaultdict(int) for i in precursors.keys()}
                                     initial_scan = current_scan
-                                    finished = set([])
                                     finished_isotopes = {i: set([]) for i in precursors.keys()}
                                     ms_index = 0
                                 else:
@@ -521,7 +509,6 @@ class Worker(Process):
                 if self.mrm:
                     combined_data = combined_data.T
                 # bookend with zeros if there aren't any, do the right end first because pandas will by default append there
-                # if combined_data.iloc[:,-1].sum() != 0:
                 combined_data = combined_data.sort_index().sort_index(axis='columns')
                 start_rt = rt
                 if len(combined_data.columns) == 1:
@@ -541,11 +528,8 @@ class Worker(Process):
                 quant_vals = defaultdict(dict)
                 isotope_labels = pd.DataFrame(isotope_labels).T
 
-                fig_map = {}
-
                 isotopes_chosen = pd.DataFrame(isotopes_chosen).T
                 isotopes_chosen.index.names = ['RT', 'MZ']
-                label_fig_row = {v: i for i,v in enumerate(self.mrm_pair_info.columns)} if self.mrm else {v: i+1 for i,v in enumerate(precursors.keys())}
 
                 if self.html:
                     # make the figure of our isotopes selected
@@ -574,10 +558,6 @@ class Worker(Process):
                             title = 'Scan {} RT {}'.format(self.msn_rt_map[self.msn_rt_map==index].index[0], index)
                         except:
                             title = '{}'.format(index)
-                        # try:
-                        #     isotope_figure['title'] =
-                        # except:
-                        #     pass
                         if index in isotope_figure_mapper:
                             isotope_base = isotope_figure_mapper[index]
                         else:
@@ -604,14 +584,15 @@ class Worker(Process):
                         rt_peak = peaks.bigauss_ndim(np.array([rt]), res)[0]
                         found_rt = rt_peak > 0.05# or rt_peak*fitting_y.max() > 100000
                         if not found_rt:
-                            # if self.debug:
-                            print('cannot find rt for', peptide, rt_peak)
+                            if self.debug:
+                                print('cannot find rt for', peptide, rt_peak)
+                                print(merged_x, fitting_y, res)
                             # destroy our peaks, keep searching
                             res[::4] = res[::4]*fitting_y.max()
                             fitting_y -= peaks.bigauss_ndim(merged_x, res)
                             fitting_y[fitting_y<0] = 0
                         rt_attempts += 1
-                    if not found_rt:
+                    if not found_rt and self.debug:
                         print(peptide, 'is dead', rt_attempts, found_rt)
                     if found_rt:
                         rt_means = res[1::4]
@@ -1018,6 +999,7 @@ def run_pyquant():
     msn_for_id = args.msn_id
     mass_accuracy_correction = args.no_mass_accuracy_correction
     raw_data_only = not (args.search_file or args.tsv)
+    scans_to_select = set(args.scan if args.scan else [])
     msn_for_quant = args.msn_quant_from if args.msn_quant_from else msn_for_id-1
     if msn_for_quant == 0:
         msn_for_quant = 1
@@ -1176,7 +1158,6 @@ def run_pyquant():
     elif input_found == 'ms':
         if not (args.label_scheme or args.label_method):
             mass_labels.update(results.getSILACLabels())
-        scans_to_select = set(args.scan if args.scan else [])
         replicate_file_mapper = {}
         for index, scan in enumerate(results.getScans(modifications=False, fdr=True)):
             if index%1000 == 0:
@@ -1416,22 +1397,23 @@ def run_pyquant():
                     scan_info_map[scan.parent]['children'].add(scan_id)
                 except KeyError:
                     scan_info_map[scan.parent]['children'] = set([scan_id])
-            if ion_search:
-                if scan.ms_level == msn_for_id:
-                    scans_to_fetch.append(scan_id)
-            elif all_msn:
-                # we are quantifying all msn spectra of a given type
-                if msn_for_id == scan.ms_level:
-                    # find the closest scan to this, which will be the parent scan
-                    spectra_to_quant = find_prior_scan(msn_map, scan_id, ms_level=msn_for_quant) if msn_for_quant != msn_for_id else scan_id
-                    d = {
-                        'quant_scan': {'id': spectra_to_quant},
-                        'id_scan': {'id': scan_id, 'rt': scan.rt, 'charge': scan.charge, 'mass': float(scan.mass), 'product_ion': float(scan.product_ion) if args.mrm else None},
-                    }
-                    ion_search_list.append((spectra_to_quant, d))
-            elif args.mva:
-                if scan.ms_level == msn_for_quant:
-                    scans_to_fetch.append(scan_id)
+            if not scans_to_select or str(scan_id) in scans_to_select:
+                if ion_search:
+                    if scan.ms_level == msn_for_id:
+                        scans_to_fetch.append(scan_id)
+                elif all_msn:
+                    # we are quantifying all msn spectra of a given type
+                    if msn_for_id == scan.ms_level:
+                        # find the closest scan to this, which will be the parent scan
+                        spectra_to_quant = find_prior_scan(msn_map, scan_id, ms_level=msn_for_quant) if msn_for_quant != msn_for_id else scan_id
+                        d = {
+                            'quant_scan': {'id': spectra_to_quant},
+                            'id_scan': {'id': scan_id, 'rt': scan.rt, 'charge': scan.charge, 'mass': float(scan.mass), 'product_ion': float(scan.product_ion) if args.mrm else None},
+                        }
+                        ion_search_list.append((spectra_to_quant, d))
+                elif args.mva:
+                    if scan.ms_level == msn_for_quant:
+                        scans_to_fetch.append(scan_id)
             if not raw_data_only and calc_spline:
                 if hasattr(scan, 'theor_mass'):
                     theor_mass = scan.getTheorMass()
