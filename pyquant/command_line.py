@@ -201,61 +201,34 @@ class Worker(Process):
         classifier = EllipticEnvelope(support_fraction=0.75, random_state=0)
         if len(x) == 1:
             return x[0]
-        data = np.array([x,y]).T
+        data = np.array([x, y, y2]).T
         false_pred = (False, -1)
         true_pred = (True, 1)
         to_delete = set([])
-        x1_inliers = None
         try:
-            classifier.fit(np.array([hx,hy]).T if self.mrm else data)
-            x1_mean, x1_std = classifier.location_
+            classifier.fit(np.array([hx, hy, hy2]).T if self.mrm else data)
+            x_mean, x_std1, x_std2 = classifier.location_
         except ValueError:
-            x1_mean, x1_std = data[0,0], data[0,1]
+            x_mean, x_std1, x_std2 = data[0,0], data[0,1], data[0,2]
         else:
             classes = classifier.predict(data)
-            x1_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('valid')])
-            x1_outliers = [i for i,v in enumerate(classes) if keys[i][:2] not in x1_inliers and (v in false_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate'))]
-            if x1_inliers:
-                for index in x1_outliers:
+            x_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('valid')])
+            x_outliers = [i for i,v in enumerate(classes) if keys[i][:2] not in x_inliers and (v in false_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate'))]
+            # print('x1o', x1_outliers)
+            if x_inliers:
+                for index in x_outliers:
                     indexer = keys[index]
-                    if x1_inliers is not None and indexer[:2] in x1_inliers:
+                    if x_inliers is not None and indexer[:2] in x_inliers:
                         # this outlier has a valid inlying value in x1_inliers, so we delete it
                         to_delete.add(indexer)
-                    # elif common_peaks[indexer[i][0]][indexer[i][1]][indexer[i][2]].get('interpolate'):
-                    #     mz = indexer[1]
-                    #     row_data = combined_data.loc[mz, :]
-                    #     mapper = interp1d(row_data.index.values, row_data.values)
-                    #     common_peaks[indexer[0]][indexer[1]][indexer[2]]['amp'] = mapper(x1_mean)
-                    #     common_peaks[indexer[0]][indexer[1]][indexer[2]]['peak'] = x1_mean
-                    #     common_peaks[indexer[0]][indexer[1]][indexer[2]]['mean'] = x1_mean
-                    #     common_peaks[indexer[0]][indexer[1]][indexer[2]]['std'] = x1_std
-                    # else:
-                    #     to_delete.add(indexer)
-        data = np.array([x, y2]).T
-        try:
-            classifier.fit(np.array([hx,hy2]).T if self.mrm else data)
-        except ValueError:
-            pass
-        else:
-            classes = classifier.predict(data)
-            x2_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('valid')])
-            x2_outliers = [i for i,v in enumerate(classes) if keys[i][:2] not in x2_inliers and (v in false_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate'))]
-            if x2_inliers:
-                x2_mean, x2_std = classifier.location_
-                for index in x2_outliers:
-                    indexer = keys[index]
-                    if indexer[:2] in x2_inliers:
-                        if x1_inliers is not None and indexer[:2] in x1_inliers:
-                            # this outlier has a valid inlying value in x1_inlier or x2_inliers, so we delete it
+                    else:
+                        # there is no non-outlying data point. If this data point is > 1 sigma away, delete it
+                        peak_info = common_peaks[indexer[0]][indexer[1]][indexer[2]]
+                        if not (peak_info['mean']-x_std1 < x_mean < peak_info['mean']+x_std2):
                             to_delete.add(indexer)
-                        # elif common_peaks[indexer[i][0]][indexer[i][1]][indexer[i][2]].get('interpolate'):
-                        #     common_peaks[indexer[0]][indexer[1]][indexer[2]]['std2'] = x2_std
-                        # else:
-                        #     to_delete.add(indexer)
-        # print('\nreplacing outliers\n', common_peaks, to_delete, x1_inliers, x2_inliers)
         for i in sorted(set(to_delete), key=operator.itemgetter(0,1,2), reverse=True):
             del common_peaks[i[0]][i[1]][i[2]]
-        return x1_mean
+        return x_mean
 
     def convertScan(self, scan):
         import numpy as np
@@ -418,11 +391,13 @@ class Worker(Process):
                                 data[precursor_label]['precursor'] = uncalibrated_precursor
                                 shift_max = shift_maxes.get(precursor_label)
                                 shift_max = self.get_calibrated_mass(precursor+shift_max/float(charge)) if shift_max is not None and self.overlapping_mz is False else None
+                                # print(precursor_label, current_scan, measured_precursor)
+                                is_fragmented_scan = (current_scan == initial_scan) and (precursor == measured_precursor)
                                 envelope = peaks.findEnvelope(xdata, ydata, measured_mz=measured_precursor, theo_mz=theoretical_precursor, max_mz=shift_max,
                                                               charge=charge, precursor_ppm=self.precursor_ppm, isotope_ppm=self.isotope_ppm, reporter_mode=self.reporter_mode,
                                                               isotope_ppms=self.isotope_ppms if self.fitting_run else None, quant_method=self.quant_method, debug=self.debug,
                                                               theo_dist=theo_dist if self.mono or precursor_shift == 0.0 else None, label=precursor_label, skip_isotopes=finished_isotopes[precursor_label],
-                                                              last_precursor=last_precursors[delta].get(precursor_label, measured_precursor), isotopologue_limit=self.isotopologue_limit, fragment_scan=current_scan == initial_scan)
+                                                              last_precursor=last_precursors[delta].get(precursor_label, measured_precursor), isotopologue_limit=self.isotopologue_limit, fragment_scan=is_fragmented_scan)
                                 if not envelope['envelope']:
                                     if self.debug:
                                         print('envelope empty', envelope, measured_precursor, initial_scan, current_scan, last_precursors)
@@ -701,8 +676,10 @@ class Worker(Process):
                                     s1 = v['std']
                                     s2 = v['std2']
                                     if mu-s1*2 < start_rt < mu+s2*2:
-                                        v['valid'] = True
-                                        to_keep.append(i)
+                                        # these peaks are considered true and will help with the machine learning
+                                        if mu-s1*1.5 < start_rt < mu+s2*1.5:
+                                            v['valid'] = True
+                                            to_keep.append(i)
                                     elif peaks.find_nearest_index(merged_x, mu)-peak_location > 2:
                                         to_remove.append(i)
                                 # kick out peaks not containing our RT

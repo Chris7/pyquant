@@ -483,6 +483,8 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             else:
                 variance = 0.05
                 average = xdata[peak_index]
+            if variance is not None and variance < min_spacing:
+                variance = min_spacing
             if variance is not None:
                 guess.extend([sum(bnds[0])/2, average, variance])
                 if bigauss_fit:
@@ -748,6 +750,7 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
                  isotope_offset=0, isotopologue_limit=-1, theo_dist=None, label=None, skip_isotopes=None, last_precursor=None, quant_method='integrate', reporter_mode=False, fragment_scan=False):
     # returns the envelope of isotopic peaks as well as micro envelopes  of each individual cluster
     cdef float spacing = NEUTRON/float(charge)
+    cdef float tolerance, precursor_tolerance
     start_mz = measured_mz if isotope_offset == 0 else measured_mz+isotope_offset*NEUTRON/float(charge)
     initial_mz = start_mz
     if max_mz is not None:
@@ -802,10 +805,10 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
                     print('unable to find start ion')
                 return empty_dict
 
+    precursor_tolerance = tolerance
+
     isotope_index += isotope_offset
     start_index = find_nearest_index(xdata, first_mz)
-    if debug:
-        print('fs', fragment_scan, start_index, first_mz, start_mz, non_empty, xdata[start_index])
     start_info = findMicro(xdata, ydata, start_index, ppm=tolerance, start_mz=start_mz, calc_start_mz=theo_mz, quant_method=quant_method, fragment_scan=fragment_scan)
     start_error = start_info['error']
 
@@ -821,6 +824,8 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
 
     valid_locations2 = OrderedDict()
     valid_locations2[isotope_index] = [(0, start, find_nearest_index(non_empty, start))]
+    contaminant_bounds = {}
+    contaminant_int = 0.
 
     if not reporter_mode and (isotopologue_limit == -1 or len(valid_locations2) < isotopologue_limit):
         isotope_index += 1
@@ -829,6 +834,17 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
         df_len = non_empty.shape[0]
         last_displacement = None
         valid_locations = []
+
+        # check for contaminant at doubly and triply charged positions to see if we're in another ion's peak
+        for i in xrange(2, 4):
+            closest_contaminant = find_nearest(non_empty, start-NEUTRON/float(i))
+            closest_contaminant_index = find_nearest_index(xdata, closest_contaminant)
+            contaminant_bounds = findMicro(xdata, ydata, closest_contaminant_index, ppm=precursor_tolerance,
+                                     calc_start_mz=start, start_mz=start, isotope=-1, spacing=NEUTRON/float(i), quant_method=quant_method)
+            if contaminant_bounds.get('int', 0) > contaminant_int:
+                contaminant_int = contaminant_bounds.get('int', 0.)
+
+        # set the tolerance for isotopes
         tolerance = isotope_ppms.get(isotope_index, isotope_ppm)/1000000.0
 
         while pos < df_len:
@@ -885,7 +901,6 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
         # if micro_index == 0:
         #     pass
         isotope_tolerance = isotope_ppms.get(isotope_index, isotope_ppm)/1000000.0
-        precursor_tolerance = isotope_ppms.get(0, precursor_ppm)/1000000.0
         micro_bounds = findMicro(xdata, ydata, micro_index, ppm=precursor_tolerance if isotope_index == 0 else isotope_tolerance,
                                  calc_start_mz=start, start_mz=start_mz, isotope=isotope_index, spacing=spacing, quant_method=quant_method)
         if isotope_index == 0:
@@ -898,9 +913,9 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
     # in all cases, the envelope is going to be either monotonically decreasing, or a parabola (-x^2)
     isotope_pattern = [(isotope_index, isotope_dict['int']) for isotope_index, isotope_dict in micro_dict.items()]
     if theo_dist is not None and len(isotope_pattern) >= 2:
-        ref_iso = 0
-        ref_int = 0
-        theo_int = 0
+        ref_iso = -1
+        ref_int = 0.
+        theo_int = 0.
         for i,(isotope_index, isotope_intensity) in enumerate(isotope_pattern):
             if isotope_index == ref_iso:
                 continue
@@ -910,18 +925,35 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
             #     print theo_dist
             #     print micro_dict[isotope_index]
             if ref_int == 0 and isotope_intensity > 0:
-                ref_iso = isotope_index
-                ref_int = isotope_intensity
-                theo_int = theo_dist[ref_iso]
+                if contaminant_int > 1 and float(isotope_intensity)/contaminant_int < 1:
+                    env_dict.pop(isotope_index)
+                    micro_dict.pop(isotope_index)
+                    ppm_dict.pop(isotope_index)
+                else:
+                    ref_iso = isotope_index
+                    ref_int = float(isotope_intensity)
+                    theo_int = float(theo_dist[ref_iso])
             elif isotope_intensity > 0:
                 theo_ratio = theo_int/theo_dist[isotope_index]
                 data_ratio = ref_int/isotope_intensity
+                if contaminant_int > 1 and ref_int/contaminant_int < 1:
+                    env_dict.pop(isotope_index)
+                    micro_dict.pop(isotope_index)
+                    ppm_dict.pop(isotope_index)
                 if np.abs(np.log2(data_ratio/theo_ratio)) > 0.5:
                     if debug:
                         print('pattern1 loss', isotope_index, theo_ratio, data_ratio)
                     env_dict.pop(isotope_index)
                     micro_dict.pop(isotope_index)
                     ppm_dict.pop(isotope_index)
+    elif theo_dist is not None and contaminant_int > 1:
+        for i,(isotope_index, isotope_intensity) in enumerate(isotope_pattern):
+            if contaminant_int > isotope_intensity:
+                if debug:
+                    print('contaminant loss')
+                env_dict.pop(isotope_index)
+                micro_dict.pop(isotope_index)
+                ppm_dict.pop(isotope_index)
     else:
         # are we monotonically decreasing?
         remove = False
