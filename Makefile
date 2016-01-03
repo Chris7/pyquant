@@ -21,4 +21,7 @@ testintegration:
 testmanual:
 	nosetests -i .*manual.* pyquant.tests
 
+testtargeted:
+	nosetests -i targeted_.* pyquant.tests
+
 testall: test testintegration
