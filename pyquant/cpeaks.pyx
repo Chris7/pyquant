@@ -972,7 +972,8 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
                         # the pattern broke, remove isotopes beyond this point
                         remove = True
                     if remove:
-                        print('pattern2.1 loss', j[0], isotope_pattern)
+                        if debug:
+                            print('pattern2.1 loss', j[0], isotope_pattern)
                         env_dict.pop(j[0])
                         micro_dict.pop(j[0])
                         ppm_dict.pop(j[0])
@@ -995,7 +996,8 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
                         else:
                             shift = True
                     if remove:
-                        print('pattern2.2 loss', j[0], isotope_pattern)
+                        if debug:
+                            print('pattern2.2 loss', j[0], isotope_pattern)
                         env_dict.pop(j[0])
                         micro_dict.pop(j[0])
                         ppm_dict.pop(j[0])
