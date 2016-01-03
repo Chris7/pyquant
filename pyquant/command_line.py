@@ -292,8 +292,9 @@ class Worker(Process):
                 added_residues = set([])
                 cterm_mass = 0
                 nterm_mass = 0
+                mass_keys = list(silac_masses.keys())
                 if self.reporter_mode:
-                    silac_shift = sum(silac_masses.keys())
+                    silac_shift = sum(mass_keys)
                 else:
                     if peptide:
                         for label_mass, label_masses in silac_masses.items():
@@ -308,7 +309,7 @@ class Worker(Process):
                             silac_shift += sum(labels)
                     else:
                         # no mass, just assume we have one of the labels
-                        silac_shift += silac_masses.keys()[0]
+                        silac_shift += mass_keys[0]
                     if global_mass is not None:
                         silac_shift += sum([global_mass for mod_aa in peptide if mod_aa not in added_residues])
                     silac_shift += cterm_mass+nterm_mass
@@ -522,7 +523,7 @@ class Worker(Process):
                     rt_figure = {
                         'data': [],
                         'plot-multi': True,
-                        'common-x': ['x']+map(lambda x: '{0:0.2f}'.format(x), combined_data.columns),
+                        'common-x': ['x']+['{0:0.2f}'.format(i) for i in combined_data.columns],
                         'rows': len(precursors),
                         'max-y': combined_data.max().max(),
                     }
@@ -1252,16 +1253,16 @@ def run_pyquant():
         if not out:
             sys.stderr.write('You may only resume runs with a file output.\n')
             return -1
-        out = open(out, 'ab')
+        out = open(out, 'a')
         out_path = out.name
     else:
         if out:
-            out = open(out, 'wb')
+            out = open(out, 'w')
             out_path = out.name
         else:
             out = sys.stdout
             out_path = source_file
-        out.write(six.b('{0}\n'.format('\t'.join(headers))))
+        out.write('{0}\n'.format('\t'.join(headers)))
 
     if html:
         def table_rows(html_list, res=None):
@@ -1285,11 +1286,11 @@ def run_pyquant():
             return table_rows(html_list, res=res), html_output
 
         if resume:
-            html_out = open('{0}.html'.format(out_path), 'ab')
+            html_out = open('{0}.html'.format(out_path), 'a')
         else:
-            html_out = open('{0}.html'.format(out_path), 'wb')
+            html_out = open('{0}.html'.format(out_path), 'w')
             template = []
-            for i in open(pyquant_html_file, 'rb'):
+            for i in open(pyquant_html_file, 'r'):
                 if 'HTML BREAK' in i:
                     break
                 template.append(i)
@@ -1300,17 +1301,17 @@ def run_pyquant():
     if resume:
         resume_name = '{}.tmp'.format(out.name)
         if os.path.exists(resume_name):
-            with open(resume_name, 'rb') as temp_file:
+            with open(resume_name, 'r') as temp_file:
                 for index, entry in enumerate(temp_file):
                     info = json.loads(entry)['res_list']
                     # key is filename, peptide, charge, target scan id, modifications
                     key = tuple(map(str, (info[0], info[1], info[3], info[5], info[2])))
                     skip_map.add(key)
-            temp_file = open(resume_name, 'ab')
+            temp_file = open(resume_name, 'a')
         else:
-            temp_file = open(resume_name, 'wb')
+            temp_file = open(resume_name, 'w')
     else:
-        temp_file = open('{}.tmp'.format(out.name), 'wb')
+        temp_file = open('{}.tmp'.format(out.name), 'w')
 
     silac_shifts = {}
     for silac_label, silac_masses in mass_labels.items():
@@ -1683,11 +1684,11 @@ def run_pyquant():
                     sys.stderr.write('\r{0:2.2f}% Completed'.format(completed/scan_count*100))
                     sys.stderr.flush()
                 res_list = [filename]+[result.get(i[0], 'NA') for i in RESULT_ORDER]
-                temp_file.write(six.b(json.dumps({'res_list': list(map(str, res_list)), 'html': result.get('html', {})})))
-                temp_file.write(six.b('\n'))
+                temp_file.write(json.dumps({'res_list': list(map(str, res_list)), 'html': result.get('html', {})}))
+                temp_file.write('\n')
                 temp_file.flush()
                 res = '{0}\n'.format('\t'.join(map(str, res_list)))
-                out.write(six.b(res))
+                out.write(res)
                 out.flush()
         reader_in.put(None)
         del msn_map
@@ -1697,7 +1698,7 @@ def run_pyquant():
     temp_file.close()
     df_data = []
     html_data = []
-    for j in open(temp_file.name, 'rb'):
+    for j in open(temp_file.name, 'r'):
         result = json.loads(j if isinstance(j, six.text_type) else j.decode('utf-8'))
         df_data.append(result['res_list'])
         html_data.append(result['html'])
@@ -1821,17 +1822,17 @@ def run_pyquant():
             res = '\t'.join(row.astype(str))
             to_write, html_info = table_rows([{'table': res.strip(), 'html': html_data[index], 'keys': header_mapping}])
             html_map.append(html_info)
-            html_out.write(six.b(to_write))
+            html_out.write(to_write)
             html_out.flush()
 
         template = []
         append = False
-        for i in open(pyquant_html_file, 'rb'):
+        for i in open(pyquant_html_file, 'r'):
             if 'HTML BREAK' in i:
                 append = True
             elif append:
                 template.append(i)
         html_template = Template(''.join(template))
-        html_out.write(six.b(html_template.safe_substitute({'html_output': base64.b64encode(gzip.zlib.compress(json.dumps(html_map), 9))})))
+        html_out.write(html_template.safe_substitute({'html_output': base64.b64encode(gzip.zlib.compress(json.dumps(html_map), 9))}))
 
     os.remove(temp_file.name)

@@ -17,7 +17,7 @@ class TestTargeted(FileMixins, TestCase):
 
     def test_pyquant_trypsin(self):
         # This searches for the y1 ions of arginine. It also is a check that the label-scheme parameter works.
-        f = tempfile.NamedTemporaryFile('wb')
+        f = tempfile.NamedTemporaryFile('w')
         f.write('\t'.join(['0', 'R', '10.008269', 'R10'])+'\n')
         f.write('\t'.join(['1', 'R', '0', 'Light'])+'\n')
         f.seek(0)
