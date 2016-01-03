@@ -1027,7 +1027,7 @@ def run_pyquant():
                     masses[mass_val] = set(mass_list)
             mass_labels.update({label_name: masses})
     if args.label_method:
-        mass_labels = config.MS1_SCHEMES[args.label_method]
+        mass_labels = config.LABEL_SCHEMES[args.label_method]
 
     sample = args.sample
     sys.stderr.write('Loading Scans:\n')
