@@ -491,8 +491,9 @@ class Worker(Process):
                     try:
                         new_col = self.msn_rt_map.iloc[self.msn_rt_map.searchsorted(combined_data.columns[-1])+1].values[0]
                     except:
-                        print(combined_data.columns)
-                        print(self.msn_rt_map)
+                        if self.debug:
+                            print(combined_data.columns)
+                            print(self.msn_rt_map)
                 else:
                     new_col = combined_data.columns[-1]+(combined_data.columns[-1]-combined_data.columns[-2])
                 combined_data[new_col] = 0
@@ -769,7 +770,8 @@ class Worker(Process):
                                     nearest_index = np.where(xdata==pos_x[nearest])[0][0]
                                     res = peaks.fixedMeanFit(xdata, ydata, peak_index=nearest_index, debug=self.debug)
                                     if res is None:
-                                        print(quant_label, index, 'has no values here')
+                                        if self.debug:
+                                            print(quant_label, index, 'has no values here')
                                         continue
                                     amp, mean, std, std2 = res
                                     amp *= ydata.max()
@@ -787,13 +789,15 @@ class Worker(Process):
                                 try:
                                     int_val = integrate.simps(peaks.bigauss_ndim(xr, peak_params), x=xr) if self.quant_method == 'integrate' else ydata[(xdata > left) & (xdata < right)].sum()
                                 except:
-                                    print(traceback.format_exc())
-                                    print(xr, peak_params)
+                                    if self.debug:
+                                        print(traceback.format_exc())
+                                        print(xr, peak_params)
                                 try:
                                     total_int = integrate.simps(ydata[left_index:right_index], x=xdata[left_index:right_index])
                                 except:
-                                    print(traceback.format_exc())
-                                    print(left_index, right_index, xdata, ydata)
+                                    if self.debug:
+                                        print(traceback.format_exc())
+                                        print(left_index, right_index, xdata, ydata)
                                 sdr = np.log2(int_val*1./total_int+1.)
                                 isotope_index = isotope_labels.loc[index, 'isotope_index']
 
@@ -925,7 +929,8 @@ class Worker(Process):
             del combined_data
             del isotopes_chosen
         except:
-            print('ERROR ON {}'.format(traceback.format_exc()))
+            if self.debug:
+                print('ERROR ON {}'.format(traceback.format_exc()))
             return
 
     def run(self):
@@ -1078,12 +1083,16 @@ def run_pyquant():
     if input_found == 'tsv':
         if args.maxquant:
             peptide_col = "Sequence"
-            scan_col = "MS/MS Scan Number"
             precursor_col = "m/z"
             rt_col = 'Retention time'
             charge_col = 'Charge'
             file_col = 'Raw file'
-            label_col = 'Labeling State'
+            if 'evidence' in source_file:
+                scan_col = "MS/MS Scan Number"
+                label_col = 'Labeling State'
+            elif 'ms2' in source_file:
+                scan_col = "Scan number"
+                label_col = None
         else:
             peptide_col = args.peptide_col
             scan_col = args.scan_col
