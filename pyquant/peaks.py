@@ -5,7 +5,7 @@ import six
 from pythomics.proteomics.config import RESIDUE_COMPOSITION
 import numpy as np
 try:
-    import pyximport; pyximport.install(setup_args={'include_dirs': np.get_include()})
+    import pyximport; pyximport.install(setup_args={'include_dirs': np.get_include()}, reload_support=True)
 except:
     pass
 from .cpeaks import *

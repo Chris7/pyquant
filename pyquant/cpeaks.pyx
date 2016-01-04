@@ -358,10 +358,10 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             peak_width += 1
             continue
         if ydata_peaks.size:
-            minima = [i for i,v in enumerate(ydata_peaks) if v == 0]
+            minima = np.where(ydata_peaks==0)[0].tolist()
         else:
             minima = []
-        minima.extend([i for i in argrelmin(ydata_peaks, order=peak_width)[0] if i not in minima])
+        minima.extend([i for i in argrelmin(ydata_peaks, order=peak_width)[0] if i not in minima and i not in row_peaks])
         minima.sort()
         peaks_found[peak_width] = {'peaks': row_peaks, 'minima': minima}
         # if row_peaks.size > 1:
@@ -423,7 +423,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             next_peak = len(xdata) if peak_index == row_peaks[-1] else row_peaks[peak_num+1]
             # if there is a peak within 1 point of this and it is taller, skip this one
             if peak_index != row_peaks[-1]:
-                if xdata[next_peak]-xdata[peak_index] < 0.1 or next_peak-peak_index <= 2:
+                if bigauss_fit and (xdata[next_peak]-xdata[peak_index] < 0.1 or next_peak-peak_index <= 2):
                     if ydata_peaks[next_peak] < ydata_peaks[peak_index]:
                         skip_peaks.add(next_peak)
                     else:
@@ -440,28 +440,28 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             # find the points around it to estimate the std of the peak
             left = np.searchsorted(minima_array, peak_index)-1
             left_stop = np.searchsorted(minima_array, last_peak) if last_peak != -1 else -1
-            for i in xrange(left, left_stop, -1):
-                minima_index = minima_array[i]
-                minima_value = ydata_peaks[minima_index]
-                if minima_value > rel_peak or minima_value < rel_peak*0.1 or ydata_peaks[minima_index-1]*0.9>minima_value:
-                    break
-                left = minima_index
+            if left == left_stop:
+                left = minima_array[left]
+            else:
+                for i in xrange(left, left_stop, -1):
+                    minima_index = minima_array[i]
+                    minima_value = ydata_peaks[minima_index]
+                    if minima_value > rel_peak or minima_value < rel_peak*0.1 or ydata_peaks[minima_index-1]*0.9>minima_value:
+                        break
+                    left = minima_index
             last_peak = peak_index
-            right = np.searchsorted(minima_array, peak_index)+1
+            right = np.searchsorted(minima_array, peak_index)
             right_stop = np.searchsorted(minima_array, next_peak)
             for i in xrange(right, right_stop):
                 minima_index = minima_array[i]
                 minima_value = ydata_peaks[minima_index]
                 if minima_value > rel_peak or minima_value < rel_peak*0.1 or (minima_index+1 < ydata_peaks.size and ydata_peaks[minima_index+1]*0.9>minima_value):
+                    if i == right:
+                        right = minima_index
                     break
                 right = minima_index
             if right >= minima_array[-1]:
                 right = minima_array[-1]
-            elif right_stop <= right:
-                if right < minima_array.size:
-                    right = minima_array[right]
-                else:
-                    right = -1
             if right > next_peak:
                 right = next_peak
             if right < peak_index:
@@ -486,10 +486,10 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             if variance is not None and variance < min_spacing:
                 variance = min_spacing
             if variance is not None:
-                guess.extend([sum(bnds[0])/2, average, variance])
                 if bigauss_fit:
-                    guess.extend([variance])
-
+                    guess.extend([(1.01+rel_peak)/2, average, variance, variance])
+                else:
+                    guess.extend([rel_peak, average, variance])
         if not guess:
             average = np.average(xdata, weights=ydata)
             variance = np.sqrt(np.average((xdata-average)**2, weights=ydata))
@@ -522,7 +522,10 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         k = len(res.x)
         # this is actually incorrect, but works better...
         # bic = n*np.log(res.fun/n)+k+np.log(n)
-        bic = 2*k+2*np.log(res.fun/n)
+        if bigauss_fit:
+            bic = 2*k+2*np.log(res.fun/n)
+        else:
+            bic = res.fun
         res.bic = bic
         if res.x[2] < min_spacing:
             res.x[2] = min_spacing
@@ -699,7 +702,7 @@ def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] yda
         try:
             mu = mapper(peak[1])
         except:
-            print 'mu', sorted_peaks, peak, new_x
+            print 'mu', sorted_peaks, peak, new_x.tolist(), new_y.tolist()
             return {'int': 0, 'error': np.inf}
         try:
             std = mapper(new_x[0]+np.abs(peak[2]))-mapper(new_x[0])
@@ -940,9 +943,9 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
                     env_dict.pop(isotope_index)
                     micro_dict.pop(isotope_index)
                     ppm_dict.pop(isotope_index)
-                if np.abs(np.log2(data_ratio/theo_ratio)) > 0.5:
+                elif np.abs(np.log2(data_ratio/theo_ratio)) > 0.5:
                     if debug:
-                        print('pattern1 loss', isotope_index, theo_ratio, data_ratio)
+                        print('pattern1 loss', label, isotope_index, theo_ratio, data_ratio, micro_dict[isotope_index])
                     env_dict.pop(isotope_index)
                     micro_dict.pop(isotope_index)
                     ppm_dict.pop(isotope_index)
@@ -950,7 +953,7 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
         for i,(isotope_index, isotope_intensity) in enumerate(isotope_pattern):
             if contaminant_int > isotope_intensity:
                 if debug:
-                    print('contaminant loss')
+                    print('contaminant loss', label)
                 env_dict.pop(isotope_index)
                 micro_dict.pop(isotope_index)
                 ppm_dict.pop(isotope_index)
@@ -973,7 +976,7 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
                         remove = True
                     if remove:
                         if debug:
-                            print('pattern2.1 loss', j[0], isotope_pattern)
+                            print('pattern2.1 loss', label, j[0], isotope_pattern)
                         env_dict.pop(j[0])
                         micro_dict.pop(j[0])
                         ppm_dict.pop(j[0])
@@ -997,7 +1000,7 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
                             shift = True
                     if remove:
                         if debug:
-                            print('pattern2.2 loss', j[0], isotope_pattern)
+                            print('pattern2.2 loss', label, j[0], isotope_pattern)
                         env_dict.pop(j[0])
                         micro_dict.pop(j[0])
                         ppm_dict.pop(j[0])
