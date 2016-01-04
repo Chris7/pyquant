@@ -19,6 +19,7 @@ if six.PY3:
 from itertools import groupby, combinations
 from collections import OrderedDict, defaultdict
 from sklearn.covariance import EllipticEnvelope
+from sklearn.svm import OneClassSVM
 from multiprocessing import Process, Queue
 from six.moves.queue import Empty
 
@@ -177,7 +178,7 @@ class Worker(Process):
         return np.abs(slope) < 0.2 if self.mono else np.abs(slope) < 0.1
 
     # @line_profiler
-    def replaceOutliers(self, common_peaks, combined_data):
+    def replaceOutliers(self, common_peaks, combined_data, debug=False):
         x = []
         y = []
         hx = []
@@ -198,22 +199,31 @@ class Worker(Process):
                         hy.append(peak['std'])
                         hy2.append(peak['std2'])
                         hkeys.append((i, isotope, peak_index))
-        classifier = EllipticEnvelope(support_fraction=0.75, random_state=0)
+        # classifier = EllipticEnvelope(support_fraction=0.75, random_state=0)
+        classifier = OneClassSVM(nu=0.95*0.15+0.05, kernel=str('linear'), degree=1, random_state=0)
         if len(x) == 1:
             return x[0]
         data = np.array([x, y, y2]).T
         false_pred = (False, -1)
         true_pred = (True, 1)
         to_delete = set([])
+        if debug:
+            print(common_peaks)
         try:
             classifier.fit(np.array([hx, hy, hy2]).T if self.mrm else data)
-            x_mean, x_std1, x_std2 = classifier.location_
-        except ValueError:
-            x_mean, x_std1, x_std2 = data[0,0], data[0,1], data[0,2]
+            # x_mean, x_std1, x_std2 = classifier.location_
+        except:
+            if debug:
+                print(traceback.format_exc(), data)
+            x_mean, x_std1, x_std2 = np.median(data, axis=0)
         else:
             classes = classifier.predict(data)
+            x_mean, x_std1, x_std2 = np.median(data[classes==1], axis=0)
             x_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('valid')])
             x_outliers = [i for i,v in enumerate(classes) if keys[i][:2] not in x_inliers and (v in false_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate'))]
+            if debug:
+                print('inliers', x_inliers)
+                print('outliers', x_outliers)
             # print('x1o', x1_outliers)
             if x_inliers:
                 for index in x_outliers:
@@ -224,8 +234,12 @@ class Worker(Process):
                     else:
                         # there is no non-outlying data point. If this data point is > 1 sigma away, delete it
                         peak_info = common_peaks[indexer[0]][indexer[1]][indexer[2]]
+                        if debug:
+                            print(peak_info, x_mean, x_std1, x_std2)
                         if not (peak_info['mean']-x_std1 < x_mean < peak_info['mean']+x_std2):
                             to_delete.add(indexer)
+        if debug:
+            print('to remove', to_delete)
         for i in sorted(set(to_delete), key=operator.itemgetter(0,1,2), reverse=True):
             del common_peaks[i[0]][i[1]][i[2]]
         return x_mean
@@ -731,7 +745,7 @@ class Worker(Process):
                             int_val = sum(values)
                             quant_vals[quant_label][isotope_index] = int_val
                     else:
-                        common_peak = self.replaceOutliers(combined_peaks, combined_data)
+                        common_peak = self.replaceOutliers(combined_peaks, combined_data, debug=self.debug)
                         common_loc = peaks.find_nearest_index(xdata, common_peak)#np.where(xdata==common_peak)[0][0]
                         for quant_label, quan_values in combined_peaks.items():
                             for index, values in quan_values.items():
