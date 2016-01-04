@@ -659,7 +659,7 @@ def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] yda
     # find the edges within our tolerance
     cdef float tolerance
     tolerance = ppm
-    cdef float offset, int_val
+    cdef float offset, int_val, peak_mean
     offset = spacing*isotope
     cdef np.ndarray[FLOAT_t, ndim=1] df_empty_index = xdata[ydata==0]
     cdef int right, left
@@ -671,6 +671,8 @@ def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] yda
         peak = (ydata[pos], xdata[pos], 0.01)
         ret_dict = {'int': ydata[pos], 'bounds': (left, right), 'params': peak, 'error': 0}
     else:
+        if start_mz is None:
+            start_mz = xdata[pos]
         right = np.searchsorted(df_empty_index, xdata[pos])
         left = right-1
         left, right = (np.searchsorted(xdata, df_empty_index[left], side='left'),
@@ -678,12 +680,15 @@ def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] yda
         right += 1
         new_x = xdata[left:right]
         new_y = ydata[left:right]
-        peaks, peak_residuals = findAllPeaks(new_x, new_y, min_dist=(new_x[1]-new_x[0])*2.0)
-        if start_mz is None:
-            start_mz = xdata[pos]
-
-        sorted_peaks = sorted([(peaks[i*3:(i+1)*3], get_ppm(start_mz+offset, v)) for i,v in enumerate(peaks[1::3])], key=itemgetter(1))
         fit = True
+        if new_y.sum() == new_y.max():
+            peak_mean = new_x[np.where(new_y>0)][0]
+            peaks = (new_y.max(), peak_mean, 0)
+            sorted_peaks = [(peaks, get_ppm(start_mz+offset, peak_mean))]
+        else:
+            peaks, peak_residuals = findAllPeaks(new_x, new_y, min_dist=(new_x[1]-new_x[0])*2.0)
+            sorted_peaks = sorted([(peaks[i*3:(i+1)*3], get_ppm(start_mz+offset, v)) for i,v in enumerate(peaks[1::3])], key=itemgetter(1))
+
 
         if fragment_scan == False and not within_tolerance(sorted_peaks, tolerance):
             if calc_start_mz is not None:
@@ -696,25 +701,26 @@ def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] yda
                 fit = False
 
         peak = sorted_peaks[0][0]
-        # interpolate our mean/std to a linear range
-        from scipy.interpolate import interp1d
-        mapper = interp1d(new_x, range(len(new_x)))
-        try:
-            mu = mapper(peak[1])
-        except:
-            print 'mu', sorted_peaks, peak, new_x.tolist(), new_y.tolist()
-            return {'int': 0, 'error': np.inf}
-        try:
-            std = mapper(new_x[0]+np.abs(peak[2]))-mapper(new_x[0])
-        except:
-            print 'std', sorted_peaks, peak, new_x
-            return {'int': 0, 'error': np.inf}
-        peak_gauss = (peak[0]*new_y.max(), mu, std)
+        # # interpolate our mean/std to a linear range
+        # from scipy.interpolate import interp1d
+        # mapper = interp1d(new_x, range(len(new_x)))
+        # try:
+        #     mu = mapper(peak[1])
+        # except:
+        #     print 'mu', sorted_peaks, peak, new_x.tolist(), new_y.tolist()
+        #     return {'int': 0, 'error': np.inf}
+        # try:
+        #     std = mapper(new_x[0]+np.abs(peak[2]))-mapper(new_x[0])
+        # except:
+        #     print 'std', sorted_peaks, peak, new_x
+        #     return {'int': 0, 'error': np.inf}
+        # peak_gauss = (peak[0]*new_y.max(), mu, std)
         peak[0] *= new_y.max()
 
-        lr = np.linspace(peak_gauss[1]-peak_gauss[2]*4, peak_gauss[1]+peak_gauss[2]*4, 1000)
-        left_peak, right_peak = peak[1]-peak[2]*2, peak[1]+peak[2]*2
-        int_val = integrate.simps(gauss(lr, peak_gauss[0], peak_gauss[1], peak_gauss[2]), x=lr) if quant_method == 'integrate' else ydata[(xdata > left_peak) & (xdata < right_peak)].sum()
+        # lr = np.linspace(peak_gauss[1]-peak_gauss[2]*4, peak_gauss[1]+peak_gauss[2]*4, 1000)
+        # left_peak, right_peak = peak[1]-peak[2]*2, peak[1]+peak[2]*2
+        # int_val = integrate.simps(gauss(lr, peak_gauss[0], peak_gauss[1], peak_gauss[2]), x=lr) if quant_method == 'integrate' else ydata[(xdata > left_peak) & (xdata < right_peak)].sum()
+        int_val = gauss(new_x, peak[0], peak[1], peak[2]).sum()
         if not fit:
             pass
         ret_dict = {'int': int_val if fit or fragment_scan == True else 0, 'int2': int_val, 'bounds': (left, right), 'params': peak, 'error': sorted_peaks[0][1]}
@@ -915,41 +921,42 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
 
     # in all cases, the envelope is going to be either monotonically decreasing, or a parabola (-x^2)
     isotope_pattern = [(isotope_index, isotope_dict['int']) for isotope_index, isotope_dict in micro_dict.items()]
-    if theo_dist is not None and len(isotope_pattern) >= 2:
-        ref_iso = -1
-        ref_int = 0.
-        theo_int = 0.
-        for i,(isotope_index, isotope_intensity) in enumerate(isotope_pattern):
-            if isotope_index == ref_iso:
-                continue
-            # if isotope_intensity == 0 and ref_iso > 0:
-            #     print isotope_index
-            #     print ref_iso, ref_int
-            #     print theo_dist
-            #     print micro_dict[isotope_index]
-            if ref_int == 0 and isotope_intensity > 0:
-                if contaminant_int > 1 and float(isotope_intensity)/contaminant_int < 1:
-                    env_dict.pop(isotope_index)
-                    micro_dict.pop(isotope_index)
-                    ppm_dict.pop(isotope_index)
-                else:
-                    ref_iso = isotope_index
-                    ref_int = float(isotope_intensity)
-                    theo_int = float(theo_dist[ref_iso])
-            elif isotope_intensity > 0:
-                theo_ratio = theo_int/theo_dist[isotope_index]
-                data_ratio = ref_int/isotope_intensity
-                if contaminant_int > 1 and ref_int/contaminant_int < 1:
-                    env_dict.pop(isotope_index)
-                    micro_dict.pop(isotope_index)
-                    ppm_dict.pop(isotope_index)
-                elif np.abs(np.log2(data_ratio/theo_ratio)) > 0.5:
-                    if debug:
-                        print('pattern1 loss', label, isotope_index, theo_ratio, data_ratio, micro_dict[isotope_index])
-                    env_dict.pop(isotope_index)
-                    micro_dict.pop(isotope_index)
-                    ppm_dict.pop(isotope_index)
-    elif theo_dist is not None and contaminant_int > 1:
+    # if theo_dist is not None and len(isotope_pattern) >= 2:
+    #     pass
+        # ref_iso = -1
+        # ref_int = 0.
+        # theo_int = 0.
+        # for i,(isotope_index, isotope_intensity) in enumerate(isotope_pattern):
+        #     if isotope_index == ref_iso:
+        #         continue
+        #     # if isotope_intensity == 0 and ref_iso > 0:
+        #     #     print isotope_index
+        #     #     print ref_iso, ref_int
+        #     #     print theo_dist
+        #     #     print micro_dict[isotope_index]
+        #     if ref_int == 0 and isotope_intensity > 0:
+        #         if contaminant_int > 1 and float(isotope_intensity)/contaminant_int < 1:
+        #             env_dict.pop(isotope_index)
+        #             micro_dict.pop(isotope_index)
+        #             ppm_dict.pop(isotope_index)
+        #         else:
+        #             ref_iso = isotope_index
+        #             ref_int = float(isotope_intensity)
+        #             theo_int = float(theo_dist[ref_iso])
+        #     elif isotope_intensity > 0:
+        #         theo_ratio = theo_int/theo_dist[isotope_index]
+        #         data_ratio = ref_int/isotope_intensity
+        #         if contaminant_int > 1 and ref_int/contaminant_int < 1:
+        #             env_dict.pop(isotope_index)
+        #             micro_dict.pop(isotope_index)
+        #             ppm_dict.pop(isotope_index)
+        #         elif np.abs(np.log2(data_ratio/theo_ratio)) > 0.5:
+        #             if debug:
+        #                 print('pattern1 loss', label, isotope_index, theo_ratio, data_ratio, micro_dict[isotope_index])
+        #             env_dict.pop(isotope_index)
+        #             micro_dict.pop(isotope_index)
+        #             ppm_dict.pop(isotope_index)
+    if contaminant_int > 1:
         for i,(isotope_index, isotope_intensity) in enumerate(isotope_pattern):
             if contaminant_int > isotope_intensity:
                 if debug:
@@ -957,7 +964,7 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
                 env_dict.pop(isotope_index)
                 micro_dict.pop(isotope_index)
                 ppm_dict.pop(isotope_index)
-    else:
+    if theo_dist is None:
         # are we monotonically decreasing?
         remove = False
         if len(isotope_pattern) > 2:
