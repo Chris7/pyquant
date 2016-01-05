@@ -411,7 +411,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         sys.stderr.write('final peaks: {}\n'.format(final_peaks))
     for peak_width, peak_info in final_peaks.items():
         row_peaks = peak_info['peaks']
-        minima_array = np.array(peak_info['minima'])
+        minima_array = np.array(peak_info['minima'], dtype=long)
         guess = []
         bnds = []
         last_peak = -1
