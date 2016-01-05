@@ -206,20 +206,24 @@ class Worker(Process):
         false_pred = (False, -1)
         true_pred = (True, 1)
         to_delete = set([])
-        if debug:
-            print(common_peaks)
-        try:
-            classifier.fit(np.array([hx, hy, hy2]).T if self.mrm else data)
-            # x_mean, x_std1, x_std2 = classifier.location_
-        except:
+        fitted = False
+        if len(hx) >= 3 or len(x) >= 3:
+            if debug:
+                print(common_peaks)
             try:
-                classifier = OneClassSVM(nu=0.95*0.15+0.05, kernel=str('linear'), degree=1, random_state=0)
                 classifier.fit(np.array([hx, hy, hy2]).T if self.mrm else data)
+                fitted = True
+                # x_mean, x_std1, x_std2 = classifier.location_
             except:
-                if debug:
-                    print(traceback.format_exc(), data)
-                x_mean, x_std1, x_std2 = np.median(data, axis=0)
-        else:
+                try:
+                    classifier = OneClassSVM(nu=0.95*0.15+0.05, kernel=str('linear'), degree=1, random_state=0)
+                    classifier.fit(np.array([hx, hy, hy2]).T if self.mrm else data)
+                    fitted = True
+                except:
+                    if debug:
+                        print(traceback.format_exc(), data)
+        x_mean, x_std1, x_std2 = np.median(data, axis=0)
+        if fitted:
             classes = classifier.predict(data)
             x_mean, x_std1, x_std2 = np.median(data[classes==1], axis=0)
             x_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('valid')])
@@ -949,7 +953,7 @@ class Worker(Process):
             del isotopes_chosen
         except:
             if self.debug:
-                print('ERROR ON {}'.format(traceback.format_exc()))
+                print('ERROR ON {}: {}'.format(peptide, traceback.format_exc()))
             return
 
     def run(self):
@@ -1444,8 +1448,9 @@ def run_pyquant():
         rep_map = defaultdict(set)
         if ion_search or args.mva:
             ions = [i['id_scan'].get('theor_mass', i['id_scan']['mass']) for i in raw_scans] if args.mva else raw_scans['ions']
-            last_scan_ions = set([])
+            last_scan_ions = defaultdict(set)
             for scan_id in scans_to_fetch:
+                this_scan_ions = defaultdict(set)
                 reader_in.put((0, scan_id, None, None))
                 scan = reader_outs[0].get()
                 if scan is None:
@@ -1474,18 +1479,16 @@ def run_pyquant():
                     if msn_for_quant == msn_for_id or args.mva:
                         for ion_dict in ions_found:
                             ion, nearest_mz = ion_dict['ion'], ion_dict['nearest_mz']
-                            if not args.mva and ion in last_scan_ions:
-                                continue
                             ion_found = '{}({})'.format(ion, nearest_mz)
                             spectra_to_quant = scan_id
                             # we are quantifying the ion itself
                             if charge == 0 or args.mva:
                                 # see if we can figure out the charge state
                                 charge_states = []
-                                for i in xrange(1,5):
+                                for i in xrange(1, 5):
                                     charge_peaks_found = 0
                                     peak_height = 0
-                                    for j in xrange(1,3):
+                                    for j in xrange(1, 3):
                                         next_peak = ion+peaks.NEUTRON/float(i)*float(j)
                                         closest_mz = peaks.find_nearest_index(scan_mzs, next_peak)
                                         if peaks.get_ppm(next_peak, scan_mzs[closest_mz]) < isotope_ppm*1.5:
@@ -1494,17 +1497,27 @@ def run_pyquant():
                                     charge_states.append((charge_peaks_found, i, peak_height))
                                 # print int(ion_dict['charge']), charge_states
                                 # print int(ion_dict['charge']), charge_states
+                                charge_states = sorted(charge_states, key=operator.itemgetter(0, 2), reverse=True)
                                 if args.mva and int(ion_dict['charge']) not in [i[0] for i in charge_states]:
                                     continue
                                 elif args.mva:
                                     charge_to_use = ion_dict['charge']
+                                elif charge_states:
+                                    if charge_states[0][1] == 1:
+                                        charge_to_use = charge_states[1][1] if charge_states[1][2] != 0 else 1
+                                    else:
+                                        charge_to_use = charge_states[0][1]
                                 else:
-                                    charge_to_use = sorted(charge_states, key=operator.itemgetter(0, 2), reverse=True)[0][1] if charge_states else 1
+                                    charge_to_use = 1
                                 if args.mva:
                                     rep_key = (ion_dict['scan_info']['id_scan']['rt'], ion_dict['scan_info']['id_scan']['mass'], charge_to_use)
                                     rep_map[rep_key].add(rt)
                             else:
                                 charge_to_use = charge
+                            this_scan_ions[ion].add(charge_to_use)
+                            if charge_to_use in last_scan_ions[ion]:
+                                continue
+                            last_scan_ions[ion].add(charge_to_use)
                             if args.mva:
                                 d = copy.deepcopy(ion_dict['scan_info'])
                                 d['id_scan']['id'] = scan_id
@@ -1543,7 +1556,13 @@ def run_pyquant():
                             },
                         }
                         ion_search_list.append((spectra_to_quant, d))
-                last_scan_ions = set([i['ion'] for i in ions_found])
+                to_remove = []
+                for ion, charges in last_scan_ions.items():
+                    for charge in charges:
+                        if charge not in this_scan_ions[ion]:
+                            to_remove.append((ion, charge))
+                for ion, charge in to_remove:
+                    last_scan_ions[ion].discard(charge)
                 del scan
 
         if args.mva:
