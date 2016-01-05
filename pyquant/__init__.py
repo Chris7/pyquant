@@ -9,7 +9,7 @@ This will quantify labeled peaks (such as SILAC) in ms1 spectra. It relies solel
 
 pyquant_parser = argparse.ArgumentParser(description=description)
 pyquant_parser.add_argument('-p', help="Threads to run", type=int, default=1)
-pyquant_parser.add_argument('--theo-xic', help=argparse.SUPPRESS, type=bool, default=False)
+pyquant_parser.add_argument('--theo-xic', help=argparse.SUPPRESS, action='store_true')
 
 raw_group = pyquant_parser.add_argument_group("Raw Data Parameters")
 raw_group.add_argument('--scan-file', help="The scan file(s) for the raw data. If not provided, assumed to be in the directory of the processed/tabbed/peaklist file.", type=argparse.FileType('r'), nargs='*')
