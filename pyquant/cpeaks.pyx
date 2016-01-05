@@ -922,6 +922,8 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
 
     # in all cases, the envelope is going to be either monotonically decreasing, or a parabola (-x^2)
     isotope_pattern = [(isotope_index, isotope_dict['int']) for isotope_index, isotope_dict in micro_dict.items()]
+    # Empirically, it's been found that enforcing the theoretical distribution on a per ms1 scan basis leads to
+    # significant increases in variance for the XIC
     # if theo_dist is not None and len(isotope_pattern) >= 2:
     #     pass
         # ref_iso = -1
