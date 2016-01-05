@@ -432,43 +432,63 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
 
             rel_peak = ydata_peaks[peak_index]
             # find the points around it to estimate the std of the peak
-            left = np.searchsorted(minima_array, peak_index)-1
-            left_stop = np.searchsorted(minima_array, last_peak) if last_peak != -1 else -1
-            if left == left_stop:
-                left = minima_array[left]
-            else:
-                for i in xrange(left, left_stop, -1):
-                    minima_index = minima_array[i]
-                    minima_value = ydata_peaks[minima_index]
-                    if minima_value > rel_peak or minima_value < rel_peak*0.1 or ydata_peaks[minima_index-1]*0.9>minima_value:
-                        if i == left:
-                            left = minima_index
-                        break
-                    left = minima_index
-            last_peak = peak_index
-            right = np.searchsorted(minima_array, peak_index)
-            right_stop = np.searchsorted(minima_array, next_peak)
-            for i in xrange(right, right_stop):
-                minima_index = minima_array[i]
-                minima_value = ydata_peaks[minima_index]
-                if minima_value > rel_peak or minima_value < rel_peak*0.1 or (minima_index+1 < ydata_peaks.size and ydata_peaks[minima_index+1]*0.9>minima_value):
-                    if i == right:
+            if minima_array.size:
+                left = np.searchsorted(minima_array, peak_index)-1
+                left_stop = np.searchsorted(minima_array, last_peak) if last_peak != -1 else -1
+                if left == left_stop:
+                    if last_peak == -1:
+                        left = 0
+                    else:
+                        left = minima_array[left]
+                else:
+                    for i in xrange(left, left_stop, -1):
+                        minima_index = minima_array[i]
+                        minima_value = ydata_peaks[minima_index]
+                        if minima_value > rel_peak or minima_value < rel_peak*0.1 or ydata_peaks[minima_index-1]*0.9>minima_value:
+                            if i == left:
+                                left = minima_index
+                            break
+                        left = minima_index
+                last_peak = peak_index
+                right = np.searchsorted(minima_array, peak_index)
+                right_stop = np.searchsorted(minima_array, next_peak)
+                if False and right == right_stop:
+                    right = minima_array[right]
+                else:
+                    for i in xrange(right, right_stop):
+                        minima_index = minima_array[i]
+                        minima_value = ydata_peaks[minima_index]
+                        if minima_value > rel_peak or minima_value < rel_peak*0.1 or (minima_index+1 < ydata_peaks.size and ydata_peaks[minima_index+1]*0.9>minima_value):
+                            if i == right:
+                                right = minima_index
+                            break
                         right = minima_index
-                    break
-                right = minima_index
-            if right >= minima_array[-1]:
-                right = minima_array[-1]
-            if right > next_peak:
-                right = next_peak
-            if right < peak_index:
-                right = next_peak
-            bnds.extend([(rel_peak, 1.01), (xdata[left], xdata[right]), (min_spacing, peak_range)])
-            if bigauss_fit:
-                bnds.extend([(min_spacing, peak_range)])
-            peak_values = ydata[left:right]
-            peak_indices = xdata[left:right]
+                if right >= minima_array[-1]:
+                    right = minima_array[-1]
+                if right > next_peak:
+                    right = next_peak
+                if right < peak_index:
+                    right = next_peak
+                if right >= len(xdata):
+                    bnds.extend([(rel_peak, 1.01), (xdata[left], xdata[-1]), (min_spacing, peak_range)])
+                else:
+                    bnds.extend([(rel_peak, 1.01), (xdata[left], xdata[right]), (min_spacing, peak_range)])
+                if bigauss_fit:
+                    bnds.extend([(min_spacing, peak_range)])
+                peak_values = ydata[left:right]
+                peak_indices = xdata[left:right]
+            else:
+                left = 0
+                right = len(xdata)
+                bnds.extend([(rel_peak, 1.01), (xdata[left], xdata[-1]), (min_spacing, peak_range)])
+                if bigauss_fit:
+                    bnds.extend([(min_spacing, peak_range)])
+                peak_values = ydata[left:right]
+                peak_indices = xdata[left:right]
+
             if debug:
-                print('bounds', peak_index, left, right, peak_values.tolist(), peak_indices.tolist())
+                print('bounds', peak_index, left, right, peak_values.tolist(), peak_indices.tolist(), bnds)
+
             if peak_values.any():
                 average = np.average(peak_indices, weights=peak_values)
                 variance = np.sqrt(np.average((peak_indices-average)**2, weights=peak_values))
