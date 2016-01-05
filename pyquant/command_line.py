@@ -199,8 +199,7 @@ class Worker(Process):
                         hy.append(peak['std'])
                         hy2.append(peak['std2'])
                         hkeys.append((i, isotope, peak_index))
-        # classifier = EllipticEnvelope(support_fraction=0.75, random_state=0)
-        classifier = OneClassSVM(nu=0.95*0.15+0.05, kernel=str('linear'), degree=1, random_state=0)
+        classifier = EllipticEnvelope(support_fraction=0.75, random_state=0)
         if len(x) == 1:
             return x[0]
         data = np.array([x, y, y2]).T
@@ -213,9 +212,13 @@ class Worker(Process):
             classifier.fit(np.array([hx, hy, hy2]).T if self.mrm else data)
             # x_mean, x_std1, x_std2 = classifier.location_
         except:
-            if debug:
-                print(traceback.format_exc(), data)
-            x_mean, x_std1, x_std2 = np.median(data, axis=0)
+            try:
+                classifier = OneClassSVM(nu=0.95*0.15+0.05, kernel=str('linear'), degree=1, random_state=0)
+                classifier.fit(np.array([hx, hy, hy2]).T if self.mrm else data)
+            except:
+                if debug:
+                    print(traceback.format_exc(), data)
+                x_mean, x_std1, x_std2 = np.median(data, axis=0)
         else:
             classes = classifier.predict(data)
             x_mean, x_std1, x_std2 = np.median(data[classes==1], axis=0)
