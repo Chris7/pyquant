@@ -652,6 +652,8 @@ class Worker(Process):
                                 sub_peak_location = peaks.find_nearest_index(peak_x, nearest_positive_peak)
                                 sub_peak_index = sub_peak_location if peak_y[sub_peak_location] else np.argmax(peak_y)
                                 # fit, residual = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=sub_peak_index, debug=self.debug)
+                                if self.debug:
+                                    print('fitting XIC for', quant_label, index)
                                 fit, residual = peaks.findAllPeaks(xdata, ydata, bigauss_fit=True, filter=True,
                                                                    rt_peak=nearest_positive_peak, debug=self.debug)
                                 if fit is None:

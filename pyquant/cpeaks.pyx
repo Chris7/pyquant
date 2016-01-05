@@ -429,14 +429,8 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
                     else:
                         continue
             fitted_peaks.append(peak_index)
-            peak_min, peak_max = xdata[peak_index]-0.2, xdata[peak_index]+0.2
 
-            peak_min = xdata[0] if peak_min < xdata[0] else peak_min
-            peak_max = xdata[-1] if peak_max > xdata[-1] else peak_max
             rel_peak = ydata_peaks[peak_index]
-            bnds.extend([(rel_peak, 1.01), (peak_min, peak_max), (min_spacing, peak_range)])
-            if bigauss_fit:
-                bnds.extend([(min_spacing, peak_range)])
             # find the points around it to estimate the std of the peak
             left = np.searchsorted(minima_array, peak_index)-1
             left_stop = np.searchsorted(minima_array, last_peak) if last_peak != -1 else -1
@@ -447,6 +441,8 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
                     minima_index = minima_array[i]
                     minima_value = ydata_peaks[minima_index]
                     if minima_value > rel_peak or minima_value < rel_peak*0.1 or ydata_peaks[minima_index-1]*0.9>minima_value:
+                        if i == left:
+                            left = minima_index
                         break
                     left = minima_index
             last_peak = peak_index
@@ -466,8 +462,13 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
                 right = next_peak
             if right < peak_index:
                 right = next_peak
+            bnds.extend([(rel_peak, 1.01), (xdata[left], xdata[right]), (min_spacing, peak_range)])
+            if bigauss_fit:
+                bnds.extend([(min_spacing, peak_range)])
             peak_values = ydata[left:right]
             peak_indices = xdata[left:right]
+            if debug:
+                print('bounds', peak_index, left, right, peak_values.tolist(), peak_indices.tolist())
             if peak_values.any():
                 average = np.average(peak_indices, weights=peak_values)
                 variance = np.sqrt(np.average((peak_indices-average)**2, weights=peak_values))
