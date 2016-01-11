@@ -242,13 +242,13 @@
         <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/jquery-contextmenu/1.9.1/jquery.contextMenu.min.js"></script>
         <script>
             // Custom sorting methods
-            jQuery.fn.dataTableExt.oSort["num-asc"] = function (x, y) {
+            jQuery.fn.dataTableExt.oSort["pq-num-asc"] = function (x, y) {
                 x = parseFloat(x);
                 y = parseFloat(y);
                 return ((x < y || isNaN(y) ) ? -1 : ((x > y || isNaN(x)) ? 1 : 0));
             };
 
-            jQuery.fn.dataTableExt.oSort["num-asc"] = function (x, y) {
+            jQuery.fn.dataTableExt.oSort["pq-num-desc"] = function (x, y) {
                 x = parseFloat(x);
                 y = parseFloat(y);
                 return ((x < y || isNaN(x)) ? 1 : ((x > y || isNaN(y) ) ? -1 : 0));
@@ -257,7 +257,18 @@
             $(document).ready(function() {
 
                 var dt_data = JSON.parse(pako.inflate(window.atob("$html_output"), { to: 'string' }));
+                var non_numeric_rows = [0,1,2];
+                var numeric_rows = [];
+                var $headers = $('#raw-table > thead > tr > th');
+                    $headers.each(function(index, el){
+                    var text = $(el).text();
+                    if (contains(text, 'Ions Found')){
 
+                    }
+                    else if(non_numeric_rows.indexOf(index) == -1){
+                        numeric_rows.push(index);
+                    }
+                });
                 var dt = $('#raw-table').DataTable({
                     "iDisplayLength": 100,
                     "sScrollY": $(window).height()*0.4,
@@ -266,6 +277,9 @@
                     "jQueryUI": true,
                     'search': {regex: true},
                     'fixedHeader': {header: true},
+                    'aoColumnDefs': [
+                      { "sType": "pq-num", "aTargets": numeric_rows }
+                    ],
                 });
 
                 var columns = dt.columns().header();
