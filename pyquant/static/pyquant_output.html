@@ -254,6 +254,10 @@
                 return ((x < y || isNaN(x)) ? 1 : ((x > y || isNaN(y) ) ? -1 : 0));
             };
 
+            var contains = function(a, b){
+                return a.indexOf(b) > -1;
+            };
+
             $(document).ready(function() {
 
                 var dt_data = JSON.parse(pako.inflate(window.atob("$html_output"), { to: 'string' }));
