@@ -721,7 +721,7 @@ def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] yda
             else:
                 fit = False
 
-        peak = sorted_peaks[0][0]
+        peak = list(sorted_peaks[0][0])
         # # interpolate our mean/std to a linear range
         # from scipy.interpolate import interp1d
         # mapper = interp1d(new_x, range(len(new_x)))
