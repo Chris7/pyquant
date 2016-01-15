@@ -43,7 +43,7 @@ cpdef float gauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, nd
 
 cpdef np.ndarray[FLOAT_t, ndim=2] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
     cdef np.ndarray[FLOAT_t, ndim=2] jac
-    cdef np.ndarray[FLOAT_t, ndim=1] lx, ly, rx, ry, a_jac, mu_jac, s1_jac, s2_jac
+    cdef np.ndarray[FLOAT_t, ndim=1] lx, ly, rx, ry
     cdef float amp, mu, stdl, stdr, sigma1, sigma2
     cdef int i
     jac = np.zeros((params.shape[0], 1))
