@@ -225,26 +225,30 @@ class Worker(Process):
         x_mean, x_std1, x_std2 = np.median(data, axis=0)
         if fitted:
             classes = classifier.predict(data)
-            x_mean, x_std1, x_std2 = np.median(data[classes==1], axis=0)
-            x_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('valid')])
-            x_outliers = [i for i,v in enumerate(classes) if keys[i][:2] not in x_inliers and (v in false_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate'))]
-            if debug:
-                print('inliers', x_inliers)
-                print('outliers', x_outliers)
-            # print('x1o', x1_outliers)
-            if x_inliers:
-                for index in x_outliers:
-                    indexer = keys[index]
-                    if x_inliers is not None and indexer[:2] in x_inliers:
-                        # this outlier has a valid inlying value in x1_inliers, so we delete it
-                        to_delete.add(indexer)
-                    else:
-                        # there is no non-outlying data point. If this data point is > 1 sigma away, delete it
-                        peak_info = common_peaks[indexer[0]][indexer[1]][indexer[2]]
-                        if debug:
-                            print(peak_info, x_mean, x_std1, x_std2)
-                        if not (peak_info['mean']-x_std1 < x_mean < peak_info['mean']+x_std2):
+            try:
+                x_mean, x_std1, x_std2 = np.median(data[classes==1], axis=0)
+            except IndexError:
+                x_mean, x_std1, x_std2 = np.median(data, axis=0)
+            else:
+                x_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('valid')])
+                x_outliers = [i for i,v in enumerate(classes) if keys[i][:2] not in x_inliers and (v in false_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate'))]
+                if debug:
+                    print('inliers', x_inliers)
+                    print('outliers', x_outliers)
+                # print('x1o', x1_outliers)
+                if x_inliers:
+                    for index in x_outliers:
+                        indexer = keys[index]
+                        if x_inliers is not None and indexer[:2] in x_inliers:
+                            # this outlier has a valid inlying value in x1_inliers, so we delete it
                             to_delete.add(indexer)
+                        else:
+                            # there is no non-outlying data point. If this data point is > 1 sigma away, delete it
+                            peak_info = common_peaks[indexer[0]][indexer[1]][indexer[2]]
+                            if debug:
+                                print(peak_info, x_mean, x_std1, x_std2)
+                            if not (peak_info['mean']-x_std1 < x_mean < peak_info['mean']+x_std2):
+                                to_delete.add(indexer)
         if debug:
             print('to remove', to_delete)
         for i in sorted(set(to_delete), key=operator.itemgetter(0,1,2), reverse=True):
@@ -952,8 +956,12 @@ class Worker(Process):
             del combined_data
             del isotopes_chosen
         except:
-            if self.debug:
-                print('ERROR ON {}: {}'.format(peptide, traceback.format_exc()))
+            # if self.debug:
+            print('ERROR ON {}: {}'.format(peptide, traceback.format_exc()))
+            try:
+                self.results.put(result_dict)
+            except:
+                pass
             return
 
     def run(self):
@@ -1134,6 +1142,8 @@ def run_pyquant():
             if not peptides and (sample != 1.0 and random.random() > sample):
                 continue
             specId = str(i[scan_col])
+            if scans_to_select and str(specId) not in scans_to_select:
+                continue
             fname = i[file_col] if file_col in i else raw_file
             if fname not in scan_filemap:
                 fname = os.path.split(fname)[1]
@@ -1142,12 +1152,12 @@ def run_pyquant():
                         continue
                     sys.stderr.write('{0} not found in filemap. Filemap is {1}. If you wish to ignore this message, add --skip to your input arguments.'.format(fname, scan_filemap))
                     return 1
-            mass_key = (specId, fname)
-            if mass_key in found_scans:
-                continue
             charge = float(i[charge_col]) if charge_col in i else 1
             precursor_mass = i[precursor_col] if precursor_col in i else None
             rt_value = i[rt_col] if rt_col in i else None
+            mass_key = (specId, fname, charge, precursor_mass)
+            if mass_key in found_scans:
+                continue
             #'id': id_Scan[id], 'theor_mass' -> id_scan[mass], 'peptide': idScan[peptide,],  'mod_peptide': idscan, 'rt': idscan,
             #
             d = {
@@ -1185,7 +1195,7 @@ def run_pyquant():
             if scans_to_select and str(specId) not in scans_to_select:
                 continue
             fname = scan.file
-            mass_key = (fname, specId, peptide)
+            mass_key = (fname, specId, peptide, scan.mass)
             if mass_key in found_scans:
                 continue
             d = {
