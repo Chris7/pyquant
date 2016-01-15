@@ -435,7 +435,9 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             if minima_array.size:
                 left = np.searchsorted(minima_array, peak_index)-1
                 left_stop = np.searchsorted(minima_array, last_peak) if last_peak != -1 else -1
-                if left == left_stop:
+                if left == -1:
+                    left = 0 if last_peak != -1 else last_peak+1
+                elif left == left_stop:
                     if last_peak == -1:
                         left = 0
                     else:
@@ -508,7 +510,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
                 variance = min_spacing
             if variance is not None:
                 if bigauss_fit:
-                    guess.extend([(1.01+rel_peak)/2, average, variance, variance])
+                    guess.extend([rel_peak, average, variance, variance])
                 else:
                     guess.extend([rel_peak, average, variance])
         if not guess:
