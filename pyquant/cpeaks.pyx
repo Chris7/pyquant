@@ -989,6 +989,8 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
                 env_dict.pop(isotope_index)
                 micro_dict.pop(isotope_index)
                 ppm_dict.pop(isotope_index)
+    # rebuild the pattern after contaminants are removed
+    isotope_pattern = [(isotope_index, isotope_dict['int']) for isotope_index, isotope_dict in micro_dict.items()]
     if theo_dist is None:
         # are we monotonically decreasing?
         remove = False
