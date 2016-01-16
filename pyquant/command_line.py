@@ -2,6 +2,7 @@ from __future__ import division, unicode_literals, print_function
 import sys
 from string import Template
 import gzip
+import signal
 import base64
 import json
 import os
@@ -66,6 +67,8 @@ RESULT_ORDER = [('peptide', 'Peptide'), ('modifications', 'Modifications'),
                 ('charge', 'Charge'), ('ms1', 'MS1 Spectrum ID'), ('scan', 'MS2 Spectrum ID'), ('rt', 'Retention Time')]
 
 ION_CUTOFF = 2
+
+CRASH_SIGNALS = {signal.SIGSEGV, }
 
 class Reader(Process):
     def __init__(self, incoming, outgoing, raw_file=None, spline=None):
@@ -1735,13 +1738,13 @@ def run_pyquant():
                     if not v.is_alive():
                         v.terminate()
                         exit_code = v.exitcode
-                        if exit_code != 0:
+                        if exit_code in CRASH_SIGNALS:
                             print('thread has been killed using params {}'.format(v.params))
                         to_del.append({'worker_index': i, 'thread_id': v.thread, 'exitcode': exit_code})
                 workers_to_add = []
                 for worker_dict in sorted(to_del, key=operator.itemgetter('worker_index'),reverse=True):
                     worker_index = worker_dict['worker_index']
-                    if worker_dict['exitcode'] != 0:
+                    if worker_dict['exitcode'] in CRASH_SIGNALS:
                         thread_index = worker_dict['thread_id']
                         worker = Worker(queue=in_queue, results=result_queue, raw_name=filepath, mass_labels=mass_labels,
                                 debug=args.debug, html=html, mono=not args.spread, precursor_ppm=args.precursor_ppm,
