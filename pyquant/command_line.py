@@ -584,11 +584,12 @@ class Worker(Process):
                     while rt_attempts < 4 and not found_rt:
                         res, residual = peaks.findAllPeaks(merged_x, fitting_y, filter=True, bigauss_fit=True, rt_peak=start_rt, max_peaks=self.max_peaks)
                         rt_peak = peaks.bigauss_ndim(np.array([rt]), res)[0]
-                        found_rt = rt_peak > 0.05# or rt_peak*fitting_y.max() > 100000
+                        # we don't do this routine for cases where there are > 5
+                        found_rt = sum(fitting_y>0) <= 5 or rt_peak > 0.05# or rt_peak*fitting_y.max() > 100000
                         if not found_rt:
                             if self.debug:
                                 print('cannot find rt for', peptide, rt_peak)
-                                print(merged_x, fitting_y, res)
+                                print(merged_x, fitting_y, res, sum(fitting_y>0))
                             # destroy our peaks, keep searching
                             res[::4] = res[::4]*fitting_y.max()
                             fitting_y -= peaks.bigauss_ndim(merged_x, res)
@@ -966,6 +967,7 @@ class Worker(Process):
 
     def run(self):
         for index, params in enumerate(iter(self.queue.get, None)):
+            self.params = params
             self.quantify_peaks(params)
         self.results.put(None)
 
@@ -1590,10 +1592,8 @@ def run_pyquant():
                 rep_mapper = None
 
         if ion_search or all_msn:
-            scan_count = len(ion_search_list)
             raw_scans = [i[1] for i in sorted(ion_search_list, key=operator.itemgetter(0))]
         if args.mva:
-            scan_count = len(replicate_search_list)
             raw_scans = []
             for i in replicate_search_list:
                 ion_rt, ion = i
@@ -1715,6 +1715,8 @@ def run_pyquant():
 
         # sort by RT so we can minimize our memory footprint by throwing away scans we no longer need
         scans_to_submit.sort(key=operator.itemgetter(0))
+        if ion_search or all_msn or args.mva:
+            scan_count = len(scans_to_submit)
         for i in scans_to_submit:
             in_queue.put(i[1])
 
@@ -1732,9 +1734,28 @@ def run_pyquant():
                 for i, v in enumerate(workers):
                     if not v.is_alive():
                         v.terminate()
-                        to_del.append(i)
-                for i in sorted(to_del, reverse=True):
-                    del workers[i]
+                        exit_code = v.exitcode
+                        if exit_code != 0:
+                            print('thread has been killed using params {}'.format(v.params))
+                        to_del.append({'worker_index': i, 'thread_id': v.thread, 'exitcode': exit_code})
+                workers_to_add = []
+                for worker_dict in sorted(to_del, key=operator.itemgetter('worker_index'),reverse=True):
+                    worker_index = worker_dict['worker_index']
+                    if worker_dict['exitcode'] != 0:
+                        thread_index = worker_dict['thread_id']
+                        worker = Worker(queue=in_queue, results=result_queue, raw_name=filepath, mass_labels=mass_labels,
+                                debug=args.debug, html=html, mono=not args.spread, precursor_ppm=args.precursor_ppm,
+                                isotope_ppm=args.isotope_ppm, isotope_ppms=None, msn_rt_map=msn_rt_map, reporter_mode=reporter_mode,
+                                reader_in=reader_in, reader_out=reader_outs[thread_index], thread=thread_index, quant_method=quant_method,
+                                spline=spline, isotopologue_limit=isotopologue_limit, labels_needed=labels_needed,
+                                quant_msn_map=[i for i in msn_map if i[0] == msn_for_quant] if not args.mrm else msn_map,
+                                overlapping_mz=overlapping_mz, min_resolution=args.min_resolution, min_scans=args.min_scans,
+                                mrm_pair_info=mrm_pair_info, mrm=args.mrm, peak_cutoff=args.peak_cutoff, replicate=args.mva,
+                                ref_label=ref_label, max_peaks=args.max_peaks, parser_args=args)
+                        workers_to_add.append(worker)
+                        worker.start()
+                    del workers[worker_index]
+                workers += workers_to_add
             if result is not None:
                 completed += 1
                 if completed % 10 == 0:
