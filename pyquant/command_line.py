@@ -59,8 +59,8 @@ from . import peaks
 #     return wrapper
 
 description = """
-This will quantify labeled peaks (such as SILAC) in ms1 spectra. It relies solely on the distance between peaks,
- which can correct for errors due to amino acid conversions.
+PyQuant is a quantification program for mass spectrometry data. It attempts to be a general implementation to quantify
+an assortment of datatypes and allows a high degree of customization for how data is to be quantified.
 """
 
 RESULT_ORDER = [('peptide', 'Peptide'), ('modifications', 'Modifications'),
