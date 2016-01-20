@@ -184,43 +184,59 @@ class Worker(Process):
     def replaceOutliers(self, common_peaks, combined_data, debug=False):
         x = []
         y = []
+        tx = []
+        ty = []
+        ty2 = []
         hx = []
         hy = []
         keys = []
         hkeys = []
         y2 = []
         hy2 = []
+
         for i,v in common_peaks.items():
             for isotope, peaks in v.items():
                 for peak_index, peak in enumerate(peaks):
                     keys.append((i, isotope, peak_index))
-                    x.append(peak['mean'])
-                    y.append(peak['std'])
-                    y2.append(peak['std2'])
+                    mean, std, std2 = peak['mean'], peak['std'], peak['std2']
+                    x.append(mean)
+                    y.append(std)
+                    y2.append(std2)
+                    if peak.get('valid'):
+                        tx.append(mean)
+                        ty.append(std)
+                        ty2.append(std2)
                     if self.mrm and i != 'Light':
-                        hx.append(peak['mean'])
-                        hy.append(peak['std'])
-                        hy2.append(peak['std2'])
+                        hx.append(mean)
+                        hy.append(std)
+                        hy2.append(std2)
                         hkeys.append((i, isotope, peak_index))
         classifier = EllipticEnvelope(support_fraction=0.75, random_state=0)
         if len(x) == 1:
             return x[0]
         data = np.array([x, y, y2]).T
+        true_data = np.array([tx, ty, ty2]).T
         false_pred = (False, -1)
         true_pred = (True, 1)
         to_delete = set([])
         fitted = False
-        if len(hx) >= 3 or len(x) >= 3:
+        true_data = np.vstack({tuple(row) for row in true_data}) if true_data.shape[0] else None
+        if true_data is not None and true_data.shape[0] >= 3:
+            fit_data = true_data
+        else:
+            fit_data = np.vstack({tuple(row) for row in data})
+
+        if len(hx) >= 3 or fit_data.shape[0] >= 3:
             if debug:
                 print(common_peaks)
             try:
-                classifier.fit(np.array([hx, hy, hy2]).T if self.mrm else data)
+                classifier.fit(np.array([hx, hy, hy2]).T if self.mrm else fit_data)
                 fitted = True
                 # x_mean, x_std1, x_std2 = classifier.location_
             except:
                 try:
                     classifier = OneClassSVM(nu=0.95*0.15+0.05, kernel=str('linear'), degree=1, random_state=0)
-                    classifier.fit(np.array([hx, hy, hy2]).T if self.mrm else data)
+                    classifier.fit(np.array([hx, hy, hy2]).T if self.mrm else fit_data)
                     fitted = True
                 except:
                     if debug:
@@ -229,16 +245,31 @@ class Worker(Process):
         if fitted:
             classes = classifier.predict(data)
             try:
-                x_mean, x_std1, x_std2 = np.median(data[classes==1], axis=0)
+                if hasattr(classifier, 'location_'):
+                    x_mean, x_std1, x_std2 = classifier.location_
+                else:
+                    x_mean, x_std1, x_std2 = np.median(data[classes==1], axis=0)
             except IndexError:
                 x_mean, x_std1, x_std2 = np.median(data, axis=0)
             else:
-                x_inliers = set([keys[i][:2] for i,v in enumerate(classes) if v in true_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('valid')])
+                x_inlier_indices = [i for i,v in enumerate(classes) if v in true_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('valid')]
+                x_inliers = set([keys[i][:2] for i in sorted(x_inlier_indices)])
                 x_outliers = [i for i,v in enumerate(classes) if keys[i][:2] not in x_inliers and (v in false_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate'))]
                 if debug:
                     print('inliers', x_inliers)
                     print('outliers', x_outliers)
                 # print('x1o', x1_outliers)
+                min_x = x_mean-x_std1
+                max_x = x_mean+x_std2
+                for index in x_inlier_indices:
+                    indexer = keys[index]
+                    peak_info = common_peaks[indexer[0]][indexer[1]][indexer[2]]
+                    peak_min = peak_info['mean']-peak_info['std']
+                    peak_max = peak_info['mean']+peak_info['std2']
+                    if peak_min < min_x:
+                        min_x = peak_min
+                    if peak_max > max_x:
+                        max_x = peak_max
                 if x_inliers:
                     for index in x_outliers:
                         indexer = keys[index]
@@ -249,8 +280,8 @@ class Worker(Process):
                             # there is no non-outlying data point. If this data point is > 1 sigma away, delete it
                             peak_info = common_peaks[indexer[0]][indexer[1]][indexer[2]]
                             if debug:
-                                print(peak_info, x_mean, x_std1, x_std2)
-                            if not (peak_info['mean']-x_std1 < x_mean < peak_info['mean']+x_std2):
+                                print(indexer, peak_info, x_mean, x_std1, x_std2)
+                            if not (min_x < peak_info['mean'] < max_x):
                                 to_delete.add(indexer)
         if debug:
             print('to remove', to_delete)
@@ -262,6 +293,8 @@ class Worker(Process):
         import numpy as np
         scan_vals = scan['vals']
         res = pd.Series(scan_vals[:, 1].astype(np.uint64), index=np.round(scan_vals[:, 0], self.precision), name=int(scan['title']) if self.mrm else scan['rt'], dtype='uint64')
+        # mz values can sometimes be not sorted -- rare but it happens
+        res = res.sort_index()
         del scan_vals
         # due to precision, we have multiple m/z values at the same place. We can eliminate this by grouping them and summing them.
         # Summation is the correct choice here because we are combining values of a precision higher than we care about.
@@ -585,10 +618,31 @@ class Worker(Process):
                     fitting_y = np.copy(merged_y)
                     mval = merged_y.max()
                     while rt_attempts < 4 and not found_rt:
-                        res, residual = peaks.findAllPeaks(merged_x, fitting_y, filter=True, bigauss_fit=True, rt_peak=start_rt, max_peaks=self.max_peaks)
+                        res, residual = peaks.findAllPeaks(merged_x, fitting_y, filter=False, bigauss_fit=True, rt_peak=start_rt, max_peaks=self.max_peaks)
                         rt_peak = peaks.bigauss_ndim(np.array([rt]), res)[0]
                         # we don't do this routine for cases where there are > 5
                         found_rt = sum(fitting_y>0) <= 5 or rt_peak > 0.05# or rt_peak*fitting_y.max() > 100000
+                        if not found_rt and rt_peak < 0.05:
+                            # get the closest peak
+                            nearest_peak = sorted([(i, np.abs(rt-i)) for i in res[1::4]], key=operator.itemgetter(1))[0][0]
+                            # this is tailored to massa spectrometry elution profiles at the moment, and only evaluates for situtations where the rt and peak
+                            # are no further than a minute apart.
+                            if np.abs(nearest_peak-rt) < 1:
+                                rt_index, peak_index = peaks.find_nearest_indices(merged_x, [rt, nearest_peak])
+                                if rt_index < 0:
+                                    rt_index = 0
+                                if peak_index == -1:
+                                    peak_index = len(fitting_y)
+                                if rt_index != peak_index:
+                                    grad_len = np.abs(peak_index-rt_index)
+                                    if grad_len < 4:
+                                        found_rt = True
+                                    else:
+                                        gradient = (np.gradient(fitting_y[rt_index:peak_index])>0) if rt_index < peak_index else (np.gradient(fitting_y[peak_index:rt_index])<0)
+                                        if sum(gradient) >= grad_len-1:
+                                            found_rt = True
+                                else:
+                                    found_rt = True
                         if not found_rt:
                             if self.debug:
                                 print('cannot find rt for', peptide, rt_peak)
@@ -985,12 +1039,12 @@ def find_prior_scan(msn_map, current_scan, ms_level=None):
 def find_next_scan(msn_map, current_scan, ms_level=None):
     scan_found = False
     for scan_msn, scan_id in msn_map:
-        if scan_found is True:
+        if scan_found:
             if ms_level is None:
                 return scan_id
             elif scan_msn == ms_level:
                 return scan_id
-        if scan_found is False and scan_id == current_scan:
+        if not scan_found and scan_id == current_scan:
             scan_found = True
     return None
 
@@ -1395,7 +1449,7 @@ def run_pyquant():
         scans_to_fetch = []
 
         # figure out the splines for mass accuracy correction
-        calc_spline = mass_accuracy_correction is False and raw_data_only is False and args.neucode is False
+        calc_spline = not mass_accuracy_correction and not raw_data_only and not args.neucode
         spline_x = []
         spline_y = []
         spline = None
