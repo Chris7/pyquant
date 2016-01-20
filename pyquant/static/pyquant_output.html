@@ -422,7 +422,7 @@
                                         plot_data[i]['data']['columns'].unshift(common_x);
                                     }
                                     if(max_y){
-                                    var param_max_y = plotting_params['max-y'];
+                                        var param_max_y = plotting_params['max-y'];
                                         if(param_max_y == 'max-all')
                                             plot_data[i]['axis']['y']['max'] = max_y;
                                         else if(param_max_y == 'fitted'){
@@ -435,7 +435,8 @@
                                                         max_fit = new_max;
                                                 }
                                             }
-                                            plot_data[i]['axis']['y']['max'] = max_fit;
+                                            if (max_fit != 0)
+                                                plot_data[i]['axis']['y']['max'] = max_fit;
                                         }
                                     }
                                     c3.generate(plot_data[i]);
