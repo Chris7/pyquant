@@ -107,7 +107,7 @@ artifacts:
   - path: dist\*
 
 deploy_script:
-  - "echo [pypi] > %USERPROFILE%\\.pypirc"
+  - "echo [server-login] > %USERPROFILE%\\.pypirc"
   - "echo username: %username% >> %USERPROFILE%\\.pypirc"
   - "echo password: %password% >> %USERPROFILE%\\.pypirc"
   - "python.exe setup.py bdist_wheel upload"
