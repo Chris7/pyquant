@@ -6,9 +6,9 @@ matrix:
   fast_finish: true     # immediately finish build once one of the jobs fails.
 
 environment:
-  password:
+  pypi_password:
     secure: MT+Dz2JEdUGkHuJr7LW3qA==
-  username:
+  pypi_username:
     secure: NnjqwC7S1x2ImdY12RoVjg==
 
   global:
@@ -107,7 +107,7 @@ artifacts:
   - path: dist\*
 
 deploy_script:
-  - "echo [server-login] > %USERPROFILE%\\.pypirc"
-  - "echo username: %username% >> %USERPROFILE%\\.pypirc"
-  - "echo password: %password% >> %USERPROFILE%\\.pypirc"
-  - "python.exe setup.py bdist_wheel upload"
+  - cmd: "echo [server-login] > %USERPROFILE%\\.pypirc"
+  - cmd: "echo username: %pypi_username% >> %USERPROFILE%\\.pypirc"
+  - cmd: "echo password: %pypi_password% >> %USERPROFILE%\\.pypirc"
+  - cmd: "python.exe setup.py bdist_wheel upload"
