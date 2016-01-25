@@ -6,17 +6,14 @@ matrix:
   fast_finish: true     # immediately finish build once one of the jobs fails.
 
 environment:
-  pypi_password:
-    secure: MT+Dz2JEdUGkHuJr7LW3qA==
-  pypi_username:
-    secure: NnjqwC7S1x2ImdY12RoVjg==
-
   global:
     # SDK v7.0 MSVC Express 2008's SetEnv.cmd script will fail if the
     # /E:ON and /V:ON options are not enabled in the batch script intepreter
     # See: http://stackoverflow.com/a/13751649/163740
     CMD_IN_ENV: "cmd /E:ON /V:ON /C .\\ci\\run_with_env.cmd"
     DISTRIBUTIONS: "bdist_wheel"
+    PYPI_PASS:
+      secure: MT+Dz2JEdUGkHuJr7LW3qA==
 
   matrix:
     - PYTHON: "C:\\Python34_64"
@@ -107,7 +104,4 @@ artifacts:
   - path: dist\*
 
 deploy_script:
-  - cmd: "echo [server-login] > %USERPROFILE%\\.pypirc"
-  - cmd: "echo username: %pypi_username% >> %USERPROFILE%\\.pypirc"
-  - cmd: "echo password: %pypi_password% >> %USERPROFILE%\\.pypirc"
-  - cmd: "python.exe setup.py bdist_wheel upload"
+  - "powershell ./ci/pypi_deploy.ps1"
