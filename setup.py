@@ -1,6 +1,12 @@
 import os
 from distutils.core import setup
 from setuptools import find_packages
+from Cython.Build import cythonize
+try:
+    import numpy
+    NUMPY = True
+except ImportError:
+    NUMPY = False
 
 # allow setup.py to be run from any path
 os.chdir(os.path.normpath(os.path.join(os.path.abspath(__file__), os.pardir)))
@@ -21,4 +27,6 @@ setup(
         'Operating System :: OS Independent',
         'Programming Language :: Python',
     ],
+    ext_modules = cythonize("pyquant/*.pyx"),
+    include_dirs = [numpy.get_include()] if NUMPY else [],
 )
