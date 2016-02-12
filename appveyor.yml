@@ -106,4 +106,4 @@ artifacts:
   - path: dist\*
 
 deploy_script:
-  - cmd: "%PYTHON%/Scripts/twine upload -u %PYPI_USER% -p %PYPI_PASS% dist/*"
+  - cmd: "%PYTHON%/Scripts/twine.exe upload -u %PYPI_USER% -p %PYPI_PASS% dist/*"
