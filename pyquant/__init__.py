@@ -50,8 +50,11 @@ ion_search_group = pyquant_parser.add_argument_group('Targetted Ion Search Param
 ion_search_group.add_argument('--msn-id', help='The ms level to search for the ion in. Default: 2 (ms2)', type=int, default=2)
 ion_search_group.add_argument('--msn-quant-from', help='The ms level to quantify values from. i.e. if we are identifying an ion in ms2, we can quantify it in ms1 (or ms2). Default: msn value-1', type=int, default=None)
 ion_search_group.add_argument('--msn-ion', help='M/Z values to search for in the scans.', nargs='+', type=float)
+ion_search_group.add_argument('--msn-ion-rt', help='RT values each ion is expected at.', nargs='+', type=float)
 ion_search_group.add_argument('--msn-peaklist', help='A file containing peaks to search for in the scans.', type=argparse.FileType('rb'))
 ion_search_group.add_argument('--msn-ppm', help='The error tolerance for identifying the ion(s).', type=float, default=200)
+ion_search_group.add_argument('--msn-rt-window', help='The range of retention times for identifying the ion(s). (ex:  7.54-9.43)', type=str)
+ion_search_group.add_argument('--msn-all-scans', help='Search for the ion across all scans (ie if you have 3 ions, you will have 3 results with one long XIC)', action='store_true')
 
 quant_parameters = pyquant_parser.add_argument_group('Quantification Parameters')
 quant_parameters.add_argument('--quant-method', help='The process to use for quantification. Default: Integrate for ms1, sum for ms2+.', choices=['integrate', 'sum'], default=None)

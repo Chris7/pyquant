@@ -92,7 +92,14 @@ class Reader(Process):
                     if self.spline:
                         scan_vals[:,0] = scan_vals[:,0]/(1-self.spline(scan_vals[:,0])/1e6)
                     # add to our database
-                    d = {'vals': scan_vals, 'rt': scan.rt, 'title': scan.title, 'mass': scan.mass, 'charge': scan.charge}
+                    d = {
+                        'vals': scan_vals,
+                        'rt': scan.rt,
+                        'title': scan.title,
+                        'mass': scan.mass,
+                        'charge': scan.charge,
+                        'centroid': getattr(scan, 'centroid', False)
+                    }
                     self.scan_dict[scan_id] = d
                     # the scan has been stored, delete it
                     del scan
@@ -283,6 +290,22 @@ class Worker(Process):
                                 print(indexer, peak_info, x_mean, x_std1, x_std2)
                             if not (min_x < peak_info['mean'] < max_x):
                                 to_delete.add(indexer)
+        else:
+            # we do not have enough data for ML, if we have scenarios with a 'valid' peak, keep them other others
+            for quant_label,isotope_peaks in common_peaks.items():
+                for isotope, peaks in isotope_peaks.items():
+                    keys.append((i, isotope, peak_index))
+                    to_keep = []
+                    to_remove = []
+                    for peak_index, peak in enumerate(peaks):
+                        if peak.get('valid'):
+                            to_keep.append(peak_index)
+                        else:
+                            to_remove.append(peak_index)
+                    if to_keep:
+                        for i in sorted(to_remove, reverse=True):
+                            del peaks[i]
+
         if debug:
             print('to remove', to_delete)
         for i in sorted(set(to_delete), key=operator.itemgetter(0,1,2), reverse=True):
@@ -308,7 +331,7 @@ class Worker(Process):
         scan = self.reader_out.get()
         if scan is None:
             print('Unable to fetch scan {}.\n'.format(ms1))
-        return self.convertScan(scan) if scan is not None else None
+        return (self.convertScan(scan), {'centroid': scan.get('centroid', False)}) if scan is not None else (None, {})
 
     # @memory_profiler
     def quantify_peaks(self, params):
@@ -320,8 +343,10 @@ class Worker(Process):
             scanId = target_scan.get('id')
             ms1 = quant_scan['id']
             scans_to_quant = quant_scan.get('scans')
+            predefined_scans = False
             if scans_to_quant:
                 scans_to_quant.pop(scans_to_quant.index(ms1))
+                predefined_scans = True
             charge = target_scan['charge']
             mass = target_scan['mass']
 
@@ -413,12 +438,15 @@ class Worker(Process):
                         current_scan = scans_to_quant.pop()
                     elif scans_to_quant is None:
                         current_scan = find_prior_scan(map_to_search, current_scan) if delta == -1 else find_next_scan(map_to_search, current_scan)
+                    else:
+                        # we've exhausted the scans we are supposed to quantify
+                        break
                 found = set([])
                 if current_scan is not None:
                     if current_scan in scans_to_skip:
                         continue
                     else:
-                        df = self.getScan(current_scan, start=None if self.mrm else precursor-5, end=None if self.mrm else precursor+highest_shift)
+                        df, scan_params = self.getScan(current_scan, start=None if self.mrm else precursor-5, end=None if self.mrm else precursor+highest_shift)
                         # check if it's a low res scan, if so skip it
                         if self.min_resolution and df is not None:
                             scan_resolution = np.average(df.index[1:]/np.array([df.index[i]-df.index[i-1] for i in xrange(1,len(df))]))
@@ -453,18 +481,24 @@ class Worker(Process):
                                 data[precursor_label]['precursor'] = uncalibrated_precursor
                                 shift_max = shift_maxes.get(precursor_label)
                                 shift_max = self.get_calibrated_mass(precursor+shift_max/float(charge)) if shift_max is not None and self.overlapping_mz is False else None
-                                # print(precursor_label, current_scan, measured_precursor)
                                 is_fragmented_scan = (current_scan == initial_scan) and (precursor == measured_precursor)
                                 envelope = peaks.findEnvelope(xdata, ydata, measured_mz=measured_precursor, theo_mz=theoretical_precursor, max_mz=shift_max,
                                                               charge=charge, precursor_ppm=self.precursor_ppm, isotope_ppm=self.isotope_ppm, reporter_mode=self.reporter_mode,
                                                               isotope_ppms=self.isotope_ppms if self.fitting_run else None, quant_method=self.quant_method, debug=self.debug,
                                                               theo_dist=theo_dist if self.mono or precursor_shift == 0.0 else None, label=precursor_label, skip_isotopes=finished_isotopes[precursor_label],
-                                                              last_precursor=last_precursors[delta].get(precursor_label, measured_precursor), isotopologue_limit=self.isotopologue_limit, fragment_scan=is_fragmented_scan)
+                                                              last_precursor=last_precursors[delta].get(precursor_label, measured_precursor),
+                                                              isotopologue_limit=self.isotopologue_limit, fragment_scan=is_fragmented_scan, centroid=scan_params.get('centroid', False))
                                 if not envelope['envelope']:
                                     if self.debug:
                                         print('envelope empty', envelope, measured_precursor, initial_scan, current_scan, last_precursors)
-                                    continue
-                                if 0 in envelope['micro_envelopes'] and envelope['micro_envelopes'][0].get('int'):
+                                    if self.parser_args.msn_all_scans:
+                                        selected[measured_precursor] = 0
+                                        isotope_labels[measured_precursor] = {'label': precursor_label, 'isotope_index': 0}
+                                        isotopes_chosen[(df.name, measured_precursor)] = {'label': precursor_label, 'isotope_index': 0, 'amplitude': 0}
+                                    else:
+                                        continue
+
+                                if not self.parser_args.msn_all_scans and 0 in envelope['micro_envelopes'] and envelope['micro_envelopes'][0].get('int'):
                                     if ms_index == 0:
                                         last_precursors[delta*-1][precursor_label] = envelope['micro_envelopes'][0]['params'][1]
                                     last_precursors[delta][precursor_label] = envelope['micro_envelopes'][0]['params'][1]
@@ -501,7 +535,7 @@ class Worker(Process):
                             else:
                                 combined_data = pd.concat([combined_data, selected], axis=1).fillna(0)
                             del selected
-                        if not self.mrm and len(labels_found) < self.labels_needed:
+                        if not self.mrm and (not self.parser_args.msn_all_scans and len(labels_found) < self.labels_needed):
                             found.discard(precursor_label)
                             if df is not None and df.name in combined_data.columns:
                                 del combined_data[df.name]
@@ -512,7 +546,7 @@ class Worker(Process):
 
                 if not found or (np.abs(ms_index) > 7 and self.flat_slope(combined_data, delta)):
                     not_found += 1
-                    if current_scan is None or not_found >= 2:
+                    if current_scan is None or (not_found >= 2 and not self.parser_args.msn_all_scans):
                         not_found = 0
                         if delta == -1:
                             delta = 1
@@ -585,7 +619,7 @@ class Worker(Process):
                     rt_figure = {
                         'data': [],
                         'plot-multi': True,
-                        'common-x': ['x']+['{0:0.2f}'.format(i) for i in combined_data.columns],
+                        'common-x': ['x']+['{0:0.4f}'.format(i) for i in combined_data.columns],
                         'rows': len(precursors),
                         'max-y': combined_data.max().max(),
                     }
@@ -618,10 +652,12 @@ class Worker(Process):
                     fitting_y = np.copy(merged_y)
                     mval = merged_y.max()
                     while rt_attempts < 4 and not found_rt:
-                        res, residual = peaks.findAllPeaks(merged_x, fitting_y, filter=False, bigauss_fit=True, rt_peak=start_rt, max_peaks=self.max_peaks)
+                        if self.debug:
+                            print('MERGED PEAK FINDING')
+                        res, residual = peaks.findAllPeaks(merged_x, fitting_y, filter=False, bigauss_fit=True, rt_peak=start_rt, max_peaks=self.max_peaks, debug=self.debug)
                         rt_peak = peaks.bigauss_ndim(np.array([rt]), res)[0]
                         # we don't do this routine for cases where there are > 5
-                        found_rt = sum(fitting_y>0) <= 5 or rt_peak > 0.05# or rt_peak*fitting_y.max() > 100000
+                        found_rt = self.parser_args.msn_all_scans or sum(fitting_y>0) <= 5 or rt_peak > 0.05# or rt_peak*fitting_y.max() > 100000
                         if not found_rt and rt_peak < 0.05:
                             # get the closest peak
                             nearest_peak = sorted([(i, np.abs(rt-i)) for i in res[1::4]], key=operator.itemgetter(1))[0][0]
@@ -654,6 +690,8 @@ class Worker(Process):
                         rt_attempts += 1
                     if not found_rt and self.debug:
                         print(peptide, 'is dead', rt_attempts, found_rt)
+                    elif self.debug:
+                        print('peak used for sub-fitting', res)
                     if found_rt:
                         rt_means = res[1::4]
                         rt_amps = res[::4]
@@ -693,6 +731,8 @@ class Worker(Process):
 
                         peak_index = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean'])
                         peak_location = merged_x[peak_index]
+                        if self.debug:
+                            print('peak location is', peak_location)
                         merged_lb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean']-valid_peaks[0]['std']*2)
                         merged_rb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean']+valid_peaks[0]['std2']*2)
                         merged_rb = len(merged_x) if merged_rb == -1 else merged_rb+1
@@ -724,7 +764,7 @@ class Worker(Process):
                                 if self.debug:
                                     print('fitting XIC for', quant_label, index)
                                 fit, residual = peaks.findAllPeaks(xdata, ydata, bigauss_fit=True, filter=True,
-                                                                   rt_peak=nearest_positive_peak, debug=self.debug)
+                                                                   rt_peak=nearest_positive_peak, debug=self.debug, peak_width_start=1)
                                 if fit is None:
                                     continue
                                 rt_means = fit[1::4]
@@ -802,7 +842,7 @@ class Worker(Process):
                                 if quant_label in rt_figure_mapper:
                                     rt_base = rt_figure_mapper[(quant_label, index)]
                                 else:
-                                    rt_base = {'data': {'x': 'x', 'columns': []}, 'grid': {'x': {'lines': [{'value': rt, 'text': 'Initial RT {0:0.2f}'.format(rt), 'position': 'middle'}]}}, 'subchart': {'show': True}, 'axis': {'x': {'label': 'Retention Time'}, 'y': {'label': 'Intensity'}}}
+                                    rt_base = {'data': {'x': 'x', 'columns': []}, 'grid': {'x': {'lines': [{'value': rt, 'text': 'Initial RT {0:0.4f}'.format(rt), 'position': 'middle'}]}}, 'subchart': {'show': True}, 'axis': {'x': {'label': 'Retention Time'}, 'y': {'label': 'Intensity'}}}
                                     rt_figure_mapper[(quant_label, index)] = rt_base
                                     rt_figure['data'].append(rt_base)
                                 rt_base['data']['columns'].append(['{0} {1} raw'.format(quant_label, index)]+ydata.tolist())
@@ -1078,6 +1118,10 @@ def run_pyquant():
         msn_for_quant = 1
     reporter_mode = args.reporter_ion
     msn_ppm = args.msn_ppm
+    if args.msn_rt_window:
+        msn_rt_window = [float(i) for i in args.msn_rt_window.split('-')]
+    else:
+        msn_rt_window = None
     ref_label = str(args.reference_label) if args.reference_label else None
     quant_method = args.quant_method
     if msn_for_quant == 1 and quant_method is None:
@@ -1328,8 +1372,12 @@ def run_pyquant():
         if args.msn_ion or args.msn_peaklist:
             RESULT_ORDER.extend([('ions_found', 'Ions Found')])
             ion_search = True
-            ions_selected = args.msn_ion if args.msn_ion else [float(i.strip()) for i in args.msn_peaklist if i]
-            d = {'ions': ions_selected}
+            ions_selected = args.msn_ion if args.msn_ion else []#
+            if args.msn_peaklist:
+                ion_table = pd.read_table(args.msn_peaklist)
+
+            # [float(i.strip()) for i in args.msn_peaklist if i]
+            d = {'ions': ions_selected, 'rt_info': args.msn_ion_rt}
             for i in scan_filemap:
                 raw_files[i] = d
         else:
@@ -1471,6 +1519,8 @@ def run_pyquant():
             scan_info_map[scan_id]['msn'] = scan.ms_level
             scan_info_map[scan_id]['precursor'] = scan.mass
             scan_charge_map[scan_id] = scan.charge
+            if msn_rt_window and not (msn_rt_window[0] < float(rt) < msn_rt_window[1]):
+                continue
             if scan.parent:
                 try:
                     scan_info_map[scan.parent]['children'].add(scan_id)
@@ -1517,6 +1567,7 @@ def run_pyquant():
         rep_map = defaultdict(set)
         if ion_search or args.mva:
             ions = [i['id_scan'].get('theor_mass', i['id_scan']['mass']) for i in raw_scans] if args.mva else raw_scans['ions']
+            rt_info = raw_scans.get('rt_info') if not args.mva else None
             last_scan_ions = defaultdict(set)
             for scan_id in scans_to_fetch:
                 this_scan_ions = defaultdict(set)
@@ -1524,6 +1575,17 @@ def run_pyquant():
                 scan = reader_outs[0].get()
                 if scan is None:
                     continue
+                if args.msn_all_scans:
+                    for ion_index, ion in enumerate(ions):
+                        d = {
+                            'quant_scan': {'id': scan_id, 'scans': scans_to_fetch},
+                            'id_scan': {
+                                'id': scan_id, 'theor_mass': ion, 'rt': rt_info[ion_index] if rt_info else scan['rt'],
+                                'charge': 1, 'mass': float(ion), 'ions_found': ion,
+                            },
+                        }
+                        ion_search_list.append((scan_id, d))
+                    break
                 scan_mzs = scan['vals']
                 mz_vals = scan_mzs[scan_mzs[:, 1] > 0][:, 1]
                 scan_mzs = scan_mzs[scan_mzs[:, 1] > 0][:, 0]
@@ -1585,7 +1647,9 @@ def run_pyquant():
                                 charge_to_use = charge
                             this_scan_ions[ion].add(charge_to_use)
                             if charge_to_use in last_scan_ions[ion]:
+                                # print('skipping', ion, scan_id, rt)
                                 continue
+                            # print('using', ion, scan_id, rt)
                             last_scan_ions[ion].add(charge_to_use)
                             if args.mva:
                                 d = copy.deepcopy(ion_dict['scan_info'])

@@ -314,7 +314,7 @@ cpdef basin_stepper(np.ndarray[FLOAT_t, ndim=1] args):
 @cython.boundscheck(False)
 cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata_original,
                          float min_dist=0, filter=False, bigauss_fit=False, rt_peak=0.0, mrm=False,
-                         int max_peaks=4, debug=False):
+                         int max_peaks=4, debug=False, peak_width_start=2):
     cdef object fit_func, jacobian
     cdef np.ndarray[long, ndim=1] row_peaks, smaller_peaks, larger_peaks
     cdef np.ndarray[long, ndim=1] minima_array
@@ -343,7 +343,6 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
     ydata_peaks /= ydata_peaks.max()
 
     peaks_found = {}
-    peak_width_start = 2
     peak_width = peak_width_start
     peak_width_end = 4
     while peak_width <= peak_width_end:
@@ -411,6 +410,8 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         sys.stderr.write('final peaks: {}\n'.format(final_peaks))
     for peak_width, peak_info in final_peaks.items():
         row_peaks = peak_info['peaks']
+        if debug:
+            print 'analyzing', row_peaks
         minima_array = np.array(peak_info['minima'], dtype=long)
         guess = []
         bnds = []
@@ -421,15 +422,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             if peak_index in skip_peaks:
                 continue
             next_peak = len(xdata) if peak_index == row_peaks[-1] else row_peaks[peak_num+1]
-            # if there is a peak within 1 point of this and it is taller, skip this one
-            if peak_index != row_peaks[-1]:
-                if bigauss_fit and (xdata[next_peak]-xdata[peak_index] < 0.1 or next_peak-peak_index <= 2):
-                    if ydata_peaks[next_peak] < ydata_peaks[peak_index]:
-                        skip_peaks.add(next_peak)
-                    else:
-                        continue
             fitted_peaks.append(peak_index)
-
             rel_peak = ydata_peaks[peak_index]
             # find the points around it to estimate the std of the peak
             if minima_array.size:
@@ -674,7 +667,8 @@ cdef inline int within_tolerance(list array, float tolerance):
     return 0
 
 def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, pos, ppm=None,
-              start_mz=None, calc_start_mz=None, isotope=0, spacing=0, quant_method='integrate', fragment_scan=False):
+              start_mz=None, calc_start_mz=None, isotope=0, spacing=0, quant_method='integrate', fragment_scan=False,
+               centroid=False):
     """
         We want to find the boundaries of our isotopic clusters. Basically we search until our gradient
         changes, this assumes it's roughly gaussian and there is little interference
@@ -687,29 +681,33 @@ def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] yda
     cdef np.ndarray[FLOAT_t, ndim=1] df_empty_index = xdata[ydata==0]
     cdef int right, left
     cdef np.ndarray[FLOAT_t, ndim=1] new_x, new_y, lr
-    if len(df_empty_index) == 0:
-        # I don't think this code is ever executed and can't imagine the data that would go this route.
-        right = pos+1
-        left = pos
-        peak = (ydata[pos], xdata[pos], 0.01)
-        ret_dict = {'int': ydata[pos], 'bounds': (left, right), 'params': peak, 'error': 0}
+    if start_mz is None:
+        start_mz = xdata[pos]
+    fit = True
+    if centroid:
+        int_val = ydata[pos]
+        left, right = pos-1, pos+1
+        error = get_ppm(start_mz+offset, xdata[pos])
+        fit = np.abs(error) < tolerance
+        peak = [int_val, xdata[pos], 0]
     else:
-        if start_mz is None:
-            start_mz = xdata[pos]
-        right = np.searchsorted(df_empty_index, xdata[pos])
-        left = right-1
-        left, right = (np.searchsorted(xdata, df_empty_index[left], side='left'),
-                np.searchsorted(xdata, df_empty_index[right]))
-        right += 1
+        if df_empty_index.size == 0 or not (df_empty_index[0] < xdata[pos] < df_empty_index[-1]):
+            left = 0
+            right = xdata.size
+        else:
+            right = np.searchsorted(df_empty_index, xdata[pos])
+            left = right-1
+            left, right = (np.searchsorted(xdata, df_empty_index[left], side='left'),
+                    np.searchsorted(xdata, df_empty_index[right]))
+            right += 1
         new_x = xdata[left:right]
         new_y = ydata[left:right]
-        fit = True
         if new_y.sum() == new_y.max():
             peak_mean = new_x[np.where(new_y>0)][0]
             peaks = (new_y.max(), peak_mean, 0)
             sorted_peaks = [(peaks, get_ppm(start_mz+offset, peak_mean))]
         else:
-            peaks, peak_residuals = findAllPeaks(new_x, new_y, min_dist=(new_x[1]-new_x[0])*2.0)
+            peaks, peak_residuals = findAllPeaks(new_x, new_y, min_dist=(new_x[1]-new_x[0])*2.0, peak_width_start=1)
             sorted_peaks = sorted([(peaks[i*3:(i+1)*3], get_ppm(start_mz+offset, v)) for i,v in enumerate(peaks[1::3])], key=itemgetter(1))
 
 
@@ -724,29 +722,13 @@ def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] yda
                 fit = False
 
         peak = list(sorted_peaks[0][0])
-        # # interpolate our mean/std to a linear range
-        # from scipy.interpolate import interp1d
-        # mapper = interp1d(new_x, range(len(new_x)))
-        # try:
-        #     mu = mapper(peak[1])
-        # except:
-        #     print 'mu', sorted_peaks, peak, new_x.tolist(), new_y.tolist()
-        #     return {'int': 0, 'error': np.inf}
-        # try:
-        #     std = mapper(new_x[0]+np.abs(peak[2]))-mapper(new_x[0])
-        # except:
-        #     print 'std', sorted_peaks, peak, new_x
-        #     return {'int': 0, 'error': np.inf}
-        # peak_gauss = (peak[0]*new_y.max(), mu, std)
         peak[0] *= new_y.max()
 
-        # lr = np.linspace(peak_gauss[1]-peak_gauss[2]*4, peak_gauss[1]+peak_gauss[2]*4, 1000)
-        # left_peak, right_peak = peak[1]-peak[2]*2, peak[1]+peak[2]*2
-        # int_val = integrate.simps(gauss(lr, peak_gauss[0], peak_gauss[1], peak_gauss[2]), x=lr) if quant_method == 'integrate' else ydata[(xdata > left_peak) & (xdata < right_peak)].sum()
         int_val = gauss(new_x, peak[0], peak[1], peak[2]).sum()
         if not fit:
             pass
-        ret_dict = {'int': int_val if fit or fragment_scan == True else 0, 'int2': int_val, 'bounds': (left, right), 'params': peak, 'error': sorted_peaks[0][1]}
+        error = sorted_peaks[0][1]
+    ret_dict = {'int': int_val if fit or fragment_scan == True else 0, 'int2': int_val, 'bounds': (left, right), 'params': peak, 'error': error}
     return ret_dict
 
 def find_nearest(np.ndarray[FLOAT_t, ndim=1] array, value):
@@ -779,7 +761,8 @@ def find_nearest_indices(np.ndarray[FLOAT_t, ndim=1] array, value):
     return out
 
 cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, measured_mz=None, theo_mz=None, max_mz=None, precursor_ppm=5, isotope_ppm=2.5, isotope_ppms=None, charge=2, debug=False,
-                 isotope_offset=0, isotopologue_limit=-1, theo_dist=None, label=None, skip_isotopes=None, last_precursor=None, quant_method='integrate', reporter_mode=False, fragment_scan=False):
+                 isotope_offset=0, isotopologue_limit=-1, theo_dist=None, label=None, skip_isotopes=None, last_precursor=None, quant_method='integrate', reporter_mode=False, fragment_scan=False,
+                 centroid=False):
     # returns the envelope of isotopic peaks as well as micro envelopes  of each individual cluster
     cdef float spacing = NEUTRON/float(charge)
     cdef float tolerance, precursor_tolerance
@@ -841,7 +824,8 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
 
     isotope_index += isotope_offset
     start_index = find_nearest_index(xdata, first_mz)
-    start_info = findMicro(xdata, ydata, start_index, ppm=tolerance, start_mz=start_mz, calc_start_mz=theo_mz, quant_method=quant_method, fragment_scan=fragment_scan)
+    start_info = findMicro(xdata, ydata, start_index, ppm=tolerance, start_mz=start_mz, calc_start_mz=theo_mz,
+     quant_method=quant_method, fragment_scan=fragment_scan, centroid=centroid)
     start_error = start_info['error']
 
     if 'params' in start_info:
@@ -872,7 +856,8 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
             closest_contaminant = find_nearest(non_empty, start-NEUTRON/float(i))
             closest_contaminant_index = find_nearest_index(xdata, closest_contaminant)
             contaminant_bounds = findMicro(xdata, ydata, closest_contaminant_index, ppm=precursor_tolerance,
-                                     calc_start_mz=start, start_mz=start, isotope=-1, spacing=NEUTRON/float(i), quant_method=quant_method)
+                                     calc_start_mz=start, start_mz=start, isotope=-1, spacing=NEUTRON/float(i),
+                                      quant_method=quant_method, centroid=centroid)
             if contaminant_bounds.get('int', 0) > contaminant_int:
                 contaminant_int = contaminant_bounds.get('int', 0.)
 
@@ -934,7 +919,7 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
         #     pass
         isotope_tolerance = isotope_ppms.get(isotope_index, isotope_ppm)/1000000.0
         micro_bounds = findMicro(xdata, ydata, micro_index, ppm=precursor_tolerance if isotope_index == 0 else isotope_tolerance,
-                                 calc_start_mz=start, start_mz=start_mz, isotope=isotope_index, spacing=spacing, quant_method=quant_method)
+                                 calc_start_mz=start, start_mz=start_mz, isotope=isotope_index, spacing=spacing, quant_method=quant_method, centroid=centroid)
         if isotope_index == 0:
             micro_bounds['error'] = start_error
 
