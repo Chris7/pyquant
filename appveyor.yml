@@ -14,6 +14,8 @@ environment:
     DISTRIBUTIONS: "bdist_wheel"
     PYPI_PASS:
       secure: MT+Dz2JEdUGkHuJr7LW3qA==
+    PYPI_USER:
+      secure: NnjqwC7S1x2ImdY12RoVjg==
 
   matrix:
     - PYTHON: "C:\\Python34_64"
@@ -86,7 +88,7 @@ install:
   - cmd: conda create -q -n pyquant python=%PYTHON_VERSION% nose pandas scipy cython lxml scikit-learn patsy
   - cmd: activate pyquant
   - cmd: pip install git+git://github.com/pandeylab/pythomics.git
-  - cmd: pip install wheel
+  - cmd: pip install wheel twine
   #- ps: conda install -q (conda build conda.recipe -q --output --no-test)
   - cmd: set HOME=%APPVEYOR_BUILD_FOLDER%
   - cmd: '%CMD_IN_ENV% python.exe setup.py build'
@@ -104,4 +106,4 @@ artifacts:
   - path: dist\*
 
 deploy_script:
-  - "powershell ./ci/pypi_deploy.ps1"
+  - cmd: "%PYTHON%/Scripts/twine upload -u %PYPI_USER% -p %PYPI_PASS% dist/*"
