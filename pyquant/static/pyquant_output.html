@@ -282,7 +282,8 @@
                     'search': {regex: true},
                     'fixedHeader': {header: true},
                     'aoColumnDefs': [
-                      { "sType": "pq-num", "aTargets": numeric_rows }
+                      { "sType": "pq-num", "aTargets": numeric_rows },
+                      { "targets": 0, "data": null, "defaultContent": '<button data-type="xic" class="btn btn-primary">Plot XIC</button><button data-type="isotope" class="btn btn-primary">Plot Isotopes</button>'}
                     ],
                 });
 
@@ -378,17 +379,18 @@
                     }
                 );
                 var initDataViewer = function(){
-                        $('td').click(function(event){
+                        $('td > button').click(function(event){
                             var $this = $(this);
-                            var cell_info = dt.cell(this).index();
+                            var cell_info = dt.cell($(this).parent()).index();
                             var row_index = cell_info['row'];
                             var col_index = cell_info['column'];
-                            if(current_plot && (current_plot[0] == $this[0]))
+                            var data_type = $this.data('type');
+                            if(current_plot && (current_plot[0] == data_type))
                                 return;
-                            var chart_data = $.extend(true, {}, dt_data[row_index][col_index]);
+                            var chart_data = $.extend(true, {}, dt_data[row_index][data_type]);
                             if($.isEmptyObject(chart_data))
                                 return;
-                            current_plot = $this;
+                            current_plot = data_type;
                             var $base_element = $active_window.find('.viewer-content');
                             $base_element.children().remove();
                             $element = $base_element;
@@ -447,7 +449,7 @@
                             }
                             $('.selected').removeClass('selected');
                             $('.current-plot').removeClass('current-plot');
-                            $(this).parent().addClass('selected');
+                            $(this).parent().parent().addClass('selected');
                             $(this).addClass('current-plot')
                     });
                     $.contextMenu({

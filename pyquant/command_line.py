@@ -71,7 +71,7 @@ ION_CUTOFF = 2
 CRASH_SIGNALS = {signal.SIGSEGV, }
 
 class Reader(Process):
-    def __init__(self, incoming, outgoing, raw_file=None, spline=None):
+    def __init__(self, incoming, outgoing, raw_file=None, spline=None, rt_window=None):
         super(Reader, self).__init__()
         self.incoming = incoming
         self.outgoing = outgoing
@@ -79,6 +79,7 @@ class Reader(Process):
         self.access_times = {}
         self.raw_path = raw_file
         self.spline = spline
+        self.rt_window = rt_window
 
     def run(self):
         raw = GuessIterator(self.raw_path, full=True, store=False)
@@ -88,20 +89,24 @@ class Reader(Process):
             if not d:
                 scan = raw.getScan(scan_id)
                 if scan is not None:
-                    scan_vals = np.array(scan.scans)
-                    if self.spline:
-                        scan_vals[:,0] = scan_vals[:,0]/(1-self.spline(scan_vals[:,0])/1e6)
-                    # add to our database
-                    d = {
-                        'vals': scan_vals,
-                        'rt': scan.rt,
-                        'title': scan.title,
-                        'mass': scan.mass,
-                        'charge': scan.charge,
-                        'centroid': getattr(scan, 'centroid', False)
-                    }
-                    self.scan_dict[scan_id] = d
-                    # the scan has been stored, delete it
+                    rt = scan.rt
+                    if self.rt_window is not None and not any([(i[0] < float(rt) < i[1]) for i in self.rt_window]):
+                        d = None
+                    else:
+                        scan_vals = np.array(scan.scans)
+                        if self.spline:
+                            scan_vals[:,0] = scan_vals[:,0]/(1-self.spline(scan_vals[:,0])/1e6)
+                        # add to our database
+                        d = {
+                            'vals': scan_vals,
+                            'rt': scan.rt,
+                            'title': scan.title,
+                            'mass': scan.mass,
+                            'charge': scan.charge,
+                            'centroid': getattr(scan, 'centroid', False)
+                        }
+                        self.scan_dict[scan_id] = d
+                        # the scan has been stored, delete it
                     del scan
                 else:
                     d = None
@@ -343,10 +348,8 @@ class Worker(Process):
             scanId = target_scan.get('id')
             ms1 = quant_scan['id']
             scans_to_quant = quant_scan.get('scans')
-            predefined_scans = False
             if scans_to_quant:
                 scans_to_quant.pop(scans_to_quant.index(ms1))
-                predefined_scans = True
             charge = target_scan['charge']
             mass = target_scan['mass']
 
@@ -1035,7 +1038,7 @@ class Worker(Process):
                         '{}_sbr'.format(silac_label): np.mean(pd.Series(peak_info.get(silac_label, {}).get('sbr', [])).replace([np.inf, -np.inf, np.nan], 0)),
                         '{}_sdr'.format(silac_label): np.mean(pd.Series(peak_info.get(silac_label, {}).get('sdr', [])).replace([np.inf, -np.inf, np.nan], 0)),
                         '{}_residual'.format(silac_label): np.mean(pd.Series(peak_info.get(silac_label, {}).get('residual', [])).replace([np.inf, -np.inf, np.nan], 0)),
-                        '{}_isotopes'.format(silac_label): sum(isotopes_chosen['label'] == silac_label),
+                        '{}_isotopes'.format(silac_label): sum((isotopes_chosen['label'] == silac_label) & (isotopes_chosen['amplitude']>0)),
                         '{}_rt_width'.format(silac_label): w1+w2 if w1 and w2 else 'NA',
                         '{}_mean_diff'.format(silac_label): np.mean(pd.Series(peak_info.get(silac_label, {}).get('mean_diff', [])).replace([np.inf, -np.inf, np.nan], 0))
                     })
@@ -1046,7 +1049,7 @@ class Worker(Process):
                 })
             result_dict.update({
                 'ions_found': target_scan.get('ions_found'),
-                'html': {'peptide': rt_figure, 'rt': isotope_figure}
+                'html': {'xic': rt_figure, 'isotope': isotope_figure}
             })
             self.results.put(result_dict)
             del result_dict
@@ -1119,7 +1122,7 @@ def run_pyquant():
     reporter_mode = args.reporter_ion
     msn_ppm = args.msn_ppm
     if args.msn_rt_window:
-        msn_rt_window = [float(i) for i in args.msn_rt_window.split('-')]
+        msn_rt_window = [tuple(map(float, i.split('-'))) for i in args.msn_rt_window]
     else:
         msn_rt_window = None
     ref_label = str(args.reference_label) if args.reference_label else None
@@ -1368,6 +1371,14 @@ def run_pyquant():
                                              ])
 
     if scan_filemap and raw_data_only:
+        # pop the peptide/mods from result_order
+        to_pop = []
+        to_pop_keys = {'peptide', 'modifications'}
+        for i,v in enumerate(RESULT_ORDER):
+            if v[0] in to_pop_keys:
+                to_pop.append(i)
+        for i in sorted(to_pop, reverse=True):
+            del RESULT_ORDER[i]
         # determine if we want to do ms1 ion detection, ms2 ion detection, all ms2 of each file
         if args.msn_ion or args.msn_peaklist:
             RESULT_ORDER.extend([('ions_found', 'Ions Found')])
@@ -1425,14 +1436,11 @@ def run_pyquant():
             keys = d['keys']
             if res is None:
                 res = '<tr>'
-            out = []
-            html_output = {}
+            out = ['<td></td>']# for graph controls
             for col_index, (i,v) in enumerate(zip(l.split('\t'), keys)):
-                if v in html_extra:
-                    html_output[col_index] = html_extra[v]
                 out.append('<td>{0}</td>'.format(i))
             res += '\n'.join(out)+'</tr>'
-            return table_rows(html_list, res=res), html_output
+            return table_rows(html_list, res=res), html_extra
 
         if resume:
             html_out = open('{0}.html'.format(out_path), 'a')
@@ -1444,7 +1452,7 @@ def run_pyquant():
                     break
                 template.append(i)
             html_template = Template(''.join(template))
-            html_out.write(html_template.substitute({'title': source_file, 'table_header': '\n'.join(['<th>{0}</th>'.format(i) for i in ['Raw File']+[i[1] for i in RESULT_ORDER]])}))
+            html_out.write(html_template.substitute({'title': source_file, 'table_header': '\n'.join(['<th>{0}</th>'.format(i) for i in ['Controls', 'Raw File']+[i[1] for i in RESULT_ORDER]])}))
 
     skip_map = set([])
     if resume:
@@ -1519,7 +1527,7 @@ def run_pyquant():
             scan_info_map[scan_id]['msn'] = scan.ms_level
             scan_info_map[scan_id]['precursor'] = scan.mass
             scan_charge_map[scan_id] = scan.charge
-            if msn_rt_window and not (msn_rt_window[0] < float(rt) < msn_rt_window[1]):
+            if msn_rt_window and not any([(i[0] < float(rt) < i[1]) for i in msn_rt_window]):
                 continue
             if scan.parent:
                 try:
@@ -1562,7 +1570,7 @@ def run_pyquant():
             else:
                 spline = None
 
-        reader = Reader(reader_in, reader_outs, raw_file=filepath, spline=spline)
+        reader = Reader(reader_in, reader_outs, raw_file=filepath, spline=spline, rt_window=msn_rt_window)
         reader.start()
         rep_map = defaultdict(set)
         if ion_search or args.mva:
@@ -1603,7 +1611,9 @@ def run_pyquant():
                             if scan_rt-args.rt_window < rt < scan_rt+args.rt_window:
                                 ions_found.append({'ion': ion, 'nearest_mz': nearest_mz, 'charge': d['id_scan']['charge'], 'scan_info': d})
                         else:
-                            ions_found.append({'ion': ion, 'nearest_mz': nearest_mz})
+                            ion_rt = rt_info[ion_index] if rt_info else None
+                            if ion_rt is None or (rt-args.rt_window < ion_rt < rt+args.rt_window):
+                                ions_found.append({'ion': ion, 'nearest_mz': nearest_mz, 'rt': ion_rt})
                 if ions_found:
                     # we have two options here. If we are quantifying a preceeding scan or the ion itself per scan
                     isotope_ppm = args.isotope_ppm/1e6
@@ -1647,9 +1657,7 @@ def run_pyquant():
                                 charge_to_use = charge
                             this_scan_ions[ion].add(charge_to_use)
                             if charge_to_use in last_scan_ions[ion]:
-                                # print('skipping', ion, scan_id, rt)
                                 continue
-                            # print('using', ion, scan_id, rt)
                             last_scan_ions[ion].add(charge_to_use)
                             if args.mva:
                                 d = copy.deepcopy(ion_dict['scan_info'])
@@ -1664,7 +1672,7 @@ def run_pyquant():
                                 d = {
                                     'quant_scan': {'id': scan_id},
                                     'id_scan': {
-                                        'id': scan_id, 'theor_mass': ion, 'rt': rt,
+                                        'id': scan_id, 'theor_mass': ion, 'rt': rt if ion_rt is None else ion_rt,
                                         'charge': charge_to_use, 'mass': float(nearest_mz), 'ions_found': ion_found,
                                     },
                                 }

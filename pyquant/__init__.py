@@ -53,7 +53,7 @@ ion_search_group.add_argument('--msn-ion', help='M/Z values to search for in the
 ion_search_group.add_argument('--msn-ion-rt', help='RT values each ion is expected at.', nargs='+', type=float)
 ion_search_group.add_argument('--msn-peaklist', help='A file containing peaks to search for in the scans.', type=argparse.FileType('rb'))
 ion_search_group.add_argument('--msn-ppm', help='The error tolerance for identifying the ion(s).', type=float, default=200)
-ion_search_group.add_argument('--msn-rt-window', help='The range of retention times for identifying the ion(s). (ex:  7.54-9.43)', type=str)
+ion_search_group.add_argument('--msn-rt-window', help='The range of retention times for identifying the ion(s). (ex:  7.54-9.43)', type=str, nargs='+')
 ion_search_group.add_argument('--msn-all-scans', help='Search for the ion across all scans (ie if you have 3 ions, you will have 3 results with one long XIC)', action='store_true')
 
 quant_parameters = pyquant_parser.add_argument_group('Quantification Parameters')
@@ -69,6 +69,9 @@ quant_parameters.add_argument('--no-mass-accuracy-correction', help='Disables th
 peak_parameters = pyquant_parser.add_argument_group('Peak Fitting Parameters')
 peak_parameters.add_argument('--peak-cutoff', help='The threshold from the initial retention time a peak can fall by before being discarded', type=float, default=0.05)
 peak_parameters.add_argument('--max-peaks', help='The maximal number of peaks to detect per scan. A lower value can help with very noisy data.', type=int, default=4)
+
+xic_parameters = pyquant_parser.add_argument_group('XIC Options')
+xic_parameters.add_argument('--export-msn', help='This will export spectra of a given MSN that were used to provide the quantification.', action='store_false')
 
 
 mrm_parameters = pyquant_parser.add_argument_group('SRM/MRM Parameters')
