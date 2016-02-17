@@ -314,7 +314,7 @@ cpdef basin_stepper(np.ndarray[FLOAT_t, ndim=1] args):
 @cython.boundscheck(False)
 cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata_original,
                          float min_dist=0, filter=False, bigauss_fit=False, rt_peak=0.0, mrm=False,
-                         int max_peaks=4, debug=False, peak_width_start=2):
+                         int max_peaks=4, debug=False, peak_width_start=2, snr=0):
     cdef object fit_func, jacobian
     cdef np.ndarray[long, ndim=1] row_peaks, smaller_peaks, larger_peaks
     cdef np.ndarray[long, ndim=1] minima_array
@@ -328,6 +328,8 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
     ydata = ydata_original/ydata_original.max()
 
     ydata_peaks = np.copy(ydata)
+    if snr != 0:
+        ydata_peaks[ydata_peaks/np.std(ydata_peaks)<snr] = 0
     if filter:
         if len(ydata) >= 5:
             ydata_peaks = convolve(ydata_peaks, kaiser(10, 12), mode='same')#gaussian_filter1d(convolve(ydata_peaks, kaiser(10, 14), mode='same'), 3, mode='constant')##gaussian_filter1d(ydata_peaks, 3, mode='constant')
@@ -351,11 +353,16 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             row_peaks = np.array([np.argmax(ydata)], dtype=int)
         if debug:
             sys.stderr.write('{}'.format(row_peaks))
+        # Max peaks is to avoid spending a significant amount of time fitting bad data. It can lead to problems
+        # if the user is searching the entire ms spectra because of the number of peaks possible to find
         if max_peaks != -1 and row_peaks.size > max_peaks:
-            # print(peak_width, 'too narrow')
-            peak_width_end += 1
-            peak_width += 1
-            continue
+            # pick the top n peaks for max_peaks
+            # this selects the row peaks in ydata, reversed the sorting order (to be greatest to least), then
+            # takes the number of peaks we allow and then sorts those peaks
+            row_peaks = np.sort(row_peaks[np.argsort(ydata_peaks[row_peaks])[::-1]][:max_peaks+1])
+            #peak_width_end += 1
+            #peak_width += 1
+            #continue
         if ydata_peaks.size:
             minima = np.where(ydata_peaks==0)[0].tolist()
         else:
@@ -482,7 +489,8 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
                 peak_indices = xdata[left:right]
 
             if debug:
-                print('bounds', peak_index, left, right, peak_values.tolist(), peak_indices.tolist(), bnds)
+                pass
+                #print('bounds', peak_index, left, right, peak_values.tolist(), peak_indices.tolist(), bnds)
 
             if peak_values.any():
                 average = np.average(peak_indices, weights=peak_values)
@@ -524,7 +532,8 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             bnds = deepcopy(initial_bounds)
         jacobian = bigauss_jac if bigauss_fit else gauss_jac
         if debug:
-            print('guess and bnds', guess, bnds)
+            pass
+            #print('guess and bnds', guess, bnds)
         results = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=jacobian)]
         while not results[-1].success and routines:
             routine = routines.pop(0)
@@ -762,7 +771,7 @@ def find_nearest_indices(np.ndarray[FLOAT_t, ndim=1] array, value):
 
 cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, measured_mz=None, theo_mz=None, max_mz=None, precursor_ppm=5, isotope_ppm=2.5, isotope_ppms=None, charge=2, debug=False,
                  isotope_offset=0, isotopologue_limit=-1, theo_dist=None, label=None, skip_isotopes=None, last_precursor=None, quant_method='integrate', reporter_mode=False, fragment_scan=False,
-                 centroid=False):
+                 centroid=False, contaminant_search=True):
     # returns the envelope of isotopic peaks as well as micro envelopes  of each individual cluster
     cdef float spacing = NEUTRON/float(charge)
     cdef float tolerance, precursor_tolerance
@@ -852,14 +861,15 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
         valid_locations = []
 
         # check for contaminant at doubly and triply charged positions to see if we're in another ion's peak
-        for i in xrange(2, 4):
-            closest_contaminant = find_nearest(non_empty, start-NEUTRON/float(i))
-            closest_contaminant_index = find_nearest_index(xdata, closest_contaminant)
-            contaminant_bounds = findMicro(xdata, ydata, closest_contaminant_index, ppm=precursor_tolerance,
-                                     calc_start_mz=start, start_mz=start, isotope=-1, spacing=NEUTRON/float(i),
-                                      quant_method=quant_method, centroid=centroid)
-            if contaminant_bounds.get('int', 0) > contaminant_int:
-                contaminant_int = contaminant_bounds.get('int', 0.)
+        if contaminant_search:
+            for i in xrange(2, 4):
+                closest_contaminant = find_nearest(non_empty, start-NEUTRON/float(i))
+                closest_contaminant_index = find_nearest_index(xdata, closest_contaminant)
+                contaminant_bounds = findMicro(xdata, ydata, closest_contaminant_index, ppm=precursor_tolerance,
+                                         calc_start_mz=start, start_mz=start, isotope=-1, spacing=NEUTRON/float(i),
+                                          quant_method=quant_method, centroid=centroid)
+                if contaminant_bounds.get('int', 0) > contaminant_int:
+                    contaminant_int = contaminant_bounds.get('int', 0.)
 
         # set the tolerance for isotopes
         tolerance = isotope_ppms.get(isotope_index, isotope_ppm)/1000000.0
