@@ -62,6 +62,7 @@ quant_parameters.add_argument('--reporter-ion', help='Indicates that reporter io
 quant_parameters.add_argument('--isotopologue-limit', help='How many isotopologues to quantify', type=int, default=-1)
 quant_parameters.add_argument('--overlapping-labels', help='This declares the mz values of labels will overlap. It is useful for data such as neucode, but not needed for only SILAC labeling.', action='store_true')
 quant_parameters.add_argument('--labels-needed', help='How many labels need to be detected to quantify a scan (ie if you have a 2 state experiment and set this to 2, it will only quantify scans where both occur.', default=1, type=int)
+quant_parameters.add_argument('--merge-labels', help='Merge labels together to a single XIC.', action='store_true')
 quant_parameters.add_argument('--min-scans', help='How many quantification scans are needed to quantify a scan.', default=1, type=int)
 quant_parameters.add_argument('--min-resolution', help='The minimal resolving power of a scan to consider for quantification. Useful for skipping low-res scans', default=0, type=float)
 quant_parameters.add_argument('--no-mass-accuracy-correction', help='Disables the mass accuracy correction.', action='store_true')

@@ -473,11 +473,11 @@
                             if(data_type == "children"){
                                 var dt_row = dt.row($(this).closest('tr'));
                                 if(dt_row.child.isShown()){
-                                    $(this).html("Show Peaks");
+                                    $(this).text("Show Peaks");
                                     dt_row.child.hide();
                                     return;
                                 }
-                                $(this).html = ("Hide Peaks");
+                                $(this).text("Hide Peaks");
                                 var $table = $('<table cellpadding="5" cellspacing="0" border="0" style="padding-left:50px;">');
                                 var $header = $('<thead/>');
                                 var $header_row = $('<tr/>');

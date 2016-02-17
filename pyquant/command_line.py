@@ -365,7 +365,7 @@ class Worker(Process):
             silac_dict = {'data': None, 'df': pd.DataFrame(), 'precursor': 'NA',
                           'isotopes': {}, 'peaks': OrderedDict(), 'intensity': 'NA'}
             data = OrderedDict()
-            data['Light'] = copy.deepcopy(silac_dict)
+            # data['Light'] = copy.deepcopy(silac_dict)
             combined_data = pd.DataFrame()
             highest_shift = 20
             if self.mrm:
@@ -579,6 +579,8 @@ class Worker(Process):
                 ms_index += delta
             rt_figure = {}
             isotope_figure = {}
+            if self.parser_args.merge_labels:
+                combined_data = combined_data.sum(axis=0).to_frame(name=combined_data.index[0]).T
             if isotopes_chosen and isotope_labels and not combined_data.empty:
                 if self.mrm:
                     combined_data = combined_data.T
@@ -966,13 +968,14 @@ class Worker(Process):
                                         peak_info[quant_label][xic_peak_index]['snr'].append(snr)
                                         peak_info[quant_label][xic_peak_index]['sbr'].append(sbr)
                                         peak_info[quant_label][xic_peak_index]['sdr'].append(sdr)
+                                        peak_info[quant_label][xic_peak_index]['auc'].append(total_int)
                                     except KeyError:
                                         try:
                                             peak_info[quant_label][xic_peak_index].update({'mean_diff': [mean_diff], 'snr': [snr],
-                                                                           'sbr': [sbr], 'sdr': [sdr], 'mean': mean})
+                                                                           'sbr': [sbr], 'sdr': [sdr], 'mean': mean, 'auc': total_int})
                                         except KeyError:
                                             peak_info[quant_label] = {xic_peak_index: {'mean_diff': [mean_diff], 'snr': [snr],
-                                                                           'sbr': [sbr], 'sdr': [sdr], 'mean': mean}}
+                                                                           'sbr': [sbr], 'sdr': [sdr], 'mean': mean, 'auc': total_int}}
                                     try:
                                         data[quant_label]['residual'].append(residual)
                                     except KeyError:
@@ -1070,6 +1073,7 @@ class Worker(Process):
                         w1, w2 = xic_peak_info.get('std', None), xic_peak_info.get('std2', None)
                         all_xic_peak_info.append({
                             'peak_intensity': xic_peak_info.get('amp', 'NA'),
+                            'auc': xic_peak_info.get('auc', 'NA'),
                             'mean': xic_peak_info.get('mean', 'NA'),
                             'snr': np.mean(pd.Series(xic_peak_info.get('snr', [])).replace([np.inf, -np.inf, np.nan], 0)),
                             'sbr': np.mean(pd.Series(xic_peak_info.get('sbr', [])).replace([np.inf, -np.inf, np.nan], 0)),
@@ -1078,14 +1082,19 @@ class Worker(Process):
                             'mean_diff': np.mean(pd.Series(xic_peak_info.get('mean_diff', [])).replace([np.inf, -np.inf, np.nan], 0))
                         })
                     result_dict.update({
-                        '{}_peaks'.format(silac_label): all_xic_peak_info,
-                        '{}_isotopes'.format(silac_label): sum((isotopes_chosen['label'] == silac_label) & (isotopes_chosen['amplitude']>0)),
+                        '{}_peaks'.format(peak_label): all_xic_peak_info,
+                        '{}_isotopes'.format(peak_label): sum((isotopes_chosen['label'] == peak_label) & (isotopes_chosen['amplitude']>0)),
                     })
+            if self.parser_args.merge_labels:
+                merged_precursor = ','.join((str(v['precursor']) for v in data.values()))
+                merged_calprecursor = ','.join((str(v.get('calibrated_precursor', v['precursor'])) for v in data.values()))
             for silac_label, silac_data in six.iteritems(data):
+                precursor = merged_precursor if self.parser_args.merge_labels else silac_data['precursor']
+                calc_precursor = merged_calprecursor if self.parser_args.merge_labels else silac_data.get('calibrated_precursor', silac_data['precursor'])
                 result_dict.update({
                     '{}_residual'.format(silac_label): np.mean(pd.Series(silac_data.get('residual', [])).replace([np.inf, -np.inf, np.nan], 0)),
-                    '{}_precursor'.format(silac_label): silac_data['precursor'],
-                    '{}_calibrated_precursor'.format(silac_label): silac_data.get('calibrated_precursor', silac_data['precursor'])
+                    '{}_precursor'.format(silac_label): precursor,
+                    '{}_calibrated_precursor'.format(silac_label): calc_precursor,
                 })
             result_dict.update({
                 'ions_found': target_scan.get('ions_found'),
@@ -1401,10 +1410,9 @@ def run_pyquant():
     ])
 
     PEAK_REPORTING = []
-    # if len(labels) == 1 and labels[0] == 'Light'
     if labels:
-        # import pdb; pdb.set_trace();
-        for silac_label in labels:
+        iterator = [sorted(labels)[0]] if args.merge_labels else labels
+        for silac_label in iterator:
             RESULT_ORDER.extend([
                 ('{}_precursor'.format(silac_label), '{} Precursor'.format(silac_label)),
                 ('{}_calibrated_precursor'.format(silac_label), '{} Calibrated Precursor'.format(silac_label)),
@@ -1414,7 +1422,8 @@ def run_pyquant():
             ])
             if not reporter_mode:
                 PEAK_REPORTING.extend([
-                    ('peak_intensity', '{} Peak Intensity'.format(silac_label)),
+                    ('auc', '{} Peak Area'.format(silac_label)),
+                    ('peak_intensity', '{} Peak Max'.format(silac_label)),
                     ('mean', '{} Peak Center'.format(silac_label)),
                     ('rt_width', '{} RT Width'.format(silac_label)),
                     ('mean_diff', '{} Mean Offset'.format(silac_label)),
@@ -1426,13 +1435,14 @@ def run_pyquant():
             if args.peaks_n == 1:
                 RESULT_ORDER.extend(PEAK_REPORTING)
                 PEAK_REPORTING = []
-            for silac_label2 in labels:
-                if silac_label != silac_label2 and (ref_label is None or ref_label.lower() == silac_label2.lower()):
-                    RESULT_ORDER.extend([('{}_{}_ratio'.format(silac_label, silac_label2), '{}/{}'.format(silac_label, silac_label2)),
-                                         ])
-                    if calc_stats:
-                        RESULT_ORDER.extend([('{}_{}_confidence'.format(silac_label, silac_label2), '{}/{} Confidence'.format(silac_label, silac_label2)),
+            if not args.merge_labels:
+                for silac_label2 in labels:
+                    if silac_label != silac_label2 and (ref_label is None or ref_label.lower() == silac_label2.lower()):
+                        RESULT_ORDER.extend([('{}_{}_ratio'.format(silac_label, silac_label2), '{}/{}'.format(silac_label, silac_label2)),
                                              ])
+                        if calc_stats:
+                            RESULT_ORDER.extend([('{}_{}_confidence'.format(silac_label, silac_label2), '{}/{} Confidence'.format(silac_label, silac_label2)),
+                                                 ])
 
     if scan_filemap and raw_data_only:
         # pop the peptide/mods from result_order
@@ -1963,7 +1973,7 @@ def run_pyquant():
                     res_dict[i[0]] = result.get(i[0], 'NA')
                 peak_report = []
                 for label_name in labels:
-                    peaks_found = result.get('{}_peaks'.format(label_name))
+                    peaks_found = result.get('{}_peaks'.format(label_name), [])
                     if len(peaks_found) > most_peaks_found:
                         most_peaks_found = len(peaks_found)
                     for peak_info in peaks_found:
