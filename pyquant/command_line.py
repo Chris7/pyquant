@@ -63,9 +63,6 @@ PyQuant is a quantification program for mass spectrometry data. It attempts to b
 an assortment of datatypes and allows a high degree of customization for how data is to be quantified.
 """
 
-RESULT_ORDER = [('peptide', 'Peptide'), ('modifications', 'Modifications'),
-                ('charge', 'Charge'), ('ms1', 'MS1 Spectrum ID'), ('scan', 'MS2 Spectrum ID'), ('rt', 'Retention Time')]
-
 ION_CUTOFF = 2
 
 CRASH_SIGNALS = {signal.SIGSEGV, }
@@ -952,30 +949,35 @@ class Worker(Process):
 
                                     if int_val and not pd.isnull(int_val) and gc != 'c':
                                         try:
-                                            quant_vals[quant_label][isotope_index][xic_peak_index] += int_val
+                                            quant_vals[quant_label][isotope_index] += int_val
                                         except KeyError:
                                             try:
-                                                quant_vals[quant_label][isotope_index][xic_peak_index] = int_val
+                                                quant_vals[quant_label][isotope_index] = int_val
                                             except KeyError:
-                                                quant_vals[quant_label][isotope_index] = {xic_peak_index: int_val}
-                                    if peak_info.get(quant_label, {}).get('amp', -1) < amp:
+                                                quant_vals[quant_label] = {isotope_index: int_val}
+                                    if peak_info.get(quant_label, {}).get(xic_peak_index, {}).get('amp', -1) < amp:
                                         try:
                                             peak_info[quant_label][xic_peak_index].update({'amp': amp, 'std': std, 'std2': std2})
                                         except KeyError:
                                             peak_info[quant_label][xic_peak_index] = {'amp': amp, 'std': std, 'std2': std2}
                                     try:
                                         peak_info[quant_label][xic_peak_index]['mean_diff'].append(mean_diff)
+                                        peak_info[quant_label][xic_peak_index]['mean'].append(mean)
                                         peak_info[quant_label][xic_peak_index]['snr'].append(snr)
-                                        peak_info[quant_label][xic_peak_index]['residual'].append(residual)
                                         peak_info[quant_label][xic_peak_index]['sbr'].append(sbr)
                                         peak_info[quant_label][xic_peak_index]['sdr'].append(sdr)
                                     except KeyError:
                                         try:
                                             peak_info[quant_label][xic_peak_index].update({'mean_diff': [mean_diff], 'snr': [snr],
-                                                                           'residual': [residual], 'sbr': [sbr], 'sdr': [sdr]})
+                                                                           'sbr': [sbr], 'sdr': [sdr], 'mean': mean})
                                         except KeyError:
                                             peak_info[quant_label] = {xic_peak_index: {'mean_diff': [mean_diff], 'snr': [snr],
-                                                                           'residual': [residual], 'sbr': [sbr], 'sdr': [sdr]}}
+                                                                           'sbr': [sbr], 'sdr': [sdr], 'mean': mean}}
+                                    try:
+                                        data[quant_label]['residual'].append(residual)
+                                    except KeyError:
+                                        data[quant_label]['residual'] = [residual]
+
                                     if self.html:
                                         rt_base = rt_figure_mapper[(quant_label, index)]
                                         key = '{} {}'.format(quant_label, index)
@@ -1014,13 +1016,16 @@ class Worker(Process):
 
                 for silac_label1 in data.keys():
                     # TODO: check if peaks overlap before taking ratio
-                    qv1 = quant_vals.get(silac_label1, {}).get(0)
+                    qv1 = quant_vals.get(silac_label1, {})
+                    result_dict.update({
+                        '{}_intensity'.format(silac_label1): sum(qv1.values())
+                    })
                     for silac_label2 in data.keys():
                         if self.ref_label is not None and str(silac_label2.lower()) != self.ref_label.lower():
                             continue
                         if silac_label1 == silac_label2:
                             continue
-                        qv2 = quant_vals.get(silac_label2, {}).get(0)
+                        qv2 = quant_vals.get(silac_label2, {})
                         ratio = 'NA'
                         if qv1 is not None and qv2 is not None:
                             if self.mono:
@@ -1059,26 +1064,26 @@ class Worker(Process):
 
                 if write_html:
                     result_dict.update({'html_info': html_images})
-                print(peak_info)
-                for silac_label, silac_data in six.iteritems(data):
-                    for xic_index, xic_peak_info in six.iteritems(peak_info.get(silac_label, {})):
+                for peak_label, peak_data in six.iteritems(peak_info):
+                    all_xic_peak_info = []
+                    for xic_index, xic_peak_info in six.iteritems(peak_data):
                         w1, w2 = xic_peak_info.get('std', None), xic_peak_info.get('std2', None)
-                        result_dict.update({
-                            '{}_peak_{}'.format(silac_label, xic_index): {
-                                'intensity'.format(silac_label): xic_peak_info.get(silac_label, {}).get('amp', 'NA'),
-                                'snr'.format(silac_label): np.mean(pd.Series(xic_peak_info.get(silac_label, {}).get('snr', [])).replace([np.inf, -np.inf, np.nan], 0)),
-                                'sbr'.format(silac_label): np.mean(pd.Series(xic_peak_info.get(silac_label, {}).get('sbr', [])).replace([np.inf, -np.inf, np.nan], 0)),
-                                'sdr'.format(silac_label): np.mean(pd.Series(xic_peak_info.get(silac_label, {}).get('sdr', [])).replace([np.inf, -np.inf, np.nan], 0)),
-                                'residual'.format(silac_label): np.mean(pd.Series(xic_peak_info.get(silac_label, {}).get('residual', [])).replace([np.inf, -np.inf, np.nan], 0)),
-                                'rt_width'.format(silac_label): w1+w2 if w1 and w2 else 'NA',
-                                'mean_diff'.format(silac_label): np.mean(pd.Series(xic_peak_info.get(silac_label, {}).get('mean_diff', [])).replace([np.inf, -np.inf, np.nan], 0))
-                            }
+                        all_xic_peak_info.append({
+                            'peak_intensity': xic_peak_info.get('amp', 'NA'),
+                            'mean': xic_peak_info.get('mean', 'NA'),
+                            'snr': np.mean(pd.Series(xic_peak_info.get('snr', [])).replace([np.inf, -np.inf, np.nan], 0)),
+                            'sbr': np.mean(pd.Series(xic_peak_info.get('sbr', [])).replace([np.inf, -np.inf, np.nan], 0)),
+                            'sdr': np.mean(pd.Series(xic_peak_info.get('sdr', [])).replace([np.inf, -np.inf, np.nan], 0)),
+                            'rt_width': w1+w2 if w1 and w2 else 'NA',
+                            'mean_diff': np.mean(pd.Series(xic_peak_info.get('mean_diff', [])).replace([np.inf, -np.inf, np.nan], 0))
                         })
                     result_dict.update({
+                        '{}_peaks'.format(silac_label): all_xic_peak_info,
                         '{}_isotopes'.format(silac_label): sum((isotopes_chosen['label'] == silac_label) & (isotopes_chosen['amplitude']>0)),
                     })
             for silac_label, silac_data in six.iteritems(data):
                 result_dict.update({
+                    '{}_residual'.format(silac_label): np.mean(pd.Series(silac_data.get('residual', [])).replace([np.inf, -np.inf, np.nan], 0)),
                     '{}_precursor'.format(silac_label): silac_data['precursor'],
                     '{}_calibrated_precursor'.format(silac_label): silac_data.get('calibrated_precursor', silac_data['precursor'])
                 })
@@ -1381,22 +1386,46 @@ def run_pyquant():
             del scan
 
     labels = mass_labels.keys()
+    RESULT_ORDER = [
+        ('peptide', 'Peptide'),
+        ('modifications', 'Modifications'),
+        ('charge', 'Charge'),
+        ('ms1', 'MS{} Spectrum ID'.format(msn_for_quant)),
+    ]
+    if msn_for_quant != msn_for_id:
+        RESULT_ORDER.extend([
+            ('scan', 'MS{} Spectrum ID'.format(msn_for_id)),
+        ])
+    RESULT_ORDER.extend([
+        ('rt', 'Retention Time'),
+    ])
+
+    PEAK_REPORTING = []
+    # if len(labels) == 1 and labels[0] == 'Light'
     if labels:
+        # import pdb; pdb.set_trace();
         for silac_label in labels:
-            RESULT_ORDER.extend([('{}_intensity'.format(silac_label), '{} Intensity'.format(silac_label)),
-                                 ('{}_precursor'.format(silac_label), '{} Precursor'.format(silac_label)),
-                                 ('{}_calibrated_precursor'.format(silac_label), '{} Calibrated Precursor'.format(silac_label)),
-                                 ('{}_isotopes'.format(silac_label), '{} Isotopes Found'.format(silac_label)),
-                                 ])
+            RESULT_ORDER.extend([
+                ('{}_precursor'.format(silac_label), '{} Precursor'.format(silac_label)),
+                ('{}_calibrated_precursor'.format(silac_label), '{} Calibrated Precursor'.format(silac_label)),
+                ('{}_isotopes'.format(silac_label), '{} Isotopes Found'.format(silac_label)),
+                ('{}_intensity'.format(silac_label), '{} Intensity'.format(silac_label)),
+                ('{}_residual'.format(silac_label), '{} Residual'.format(silac_label)),
+            ])
             if not reporter_mode:
-                RESULT_ORDER.extend([('{}_rt_width'.format(silac_label), '{} RT Width'.format(silac_label)),
-                                     ('{}_mean_diff'.format(silac_label), '{} Mean Offset'.format(silac_label)),
-                                     ('{}_peak_intensity'.format(silac_label), '{} Peak Intensity'.format(silac_label)),
-                                     ('{}_snr'.format(silac_label), '{} SNR'.format(silac_label)),
-                                     ('{}_sbr'.format(silac_label), '{} SBR'.format(silac_label)),
-                                     ('{}_sdr'.format(silac_label), '{} Density'.format(silac_label)),
-                                     ('{}_residual'.format(silac_label), '{} Residual'.format(silac_label)),
-                                    ])
+                PEAK_REPORTING.extend([
+                    ('peak_intensity', '{} Peak Intensity'.format(silac_label)),
+                    ('mean', '{} Peak Center'.format(silac_label)),
+                    ('rt_width', '{} RT Width'.format(silac_label)),
+                    ('mean_diff', '{} Mean Offset'.format(silac_label)),
+                    ('snr', '{} SNR'.format(silac_label)),
+                    ('sbr', '{} SBR'.format(silac_label)),
+                    ('sdr', '{} Density'.format(silac_label)),
+                    # ('residual', '{} Residual'.format(silac_label)),
+                ])
+            if args.peaks_n == 1:
+                RESULT_ORDER.extend(PEAK_REPORTING)
+                PEAK_REPORTING = []
             for silac_label2 in labels:
                 if silac_label != silac_label2 and (ref_label is None or ref_label.lower() == silac_label2.lower()):
                     RESULT_ORDER.extend([('{}_{}_ratio'.format(silac_label, silac_label2), '{}/{}'.format(silac_label, silac_label2)),
@@ -1448,11 +1477,11 @@ def run_pyquant():
         if not out:
             sys.stderr.write('You may only resume runs with a file output.\n')
             return -1
-        out = open(out, 'a')
+        out = open(out, 'a+')
         out_path = out.name
     else:
         if out:
-            out = open(out, 'w')
+            out = open(out, 'w+')
             out_path = out.name
         else:
             out = sys.stdout
@@ -1786,6 +1815,9 @@ def run_pyquant():
         msn_rt_map_series = pd.Series(msn_rt_map)
         scans_to_submit = []
 
+        # this is to fix the header at the end to include peak information if we have multiple peaks
+        most_peaks_found = 0
+
         lowest_label = min([j for i,v in mass_labels.items() for j in v])
         mrm_added = set([])
         exclusion_masses = mrm_pair_info.loc[:,[i for i in mrm_pair_info.columns if i.lower() not in ('light', 'retention time')]].values.flatten() if args.mrm else set([])
@@ -1888,6 +1920,7 @@ def run_pyquant():
 
         # kill the workers
         [in_queue.put(None) for i in xrange(threads)]
+        RESULT_DICT = {i[0]: 'NA' for i in RESULT_ORDER}
         while workers or result is not None:
             try:
                 result = result_queue.get(timeout=0.1)
@@ -1925,24 +1958,66 @@ def run_pyquant():
                 if completed % 10 == 0:
                     sys.stderr.write('\r{0:2.2f}% Completed'.format(completed/scan_count*100))
                     sys.stderr.flush()
-                res_list = [filename]+[result.get(i[0], 'NA') for i in RESULT_ORDER]
-                temp_file.write(json.dumps({'res_list': list(map(str, res_list)), 'html': result.get('html', {})}))
-                temp_file.write('\n')
-                temp_file.flush()
+                res_dict = copy.deepcopy(RESULT_DICT)
+                for i in RESULT_ORDER:
+                    res_dict[i[0]] = result.get(i[0], 'NA')
+                peak_report = []
+                for label_name in labels:
+                    peaks_found = result.get('{}_peaks'.format(label_name))
+                    if len(peaks_found) > most_peaks_found:
+                        most_peaks_found = len(peaks_found)
+                    for peak_info in peaks_found:
+                        if args.peaks_n != 1:
+                            peak_report.append(list(map(str, (peak_info.get(i[0], 'NA') for i in PEAK_REPORTING))))
+                        else:
+                            for i in RESULT_ORDER:
+                                if i[0] in peak_info:
+                                    res_dict[i[0]] = peak_info[i[0]]
+                res_dict['filename'] = filename
+                res_dict['peak_report'] = peak_report
+                # This is the tsv output we provide
+                res_list = [filename]+[res_dict.get(i[0], 'NA') for i in RESULT_ORDER]+['\t'.join(i) for i in peak_report]
                 res = '{0}\n'.format('\t'.join(map(str, res_list)))
                 out.write(res)
                 out.flush()
+
+                temp_file.write(json.dumps({'res_dict': res_dict, 'html': result.get('html', {})}))
+                temp_file.write('\n')
+                temp_file.flush()
         reader_in.put(None)
         del msn_map
         del scan_rt_map
         del raw
 
+    out.flush()
+
+    # fix the header if we need to
+    if args.peaks_n != 1:
+        tmp_file = '{}_ot'.format(out_path)
+        with open(tmp_file, 'wb') as o:
+            out.seek(0)
+            new_header = out.readline().strip().split('\t')
+            for peak_num in xrange(most_peaks_found):
+                new_header.extend(['Peak {} {}'.format(peak_num, i[1]) for i in PEAK_REPORTING])
+            o.write('{}\n'.format('\t'.join(new_header)))
+            for row in out:
+                o.write(row)
+        import shutil
+        shutil.move(tmp_file, out_path)
+    else:
+        out.close()
+
+
     temp_file.close()
     df_data = []
     html_data = []
+    peak_data = []
     for j in open(temp_file.name, 'r'):
         result = json.loads(j if isinstance(j, six.text_type) else j.decode('utf-8'))
-        df_data.append(result['res_list'])
+        res_dict = result['res_dict']
+        res_list = [res_dict['filename']]+[res_dict.get(i[0], 'NA') for i in RESULT_ORDER]
+        peak_data.append(res_dict['peak_report'])
+        df_data.append(res_list)
         html_data.append(result['html'])
     data = pd.DataFrame.from_records(df_data, columns=[i for i in headers if i != 'Confidence'])
     header_mapping = []
@@ -2054,16 +2129,16 @@ def run_pyquant():
                 except:
                     sys.stderr.write('Unable to calculate statistics for {}/{}.\n Traceback: {}'.format(silac_label1, silac_label2, traceback.format_exc()))
 
-        data.to_csv('{}_stats'.format(out.name), sep=str('\t'), index=None)
+        data.to_csv('{}_stats'.format(out_path), sep=str('\t'), index=None)
 
-    out.flush()
-    out.close()
     if html:
         html_map = []
+        peak_map = {'header': [i[1] for i in PEAK_REPORTING], 'data': []}
         for index, (row_index, row) in enumerate(data.iterrows()):
             res = '\t'.join(row.astype(str))
             to_write, html_info = table_rows([{'table': res.strip(), 'html': html_data[index], 'keys': header_mapping}])
             html_map.append(html_info)
+            peak_map['data'].append(peak_data[index])
             html_out.write(to_write)
             html_out.flush()
 
@@ -2075,6 +2150,9 @@ def run_pyquant():
             elif append:
                 template.append(i)
         html_template = Template(''.join(template))
-        html_out.write(html_template.safe_substitute({'html_output': base64.b64encode(gzip.zlib.compress(json.dumps(html_map), 9))}))
+        html_out.write(html_template.safe_substitute({
+            'peak_output': base64.b64encode(gzip.zlib.compress(json.dumps(peak_map), 9)),
+            'html_output': base64.b64encode(gzip.zlib.compress(json.dumps(html_map), 9)),
+        }))
 
     os.remove(temp_file.name)

@@ -261,6 +261,7 @@
             $(document).ready(function() {
 
                 var dt_data = JSON.parse(pako.inflate(window.atob("$html_output"), { to: 'string' }));
+                var peak_data = JSON.parse(pako.inflate(window.atob("$peak_output"), { to: 'string' }));
                 var non_numeric_rows = [0,1,2];
                 var numeric_rows = [];
                 var $headers = $('#raw-table > thead > tr > th');
@@ -283,7 +284,7 @@
                     'fixedHeader': {header: true},
                     'aoColumnDefs': [
                       { "sType": "pq-num", "aTargets": numeric_rows },
-                      { "targets": 0, "data": null, "defaultContent": '<button data-type="xic" class="btn btn-primary">Plot XIC</button><button data-type="isotope" class="btn btn-primary">Plot Isotopes</button>'}
+                      { "targets": 0, "data": null, "defaultContent": '<button data-type="xic" class="btn btn-primary">Plot XIC</button><button data-type="isotope" class="btn btn-primary">Plot Isotopes</button><button class="btn btn-info" data-type="children">Show Peaks</button>'}
                     ],
                 });
 
@@ -378,6 +379,87 @@
                         return true;
                     }
                 );
+                var charts = {};
+                var plot_func = function(row_index, data_type, fit_index){
+                    var chart_data = $.extend(true, {}, dt_data[row_index][data_type]);
+                    if($.isEmptyObject(chart_data))
+                        return;
+                    current_plot = data_type;
+                    var $base_element = $active_window.find('.viewer-content');
+                    $base_element.children().remove();
+                    $element = $base_element;
+                    var chart_width = 0;
+                    var plot_width = $(document).width()/3;
+                    var max_y = chart_data['max-y'];
+                    charts = {};
+                    if(chart_data['plot-multi']){
+                        var common_x = chart_data['common-x'];
+                        var plot_data = chart_data['data'];
+                        var last_title;
+                        for(var i=0;i<plot_data.length;i++){
+                            var plot_info = plot_data[i]['data']['columns'][0];
+                            if(!plot_info)
+                                continue;
+                            var plot_title = plot_info[0].split(' ');
+                            if(!last_title || (plot_title && last_title && plot_title[0] != 'Scan' && plot_title[0].indexOf(last_title) == -1 )) {
+                                if (last_title) {
+                                    $element.css('width', chart_width + $element.find('.chart-title').outerWidth(true) + 20);
+                                    chart_width = 0;
+                                }
+                                $element = $('<div class="row"><h2 class="chart-title">'+plot_title[0]+'</h2></div>').appendTo($base_element);
+                            }
+                            if(plot_title)
+                                last_title = plot_title[0];
+                            var chart_name = 'chart'+i;
+                            var new_element = $element.append('<div id="'+chart_name+'"></div>');
+                            plot_data[i]['bindto'] = '#'+chart_name;
+                            chart_width += plot_width;
+                            plot_data[i]['size'] = {width: plot_width};
+                            if(common_x){
+                                plot_data[i]['data']['columns'].unshift(common_x);
+                            }
+                            var plot_columns = plot_data[i]['data']['columns'];
+                            //plot_data[i]['data']['colors'] = {};
+                            var raw_name, raw_index;
+                            plot_columns.forEach(function(val, index){
+                                if(val[0].endsWith('raw')){
+                                    raw_index = index;
+                                    raw_name = val[0];
+                                }
+                            });
+                            if(typeof(raw_name) != "undefined"){
+                                //plot_data[i]['data']['colors'][raw_name] = '#FFDAA9';
+                                // put raw first so it's the lowest drawn level after x
+                                var t = plot_columns[1];
+                                plot_columns[1] = plot_columns[raw_index];
+                                plot_columns[raw_index] = t;
+                                plot_data[i]['data']['columns'] = plot_columns;
+                            }
+                            if(max_y){
+                                var param_max_y = plotting_params['max-y'];
+                                if(param_max_y == 'max-all')
+                                    plot_data[i]['axis']['y']['max'] = max_y;
+                                else if(param_max_y == 'fitted'){
+                                    var max_fit = 0;
+                                    plot_columns.forEach(function(arr){
+                                        if(arr[0].endsWith('fit')) {
+                                            var new_max = Math.max.apply(null, arr.map(function(x){return parseFloat(x) ? x : 0}))
+                                            if(new_max > max_fit)
+                                                max_fit = new_max;
+                                        }
+                                    });
+                                    if (max_fit != 0)
+                                        plot_data[i]['axis']['y']['max'] = max_fit;
+                                }
+                            }
+                            var chart = c3.generate(plot_data[i]);
+                            charts[row_index] = chart;
+
+                        }
+                        if(plot_data.length)
+                            $element.css('width', chart_width+$element.find('.chart-title').outerWidth(true)+20);
+                    }
+                };
                 var initDataViewer = function(){
                         $('td > button').click(function(event){
                             var $this = $(this);
@@ -385,68 +467,57 @@
                             var row_index = cell_info['row'];
                             var col_index = cell_info['column'];
                             var data_type = $this.data('type');
+                            if(data_type == "sub-plot"){
+                                return;
+                            }
+                            if(data_type == "children"){
+                                var dt_row = dt.row($(this).closest('tr'));
+                                if(dt_row.child.isShown()){
+                                    $(this).html("Show Peaks");
+                                    dt_row.child.hide();
+                                    return;
+                                }
+                                $(this).html = ("Hide Peaks");
+                                var $table = $('<table cellpadding="5" cellspacing="0" border="0" style="padding-left:50px;">');
+                                var $header = $('<thead/>');
+                                var $header_row = $('<tr/>');
+                                $header.append($header_row);
+                                $table.append($header);
+                                peak_data.header.forEach(function(val){
+                                    $header_row.append($('<th>'+val+'</th>'));
+                                });
+                                var $body = $('<tbody/>');
+                                $table.append($body);
+                                peak_data.data[row_index].forEach(function(arr, index){
+                                    var $row = $('<tr data-index="'+index+'" />');
+                                    arr.forEach(function(val){
+                                        $row.append($('<td>'+val+'</td>'));
+                                    });
+                                    $body.append($row);
+                                });
+                                dt_row.child($table.html()).show();
+                                $('[data-index]').on('mouseover', function(event){
+                                    var row_index = dt.row($(this).closest('tbody').closest('tr').prev()).index();
+                                    var chart = charts[row_index];
+                                    if(typeof(chart) === "undefined"){
+                                        plot_func(row_index, 'xic');
+                                        chart = charts[row_index];
+                                    }
+                                    var to_focus = [];
+                                    var fit_index = $(this).data('index');
+                                    chart.data().forEach(function(val){
+                                        var id = val.id
+                                        if((id.endsWith('raw') || id.endsWith('fit '+fit_index) || id.endsWith('x'))){
+                                            to_focus.push(id);
+                                        }
+                                    });
+                                    chart.focus(to_focus);
+                                });
+                                return;
+                                }
                             if(current_plot && (current_plot[0] == data_type))
                                 return;
-                            var chart_data = $.extend(true, {}, dt_data[row_index][data_type]);
-                            if($.isEmptyObject(chart_data))
-                                return;
-                            current_plot = data_type;
-                            var $base_element = $active_window.find('.viewer-content');
-                            $base_element.children().remove();
-                            $element = $base_element;
-                            var chart_width = 0;
-                            var plot_width = $(document).width()/3;
-                            var max_y = chart_data['max-y'];
-                            if(chart_data['plot-multi']){
-                                var common_x = chart_data['common-x'];
-                                var plot_data = chart_data['data'];
-                                var last_title;
-                                for(var i=0;i<plot_data.length;i++){
-                                    var plot_info = plot_data[i]['data']['columns'][0];
-                                    if(!plot_info)
-                                        continue;
-                                    var plot_title = plot_info[0].split(' ');
-                                    if(!last_title || (plot_title && last_title && plot_title[0] != 'Scan' && plot_title[0].indexOf(last_title) == -1 )) {
-                                        if (last_title) {
-                                            $element.css('width', chart_width + $element.find('.chart-title').outerWidth(true) + 20);
-                                            chart_width = 0;
-                                        }
-                                        $element = $('<div class="row"><h2 class="chart-title">'+plot_title[0]+'</h2></div>').appendTo($base_element);
-                                    }
-                                    if(plot_title)
-                                        last_title = plot_title[0];
-                                    var chart_name = 'chart'+i;
-                                    var new_element = $element.append('<div id="'+chart_name+'"></div>');
-                                    plot_data[i]['bindto'] = '#'+chart_name;
-                                    chart_width += plot_width;
-                                    plot_data[i]['size'] = {width: plot_width};
-                                    if(common_x){
-                                        plot_data[i]['data']['columns'].unshift(common_x);
-                                    }
-                                    if(max_y){
-                                        var param_max_y = plotting_params['max-y'];
-                                        if(param_max_y == 'max-all')
-                                            plot_data[i]['axis']['y']['max'] = max_y;
-                                        else if(param_max_y == 'fitted'){
-                                            var plot_columns = plot_data[i]['data']['columns'];
-                                            var max_fit = 0;
-                                            for(var j=0;j<plot_columns.length;j++){
-                                                if(plot_columns[j][0].endsWith('fit')) {
-                                                    var new_max = Math.max.apply(null, plot_columns[j].map(function(x){return parseFloat(x) ? x : 0}))
-                                                    if(new_max > max_fit)
-                                                        max_fit = new_max;
-                                                }
-                                            }
-                                            if (max_fit != 0)
-                                                plot_data[i]['axis']['y']['max'] = max_fit;
-                                        }
-                                    }
-                                    c3.generate(plot_data[i]);
-
-                                }
-                                if(plot_data.length)
-                                    $element.css('width', chart_width+$element.find('.chart-title').outerWidth(true)+20);
-                            }
+                            plot_func(row_index, data_type);
                             $('.selected').removeClass('selected');
                             $('.current-plot').removeClass('current-plot');
                             $(this).parent().parent().addClass('selected');
