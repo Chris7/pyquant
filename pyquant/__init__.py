@@ -91,6 +91,11 @@ output_group.add_argument('--sample', help="How much of the data to sample. Ente
 output_group.add_argument('--disable-stats', help="Disable confidence statistics on data.", action='store_true')
 output_group.add_argument('-o', '--out', nargs='?', help='The prefix for the file output', type=str)
 
+spectra_output = pyquant_parser.add_argument_group("Spectra Output Options")
+spectra_output.add_argument('--export-mzml', help='Create an mzml file of spectra contained within each peak.', action='store_true')
+spectra_output.add_argument('--peak-summary', help='How to collate scans together.', type=str, default='concat', choices=['concat', 'median'])
+
+
 convenience_group = pyquant_parser.add_argument_group('Convenience Parameters')
 convenience_group.add_argument('--neucode', help='This will select parameters specific for neucode. Note: You still must define a labeling scheme.', action='store_true')
 convenience_group.add_argument('--isobaric-tags', help='This will select parameters specific for isobaric tag based labeling (TMT/iTRAQ).', action='store_true')

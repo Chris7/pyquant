@@ -878,6 +878,7 @@ class Worker(Process):
                             for index, values in quan_values.items():
                                 if not values:
                                     continue
+                                isotope_index = isotope_labels.loc[index, 'isotope_index']
                                 rt_values = combined_data.loc[index]
                                 xdata = rt_values.index.values.astype(float)
                                 ydata = rt_values.fillna(0).values.astype(float)
@@ -947,7 +948,6 @@ class Worker(Process):
                                             print(traceback.format_exc())
                                             print(left_index, right_index, xdata, ydata)
                                     sdr = np.log2(int_val*1./total_int+1.)
-                                    isotope_index = isotope_labels.loc[index, 'isotope_index']
 
                                     if int_val and not pd.isnull(int_val) and gc != 'c':
                                         try:
@@ -957,25 +957,17 @@ class Worker(Process):
                                                 quant_vals[quant_label][isotope_index] = int_val
                                             except KeyError:
                                                 quant_vals[quant_label] = {isotope_index: int_val}
-                                    if peak_info.get(quant_label, {}).get(xic_peak_index, {}).get('amp', -1) < amp:
-                                        try:
-                                            peak_info[quant_label][xic_peak_index].update({'amp': amp, 'std': std, 'std2': std2})
-                                        except KeyError:
-                                            peak_info[quant_label][xic_peak_index] = {'amp': amp, 'std': std, 'std2': std2}
+                                    peak_info_dict = {'mean': mean, 'std': std, 'std2': std2, 'amp': amp,
+                                                      'mean_diff': mean_diff, 'snr': snr, 'sbr': sbr, 'sdr': sdr,
+                                                      'auc': total_int, 'peak_width': std+std2}
                                     try:
-                                        peak_info[quant_label][xic_peak_index]['mean_diff'].append(mean_diff)
-                                        peak_info[quant_label][xic_peak_index]['mean'].append(mean)
-                                        peak_info[quant_label][xic_peak_index]['snr'].append(snr)
-                                        peak_info[quant_label][xic_peak_index]['sbr'].append(sbr)
-                                        peak_info[quant_label][xic_peak_index]['sdr'].append(sdr)
-                                        peak_info[quant_label][xic_peak_index]['auc'].append(total_int)
+                                        peak_info[quant_label][isotope_index][xic_peak_index] = peak_info_dict
                                     except KeyError:
                                         try:
-                                            peak_info[quant_label][xic_peak_index].update({'mean_diff': [mean_diff], 'snr': [snr],
-                                                                           'sbr': [sbr], 'sdr': [sdr], 'mean': mean, 'auc': total_int})
+                                            peak_info[quant_label][isotope_index] = {xic_peak_index: peak_info_dict}
                                         except KeyError:
-                                            peak_info[quant_label] = {xic_peak_index: {'mean_diff': [mean_diff], 'snr': [snr],
-                                                                           'sbr': [sbr], 'sdr': [sdr], 'mean': mean, 'auc': total_int}}
+                                            peak_info[quant_label] = {isotope_index: {xic_peak_index: peak_info_dict}}
+
                                     try:
                                         data[quant_label]['residual'].append(residual)
                                     except KeyError:
@@ -1068,21 +1060,23 @@ class Worker(Process):
                 if write_html:
                     result_dict.update({'html_info': html_images})
                 for peak_label, peak_data in six.iteritems(peak_info):
-                    all_xic_peak_info = []
-                    for xic_index, xic_peak_info in six.iteritems(peak_data):
-                        w1, w2 = xic_peak_info.get('std', None), xic_peak_info.get('std2', None)
-                        all_xic_peak_info.append({
-                            'peak_intensity': xic_peak_info.get('amp', 'NA'),
-                            'auc': xic_peak_info.get('auc', 'NA'),
-                            'mean': xic_peak_info.get('mean', 'NA'),
-                            'snr': np.mean(pd.Series(xic_peak_info.get('snr', [])).replace([np.inf, -np.inf, np.nan], 0)),
-                            'sbr': np.mean(pd.Series(xic_peak_info.get('sbr', [])).replace([np.inf, -np.inf, np.nan], 0)),
-                            'sdr': np.mean(pd.Series(xic_peak_info.get('sdr', [])).replace([np.inf, -np.inf, np.nan], 0)),
-                            'rt_width': w1+w2 if w1 and w2 else 'NA',
-                            'mean_diff': np.mean(pd.Series(xic_peak_info.get('mean_diff', [])).replace([np.inf, -np.inf, np.nan], 0))
-                        })
+                    # all_xic_peak_info = []
+                    # for peak_isotope, isotope_peaks in six.iteritems(peak_data):
+                    #     for xic_index, xic_peak_info in six.iteritems(peak_data):
+                    #         all_xic_peak_info.append(xic_peak_info)
+                            # w1, w2 = xic_peak_info.get('std', None), xic_peak_info.get('std2', None)
+                            # all_xic_peak_info.append({
+                            #     'peak_intensity': xic_peak_info.get('amp', 'NA'),
+                            #     'auc': xic_peak_info.get('auc', 'NA'),
+                            #     'mean': xic_peak_info.get('mean', 'NA'),
+                            #     'snr': np.mean(pd.Series(xic_peak_info.get('snr', [])).replace([np.inf, -np.inf, np.nan], 0)),
+                            #     'sbr': np.mean(pd.Series(xic_peak_info.get('sbr', [])).replace([np.inf, -np.inf, np.nan], 0)),
+                            #     'sdr': np.mean(pd.Series(xic_peak_info.get('sdr', [])).replace([np.inf, -np.inf, np.nan], 0)),
+                            #     'rt_width': w1+w2 if w1 and w2 else 'NA',
+                            #     'mean_diff': np.mean(pd.Series(xic_peak_info.get('mean_diff', [])).replace([np.inf, -np.inf, np.nan], 0))
+                            # })
                     result_dict.update({
-                        '{}_peaks'.format(peak_label): all_xic_peak_info,
+                        '{}_peaks'.format(peak_label): peak_data,
                         '{}_isotopes'.format(peak_label): sum((isotopes_chosen['label'] == peak_label) & (isotopes_chosen['amplitude']>0)),
                     })
             if self.parser_args.merge_labels:
@@ -1145,6 +1139,15 @@ def find_scan(msn_map, current_scan):
         if scan_id == current_scan:
             return scan_id
     return None
+
+def get_scans_under_peaks(rt_scan_map, found_peaks):
+    scans = set([])
+    for peak_isotope, isotope_peak_data in six.iteritems(found_peaks):
+        for xic_peak_index, xic_peak_params in six.iteritems(isotope_peak_data):
+            mean, stdl, stdr = xic_peak_params['mean'], xic_peak_params['std'], xic_peak_params['std2']
+            left, right = mean-2*stdl, mean+2*stdr
+            scans |= set(rt_scan_map[(rt_scan_map.index >= left) & (rt_scan_map.index <= right)].values)
+    return scans
 
 def run_pyquant():
     from . import pyquant_parser
@@ -1423,9 +1426,9 @@ def run_pyquant():
             if not reporter_mode:
                 PEAK_REPORTING.extend([
                     ('auc', '{} Peak Area'.format(silac_label)),
-                    ('peak_intensity', '{} Peak Max'.format(silac_label)),
+                    ('amp', '{} Peak Max'.format(silac_label)),
                     ('mean', '{} Peak Center'.format(silac_label)),
-                    ('rt_width', '{} RT Width'.format(silac_label)),
+                    ('peak_width', '{} RT Width'.format(silac_label)),
                     ('mean_diff', '{} Mean Offset'.format(silac_label)),
                     ('snr', '{} SNR'.format(silac_label)),
                     ('sbr', '{} SBR'.format(silac_label)),
@@ -1822,7 +1825,6 @@ def run_pyquant():
         # peptides -- we want to use those masses before calculating where it should be). This may not
         # be possible for all types of input though, figure this out.
         quant_map = {}
-        msn_rt_map_series = pd.Series(msn_rt_map)
         scans_to_submit = []
 
         # this is to fix the header at the end to include peak information if we have multiple peaks
@@ -1931,6 +1933,10 @@ def run_pyquant():
         # kill the workers
         [in_queue.put(None) for i in xrange(threads)]
         RESULT_DICT = {i[0]: 'NA' for i in RESULT_ORDER}
+        scans_to_export = set([])
+        key_map = msn_rt_map.keys()
+        rt_scan_map = pd.Series(key_map, index=[msn_rt_map[i] for i in key_map])
+        rt_scan_map.sort_index(inplace=True)
         while workers or result is not None:
             try:
                 result = result_queue.get(timeout=0.1)
@@ -1974,15 +1980,18 @@ def run_pyquant():
                 peak_report = []
                 for label_name in labels:
                     peaks_found = result.get('{}_peaks'.format(label_name), [])
+                    if args.export_mzml:
+                        scans_to_export |= get_scans_under_peaks(rt_scan_map, peaks_found)
                     if len(peaks_found) > most_peaks_found:
                         most_peaks_found = len(peaks_found)
-                    for peak_info in peaks_found:
-                        if args.peaks_n != 1:
-                            peak_report.append(list(map(str, (peak_info.get(i[0], 'NA') for i in PEAK_REPORTING))))
-                        else:
-                            for i in RESULT_ORDER:
-                                if i[0] in peak_info:
-                                    res_dict[i[0]] = peak_info[i[0]]
+                    for isotope_index, isotope_peaks in six.iteritems(peaks_found):
+                        for xic_peak_index, xic_peak_info in six.iteritems(isotope_peaks):
+                            if args.peaks_n != 1:
+                                peak_report.append(list(map(str, (xic_peak_info.get(i[0], 'NA') for i in PEAK_REPORTING))))
+                            else:
+                                for i in RESULT_ORDER:
+                                    if i[0] in xic_peak_info:
+                                        res_dict[i[0]] = xic_peak_info[i[0]]
                 res_dict['filename'] = filename
                 res_dict['peak_report'] = peak_report
                 # This is the tsv output we provide
@@ -1995,6 +2004,10 @@ def run_pyquant():
                 temp_file.write('\n')
                 temp_file.flush()
         reader_in.put(None)
+
+        # if we are going to report scans, do so here
+
+
         del msn_map
         del scan_rt_map
         del raw
