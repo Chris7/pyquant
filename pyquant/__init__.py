@@ -93,8 +93,6 @@ output_group.add_argument('-o', '--out', nargs='?', help='The prefix for the fil
 
 spectra_output = pyquant_parser.add_argument_group("Spectra Output Options")
 spectra_output.add_argument('--export-mzml', help='Create an mzml file of spectra contained within each peak.', action='store_true')
-spectra_output.add_argument('--peak-summary', help='How to collate scans together.', type=str, default='concat', choices=['concat', 'median'])
-
 
 convenience_group = pyquant_parser.add_argument_group('Convenience Parameters')
 convenience_group.add_argument('--neucode', help='This will select parameters specific for neucode. Note: You still must define a labeling scheme.', action='store_true')

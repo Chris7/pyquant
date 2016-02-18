@@ -1563,7 +1563,7 @@ def run_pyquant():
         in_queue = Queue()
         result_queue = Queue()
         reader_in = Queue()
-        reader_outs = {}
+        reader_outs = {'main': Queue()}
         for i in xrange(threads):
             reader_outs[i] = Queue()
 
@@ -1952,7 +1952,7 @@ def run_pyquant():
                             print('thread has been killed using params {}'.format(v.params))
                         to_del.append({'worker_index': i, 'thread_id': v.thread, 'exitcode': exit_code})
                 workers_to_add = []
-                for worker_dict in sorted(to_del, key=operator.itemgetter('worker_index'),reverse=True):
+                for worker_dict in sorted(to_del, key=operator.itemgetter('worker_index'), reverse=True):
                     worker_index = worker_dict['worker_index']
                     if worker_dict['exitcode'] in CRASH_SIGNALS:
                         thread_index = worker_dict['thread_id']
@@ -1980,7 +1980,7 @@ def run_pyquant():
                 peak_report = []
                 for label_name in labels:
                     peaks_found = result.get('{}_peaks'.format(label_name), [])
-                    if args.export_mzml:
+                    if args.export:
                         scans_to_export |= get_scans_under_peaks(rt_scan_map, peaks_found)
                     if len(peaks_found) > most_peaks_found:
                         most_peaks_found = len(peaks_found)
@@ -2003,9 +2003,24 @@ def run_pyquant():
                 temp_file.write(json.dumps({'res_dict': res_dict, 'html': result.get('html', {})}))
                 temp_file.write('\n')
                 temp_file.flush()
-        reader_in.put(None)
 
-        # if we are going to report scans, do so here
+        if scans_to_export:
+        #     for scan in scans_to_export:
+        #         reader_in.put(('main', scan, None, None))
+        #
+        #     main_queue = reader_outs['main']
+        #     scans = []
+        #     while len(scans) != len(scans_to_export):
+        #         scans.append(main_queue.get())
+        #
+        #     scan_frame = pd.DataFrame([pd.Series(i['vals'][:,1], index=i['vals'][:,0], name=i['title']) for i in scans]).sum(axis=0)
+        #
+        #     import pdb; pdb.set_trace();
+        ##     if we are going to report scans, do so here
+            with open('{}_{}.mzML'.format(out_path, filename), 'w') as o:
+                raw.writeScans(handle=o, scans=scans_to_export)
+
+        reader_in.put(None)
 
 
         del msn_map
