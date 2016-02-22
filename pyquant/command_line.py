@@ -959,7 +959,7 @@ class Worker(Process):
                                                 quant_vals[quant_label] = {isotope_index: int_val}
                                     peak_info_dict = {'mean': mean, 'std': std, 'std2': std2, 'amp': amp,
                                                       'mean_diff': mean_diff, 'snr': snr, 'sbr': sbr, 'sdr': sdr,
-                                                      'auc': total_int, 'peak_width': std+std2}
+                                                      'auc': int_val, 'peak_width': std+std2}
                                     try:
                                         peak_info[quant_label][isotope_index][xic_peak_index] = peak_info_dict
                                     except KeyError:
@@ -1141,12 +1141,13 @@ def find_scan(msn_map, current_scan):
     return None
 
 def get_scans_under_peaks(rt_scan_map, found_peaks):
-    scans = set([])
+    scans = {}
     for peak_isotope, isotope_peak_data in six.iteritems(found_peaks):
+        scans[peak_isotope] = {}
         for xic_peak_index, xic_peak_params in six.iteritems(isotope_peak_data):
             mean, stdl, stdr = xic_peak_params['mean'], xic_peak_params['std'], xic_peak_params['std2']
             left, right = mean-2*stdl, mean+2*stdr
-            scans |= set(rt_scan_map[(rt_scan_map.index >= left) & (rt_scan_map.index <= right)].values)
+            scans[peak_isotope][xic_peak_index] = set(rt_scan_map[(rt_scan_map.index >= left) & (rt_scan_map.index <= right)].values)
     return scans
 
 def run_pyquant():
@@ -1934,6 +1935,7 @@ def run_pyquant():
         [in_queue.put(None) for i in xrange(threads)]
         RESULT_DICT = {i[0]: 'NA' for i in RESULT_ORDER}
         scans_to_export = set([])
+        export_mapping = defaultdict(set)
         key_map = msn_rt_map.keys()
         rt_scan_map = pd.Series(key_map, index=[msn_rt_map[i] for i in key_map])
         rt_scan_map.sort_index(inplace=True)
@@ -1980,12 +1982,33 @@ def run_pyquant():
                 peak_report = []
                 for label_name in labels:
                     peaks_found = result.get('{}_peaks'.format(label_name), [])
-                    if args.export:
-                        scans_to_export |= get_scans_under_peaks(rt_scan_map, peaks_found)
+                    if args.export_mzml:
+                        from . import PER_FILE, PER_ID, PER_PEAK
+                        scans = get_scans_under_peaks(rt_scan_map, peaks_found)
+                        flattened_scans = set([l for i,v in scans.items() for j,k in v.items() for l in k])
+                        scans_to_export |= flattened_scans
+                        if args.export_mode == PER_FILE:
+                            export_mapping['{}_{}.mzML'.format(out_path, filename)] |= flattened_scans
                     if len(peaks_found) > most_peaks_found:
                         most_peaks_found = len(peaks_found)
                     for isotope_index, isotope_peaks in six.iteritems(peaks_found):
+                        if args.export_mzml and args.export_mode == PER_ID:
+                            export_mapping['{out}_{raw}_{ms1}_{precursor}.mzML'.format(**{
+                                    'out': out_path,
+                                    'raw': filename,
+                                    'precursor': result.get('{}_precursor'.format(label_name)),
+                                    'ms1': result.get('ms1')
+                                })] |= set([l for i,v in scans[isotope_index].items() for l in v])
                         for xic_peak_index, xic_peak_info in six.iteritems(isotope_peaks):
+                            if args.export_mzml and args.export_mode == PER_PEAK:
+                                export_mapping['{out}_{raw}_{ms1}_{precursor}_{isotope}_{peak}.mzML'.format(**{
+                                    'out': out_path,
+                                    'raw': filename,
+                                    'peak': xic_peak_index,
+                                    'isotope': isotope_index,
+                                    'precursor': result.get('{}_precursor'.format(label_name)),
+                                    'ms1': result.get('ms1')
+                                })] |= scans[isotope_index][xic_peak_index]
                             if args.peaks_n != 1:
                                 peak_report.append(list(map(str, (xic_peak_info.get(i[0], 'NA') for i in PEAK_REPORTING))))
                             else:
@@ -2017,8 +2040,9 @@ def run_pyquant():
         #
         #     import pdb; pdb.set_trace();
         ##     if we are going to report scans, do so here
-            with open('{}_{}.mzML'.format(out_path, filename), 'w') as o:
-                raw.writeScans(handle=o, scans=scans_to_export)
+            for export_filename, scans in six.iteritems(export_mapping):
+                with open(export_filename, 'w') as o:
+                    raw.writeScans(handle=o, scans=scans)
 
         reader_in.put(None)
 
@@ -2081,57 +2105,57 @@ def run_pyquant():
             for silac_label2 in mass_labels.keys():
                 if silac_label1 == silac_label2:
                     continue
-                label2_log = 'L{}'.format(silac_label2)
-                label2_logp = 'L{}_p'.format(silac_label2)
-                label2_int = '{} Intensity'.format(silac_label2)
-                label2_pint = '{} Peak Intensity'.format(silac_label1)
-                label2_hif = '{} Isotopes Found'.format(silac_label2)
-                label2_hifp = '{} Isotopes Found p'.format(silac_label2)
-
-                mixed = '{}/{}'.format(silac_label1, silac_label2)
-                mixed_p = '{}/{}_p'.format(silac_label1, silac_label2)
-                mixed_mean = '{}_Mean_Diff'.format(mixed)
-                mixed_mean_p = '{}_Mean_Diff_p'.format(mixed)
-                mixed_rt_diff = '{}_RT_Diff'.format(mixed)
-                mixed_rt_diff_p = '{}_p'.format(mixed_rt_diff)
-                mixed_isotope_diff = '{}_Isotope_Diff'.format(mixed)
-                mixed_isotope_diff_p = '{}_Isotope_Diff_p'.format(mixed)
-
-                data[label1_log] = np.log(data[label1_int].astype(float)+1)
-                data[label1_logp] = stats.norm.cdf((data[label1_log] - data[data[label1_log]>0][label1_log].mean())/data[data[label1_log]>0][label1_log].std(ddof=0))
-                data[label2_log] = np.log(data[label2_int].astype(float)+1)
-                data[label2_logp] = stats.norm.cdf((data[label2_log] - data[data[label2_log]>0][label2_log].mean())/data[data[label2_log]>0][label2_log].std(ddof=0))
-
-                nz = data[(data[label2_log] > 0) & (data[label1_log] > 0)]
-                mu = pd.Series(np.ravel(nz.loc[:,(label2_log, label1_log)])).mean()
-                std = pd.Series(np.ravel(nz.loc[:,(label2_log, label1_log)])).std()
-
-                data[mixed_p] = stats.norm.cdf((data.loc[:,(label2_log, label1_log)].mean(axis=1)-mu)/std)
-                data[mixed_rt_diff] = np.log2(np.abs(data['{} RT Width'.format(silac_label2)].astype(float)-data['{} RT Width'.format(silac_label1)].astype(float)))
-                data[mixed_mean] = np.abs(data['{} Mean Offset'.format(silac_label1)].astype(float)-data['{} Mean Offset'.format(silac_label1)].astype(float))
-                data[mixed_rt_diff] = data[mixed_rt_diff].replace([np.inf, -np.inf], np.nan)
-                data[mixed_rt_diff_p] = stats.norm.cdf((data[mixed_rt_diff] - data[mixed_rt_diff].mean())/data[mixed_rt_diff].std(ddof=0))
-                data[mixed_mean_p] = stats.norm.cdf((data[mixed_mean] - data[mixed_mean].mean())/data[mixed_mean].std(ddof=0))
-
-                data[label2_hif] = data[label2_hif].astype(float)
-                data[label2_hifp] = np.log2(data[label2_hif]).replace([np.inf, -np.inf], np.nan)
-                data[label2_hifp] = stats.norm.cdf((data[label2_hifp]-data[label2_hifp].median())/data[label2_hifp].std())
-
-                data[label1_hif] = data[label1_hif].astype(float)
-                data[label1_hifp] = np.log2(data[label1_hif]).replace([np.inf, -np.inf], np.nan)
-                data[label1_hifp] = stats.norm.cdf((data[label1_hifp]-data[label1_hifp].median())/data[label2_hifp].std())
-
-                data[mixed_isotope_diff] = np.log2(data[label2_hif]/data[label1_hif]).replace([np.inf, -np.inf], np.nan)
-                data[mixed_isotope_diff_p] = stats.norm.cdf((data[mixed_isotope_diff] - data[mixed_isotope_diff].median())/data[mixed_isotope_diff].std(ddof=0))
-
-                # confidence assessment
-                mixed_confidence = '{}/{} Confidence'.format(silac_label1, silac_label2)
-
-                cols = []
-                for i in (silac_label1, silac_label2):
-                    cols.extend(['{} {}'.format(i,j) for j in ['Intensity', 'Isotopes Found', 'Peak Intensity', 'SNR', 'Residual']])
-
                 try:
+                    label2_log = 'L{}'.format(silac_label2)
+                    label2_logp = 'L{}_p'.format(silac_label2)
+                    label2_int = '{} Intensity'.format(silac_label2)
+                    label2_pint = '{} Peak Intensity'.format(silac_label1)
+                    label2_hif = '{} Isotopes Found'.format(silac_label2)
+                    label2_hifp = '{} Isotopes Found p'.format(silac_label2)
+
+                    mixed = '{}/{}'.format(silac_label1, silac_label2)
+                    mixed_p = '{}/{}_p'.format(silac_label1, silac_label2)
+                    mixed_mean = '{}_Mean_Diff'.format(mixed)
+                    mixed_mean_p = '{}_Mean_Diff_p'.format(mixed)
+                    mixed_rt_diff = '{}_RT_Diff'.format(mixed)
+                    mixed_rt_diff_p = '{}_p'.format(mixed_rt_diff)
+                    mixed_isotope_diff = '{}_Isotope_Diff'.format(mixed)
+                    mixed_isotope_diff_p = '{}_Isotope_Diff_p'.format(mixed)
+
+                    data[label1_log] = np.log(data[label1_int].astype(float)+1)
+                    data[label1_logp] = stats.norm.cdf((data[label1_log] - data[data[label1_log]>0][label1_log].mean())/data[data[label1_log]>0][label1_log].std(ddof=0))
+                    data[label2_log] = np.log(data[label2_int].astype(float)+1)
+                    data[label2_logp] = stats.norm.cdf((data[label2_log] - data[data[label2_log]>0][label2_log].mean())/data[data[label2_log]>0][label2_log].std(ddof=0))
+
+                    nz = data[(data[label2_log] > 0) & (data[label1_log] > 0)]
+                    mu = pd.Series(np.ravel(nz.loc[:,(label2_log, label1_log)])).mean()
+                    std = pd.Series(np.ravel(nz.loc[:,(label2_log, label1_log)])).std()
+
+                    data[mixed_p] = stats.norm.cdf((data.loc[:,(label2_log, label1_log)].mean(axis=1)-mu)/std)
+                    data[mixed_rt_diff] = np.log2(np.abs(data['{} RT Width'.format(silac_label2)].astype(float)-data['{} RT Width'.format(silac_label1)].astype(float)))
+                    data[mixed_mean] = np.abs(data['{} Mean Offset'.format(silac_label1)].astype(float)-data['{} Mean Offset'.format(silac_label1)].astype(float))
+                    data[mixed_rt_diff] = data[mixed_rt_diff].replace([np.inf, -np.inf], np.nan)
+                    data[mixed_rt_diff_p] = stats.norm.cdf((data[mixed_rt_diff] - data[mixed_rt_diff].mean())/data[mixed_rt_diff].std(ddof=0))
+                    data[mixed_mean_p] = stats.norm.cdf((data[mixed_mean] - data[mixed_mean].mean())/data[mixed_mean].std(ddof=0))
+
+                    data[label2_hif] = data[label2_hif].astype(float)
+                    data[label2_hifp] = np.log2(data[label2_hif]).replace([np.inf, -np.inf], np.nan)
+                    data[label2_hifp] = stats.norm.cdf((data[label2_hifp]-data[label2_hifp].median())/data[label2_hifp].std())
+
+                    data[label1_hif] = data[label1_hif].astype(float)
+                    data[label1_hifp] = np.log2(data[label1_hif]).replace([np.inf, -np.inf], np.nan)
+                    data[label1_hifp] = stats.norm.cdf((data[label1_hifp]-data[label1_hifp].median())/data[label2_hifp].std())
+
+                    data[mixed_isotope_diff] = np.log2(data[label2_hif]/data[label1_hif]).replace([np.inf, -np.inf], np.nan)
+                    data[mixed_isotope_diff_p] = stats.norm.cdf((data[mixed_isotope_diff] - data[mixed_isotope_diff].median())/data[mixed_isotope_diff].std(ddof=0))
+
+                    # confidence assessment
+                    mixed_confidence = '{}/{} Confidence'.format(silac_label1, silac_label2)
+
+                    cols = []
+                    for i in (silac_label1, silac_label2):
+                        cols.extend(['{} {}'.format(i,j) for j in ['Intensity', 'Isotopes Found', 'Peak Intensity', 'SNR', 'Residual']])
+
                     fit_data = data.loc[:, cols]
                     # print(np.log2)
                     fit_data.loc[:,(label2_int, label1_int, label2_pint, label1_pint)] = np.log2(fit_data.loc[:,(label2_int, label1_int, label2_pint, label1_pint)].astype(float))

@@ -91,8 +91,13 @@ output_group.add_argument('--sample', help="How much of the data to sample. Ente
 output_group.add_argument('--disable-stats', help="Disable confidence statistics on data.", action='store_true')
 output_group.add_argument('-o', '--out', nargs='?', help='The prefix for the file output', type=str)
 
+PER_PEAK = 'per-peak'
+PER_FILE = 'per-file'
+PER_ID = 'per-id'
+
 spectra_output = pyquant_parser.add_argument_group("Spectra Output Options")
 spectra_output.add_argument('--export-mzml', help='Create an mzml file of spectra contained within each peak.', action='store_true')
+spectra_output.add_argument('--export-mode', help='How to export the scans. per-peak: A mzML per peak identified. per-id: A mzML per ion identified (each row of the output gets an mzML). per-file: All scans matched per raw file.', type=str, default='per-peak', choices={PER_PEAK, PER_ID, PER_FILE})
 
 convenience_group = pyquant_parser.add_argument_group('Convenience Parameters')
 convenience_group.add_argument('--neucode', help='This will select parameters specific for neucode. Note: You still must define a labeling scheme.', action='store_true')
