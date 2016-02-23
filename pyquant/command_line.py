@@ -2052,22 +2052,20 @@ def run_pyquant():
         del raw
 
     out.flush()
-
-    # fix the header if we need to
+    out.close()
+    # fix the header if we need to. We reopen the file because Windows doesn't like it when we read on a file with 'w+'
     if args.peaks_n != 1:
         tmp_file = '{}_ot'.format(out_path)
-        with open(tmp_file, 'wb') as o:
-            out.seek(0)
-            new_header = out.readline().strip().split('\t')
-            for peak_num in xrange(most_peaks_found):
-                new_header.extend(['Peak {} {}'.format(peak_num, i[1]) for i in PEAK_REPORTING])
-            o.write('{}\n'.format('\t'.join(new_header)))
-            for row in out:
-                o.write(row)
+        with open(out.name, 'r') as out:
+            with open(tmp_file, 'wb') as o:
+                new_header = out.readline().strip().split('\t')
+                for peak_num in xrange(most_peaks_found):
+                    new_header.extend(['Peak {} {}'.format(peak_num, i[1]) for i in PEAK_REPORTING])
+                o.write('{}\n'.format('\t'.join(new_header)))
+                for row in out:
+                    o.write(row)
         import shutil
         shutil.move(tmp_file, out_path)
-    else:
-        out.close()
 
 
     temp_file.close()
