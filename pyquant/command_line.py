@@ -2057,7 +2057,7 @@ def run_pyquant():
     if args.peaks_n != 1:
         tmp_file = '{}_ot'.format(out_path)
         with open(out.name, 'r') as out:
-            with open(tmp_file, 'wb') as o:
+            with open(tmp_file, 'w') as o:
                 new_header = out.readline().strip().split('\t')
                 for peak_num in xrange(most_peaks_found):
                     new_header.extend(['Peak {} {}'.format(peak_num, i[1]) for i in PEAK_REPORTING])
