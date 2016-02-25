@@ -314,7 +314,8 @@ cpdef basin_stepper(np.ndarray[FLOAT_t, ndim=1] args):
 @cython.boundscheck(False)
 cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata_original,
                          float min_dist=0, filter=False, bigauss_fit=False, rt_peak=0.0, mrm=False,
-                         int max_peaks=4, debug=False, peak_width_start=2, snr=0):
+                         int max_peaks=4, debug=False, peak_width_start=2, snr=0, amplitude_filter=0,
+                         peak_width_end=4):
     cdef object fit_func, jacobian
     cdef np.ndarray[long, ndim=1] row_peaks, smaller_peaks, larger_peaks
     cdef np.ndarray[long, ndim=1] minima_array
@@ -324,12 +325,14 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
     cdef float peak_min, peak_max, rel_peak, average, variance, best_rss, rt_peak_val, minima_value
     cdef np.ndarray[FLOAT_t, ndim=1] peak_values, peak_indices, ydata, ydata_peaks, best_fit
 
-
+    amplitude_filter /= ydata_original.max()
     ydata = ydata_original/ydata_original.max()
 
     ydata_peaks = np.copy(ydata)
     if snr != 0:
         ydata_peaks[ydata_peaks/np.std(ydata_peaks)<snr] = 0
+    if amplitude_filter != 0:
+        ydata_peaks[ydata_peaks<amplitude_filter] = 0
     if filter:
         if len(ydata) >= 5:
             ydata_peaks = convolve(ydata_peaks, kaiser(10, 12), mode='same')#gaussian_filter1d(convolve(ydata_peaks, kaiser(10, 14), mode='same'), 3, mode='constant')##gaussian_filter1d(ydata_peaks, 3, mode='constant')
@@ -342,11 +345,11 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         except ValueError:
             rt_peak_val = ydata_peaks[find_nearest_index(xdata, rt_peak)]
         ydata_peaks = np.where(ydata_peaks > rt_peak_val*0.9, ydata_peaks, 0)
+
     ydata_peaks /= ydata_peaks.max()
 
     peaks_found = {}
     peak_width = peak_width_start
-    peak_width_end = 4
     while peak_width <= peak_width_end:
         row_peaks = np.array(argrelmax(ydata_peaks, order=peak_width)[0], dtype=int)
         if not row_peaks.size:
@@ -377,23 +380,26 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
     if debug:
         sys.stderr.write('found: {}\n'.format(peaks_found))
     final_peaks = {}
-    for peak_width in xrange(peak_width_start, peak_width_end):
-        if debug:
-            sys.stderr.write('checking {}\n'.format(peak_width))
-        if peak_width not in peaks_found:
-            continue
-        smaller_peaks, smaller_minima = peaks_found[peak_width]['peaks'],peaks_found[peak_width]['minima']
-        larger_peaks, larger_minima = peaks_found[peak_width+1]['peaks'],peaks_found[peak_width+1]['minima']
-        if debug:
-            sys.stderr.write('{}: {} ---- {}\n'.format(peak_width, smaller_peaks, larger_peaks))
-        if set(smaller_peaks) == set(larger_peaks) and set(smaller_minima) ==  set(larger_minima):
-            final_peaks[peak_width+1] = peaks_found[peak_width+1]
-            if peak_width in final_peaks:
-                del final_peaks[peak_width]
-        else:
-            final_peaks[peak_width] = peaks_found[peak_width]
-            if peak_width == peak_width_end-1:
+    if peak_width_start == peak_width_end:
+        final_peaks = peaks_found
+    else:
+        for peak_width in xrange(peak_width_start, peak_width_end):
+            if debug:
+                sys.stderr.write('checking {}\n'.format(peak_width))
+            if peak_width not in peaks_found:
+                continue
+            smaller_peaks, smaller_minima = peaks_found[peak_width]['peaks'],peaks_found[peak_width]['minima']
+            larger_peaks, larger_minima = peaks_found[peak_width+1]['peaks'],peaks_found[peak_width+1]['minima']
+            if debug:
+                sys.stderr.write('{}: {} ---- {}\n'.format(peak_width, smaller_peaks, larger_peaks))
+            if set(smaller_peaks) == set(larger_peaks) and set(smaller_minima) ==  set(larger_minima):
                 final_peaks[peak_width+1] = peaks_found[peak_width+1]
+                if peak_width in final_peaks:
+                    del final_peaks[peak_width]
+            else:
+                final_peaks[peak_width] = peaks_found[peak_width]
+                if peak_width == peak_width_end-1:
+                    final_peaks[peak_width+1] = peaks_found[peak_width+1]
 
     cdef tuple args
     cdef dict opts

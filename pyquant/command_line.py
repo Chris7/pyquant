@@ -661,7 +661,7 @@ class Worker(Process):
                             print('MERGED PEAK FINDING')
                         res, residual = peaks.findAllPeaks(merged_x, fitting_y, filter=False, bigauss_fit=True,
                                                            rt_peak=start_rt, max_peaks=self.max_peaks, debug=self.debug,
-                                                           snr=self.parser_args.snr_filter)
+                                                           snr=self.parser_args.snr_filter, amplitude_filter=self.parser_args.intensity_filter)
                         rt_peak = peaks.bigauss_ndim(np.array([rt]), res)[0]
                         # we don't do this routine for cases where there are > 5
                         found_rt = (not self.rt_guide and self.parser_args.msn_all_scans) or sum(fitting_y>0) <= 5 or rt_peak > 0.05
@@ -779,7 +779,8 @@ class Worker(Process):
                                     print('fitting XIC for', quant_label, index)
                                 fit, residual = peaks.findAllPeaks(xdata, ydata, bigauss_fit=True, filter=True, max_peaks=self.max_peaks,
                                                                    rt_peak=nearest_positive_peak, debug=self.debug, peak_width_start=1,
-                                                                   snr=self.parser_args.snr_filter)
+                                                                   snr=self.parser_args.snr_filter, amplitude_filter=self.parser_args.intensity_filter,
+                                                                   peak_width_end=self.parser_args.min_peak_separation)
                                 if fit is None:
                                     continue
                                 rt_means = fit[1::4]
@@ -1981,7 +1982,7 @@ def run_pyquant():
                     res_dict[i[0]] = result.get(i[0], 'NA')
                 peak_report = []
                 for label_name in labels:
-                    peaks_found = result.get('{}_peaks'.format(label_name), [])
+                    peaks_found = result.get('{}_peaks'.format(label_name), {})
                     if args.export_mzml:
                         from . import PER_FILE, PER_ID, PER_PEAK
                         scans = get_scans_under_peaks(rt_scan_map, peaks_found)
@@ -2028,18 +2029,6 @@ def run_pyquant():
                 temp_file.flush()
 
         if scans_to_export:
-        #     for scan in scans_to_export:
-        #         reader_in.put(('main', scan, None, None))
-        #
-        #     main_queue = reader_outs['main']
-        #     scans = []
-        #     while len(scans) != len(scans_to_export):
-        #         scans.append(main_queue.get())
-        #
-        #     scan_frame = pd.DataFrame([pd.Series(i['vals'][:,1], index=i['vals'][:,0], name=i['title']) for i in scans]).sum(axis=0)
-        #
-        #     import pdb; pdb.set_trace();
-        ##     if we are going to report scans, do so here
             for export_filename, scans in six.iteritems(export_mapping):
                 with open(export_filename, 'w') as o:
                     raw.writeScans(handle=o, scans=scans)

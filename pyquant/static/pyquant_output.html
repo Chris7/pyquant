@@ -182,6 +182,7 @@
             }
             .c3 {
                 display: inline-block;
+                width: 33%;
             }
         </style>
     </head>
@@ -303,7 +304,7 @@
 
                 var reload = false;
                 //var empty_panel = '<div class="viewer-panel"><button class="btn btn-primary new-window">New Window</button><button class="btn btn-primary active-window">Set Active Window</button><button class="btn btn-primary close-window">Close window</button><div class="viewer-content"><canvas id="myChart" width="400" height="400"></canvas></div></div>';
-                var empty_panel = '<div class="viewer-panel"><div class="viewer-content"><canvas id="myChart" width="400" height="400" overflow-y:"auto"></canvas></div></div>';
+                var empty_panel = '<div class="viewer-panel"><div class="viewer-content"><canvas id="myChart" overflow-y:"auto"></canvas></div></div>';
                 $('.display-pane').append(empty_panel);
                 var initPanel = function(){
                     $('.new-window').last().click(function(){
@@ -414,11 +415,17 @@
                             var new_element = $element.append('<div id="'+chart_name+'"></div>');
                             plot_data[i]['bindto'] = '#'+chart_name;
                             chart_width += plot_width;
-                            plot_data[i]['size'] = {width: plot_width};
                             if(common_x){
                                 plot_data[i]['data']['columns'].unshift(common_x);
                             }
                             var plot_columns = plot_data[i]['data']['columns'];
+                            var effective_width = 0;
+                            if(plot_data.length > 1)
+                                effective_width = plot_width;
+                            else
+                                effective_width = $(document).width();
+                            plot_data[i]['size'] = {width: effective_width-$element.find('.chart-title').outerWidth(true)};
+                            plot_data[i]['size']['height'] = 320+plot_columns.length*5;
                             //plot_data[i]['data']['colors'] = {};
                             var raw_name, raw_index;
                             plot_columns.forEach(function(val, index){
