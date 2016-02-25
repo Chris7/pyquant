@@ -75,7 +75,8 @@ peak_parameters.add_argument('--peaks-n', help='The number of peaks to report pe
 peak_parameters.add_argument('--no-rt-guide', help='Do not use the retention tme to guide peak selection.', action='store_true')
 peak_parameters.add_argument('--snr-filter', help='Filter peaks below a given SNR.', type=int, default=0)
 peak_parameters.add_argument('--intensity-filter', help='Filter peaks whose peak are below a given intensity.', type=int, default=0)
-peak_parameters.add_argument('--min-peak-separation', help='Peaks separated by less than this distance will be combined. For very crisp data, set this to 2. (minimal value is 2)', type=int, default=4)
+peak_parameters.add_argument('--min-peak-separation', help='Peaks separated by less than this distance will be combined. For very crisp data, set this to 2. (minimal value is 1)', type=int, default=4)
+peak_parameters.add_argument('--disable-peak-filtering', help='This will disable smoothing of data prior to peak finding. If you have very good LC, this may be used to identify small peaks.', action='store_true')
 
 xic_parameters = pyquant_parser.add_argument_group('XIC Options')
 xic_parameters.add_argument('--export-msn', help='This will export spectra of a given MSN that were used to provide the quantification.', action='store_false')

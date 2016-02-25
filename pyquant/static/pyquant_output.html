@@ -7,6 +7,7 @@
         <link rel="stylesheet" href="http://cdn.datatables.net/1.10.9/css/jquery.dataTables.css" type="text/css">
         <link rel="stylesheet" href="http://cdnjs.cloudflare.com/ajax/libs/c3/0.4.10/c3.min.css" type="text/css">
         <link rel="stylesheet" href="http://cdnjs.cloudflare.com/ajax/libs/jquery-contextmenu/1.9.1/jquery.contextMenu.min.css" type="text/css">
+        <link rel="stylesheet" href="http://code.jquery.com/ui/1.11.3/themes/smoothness/jquery-ui.css">
         <style>
             html, body {
                 padding: 0;
@@ -182,7 +183,6 @@
             }
             .c3 {
                 display: inline-block;
-                width: 33%;
             }
         </style>
     </head>
@@ -234,6 +234,7 @@
         </div>
         <footer></footer>
         <script type="text/javascript" src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
+        <script type="text/javascript" src="http://code.jquery.com/ui/1.11.3/jquery-ui.js"></script>
         <script type="text/javascript" src="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/js/bootstrap.min.js"></script>
         <script type="text/javascript" src="http://cdn.datatables.net/1.10.9/js/jquery.dataTables.min.js"></script>
         <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/Chart.js/1.0.2/Chart.js"></script>
@@ -390,7 +391,7 @@
                     $base_element.children().remove();
                     $element = $base_element;
                     var chart_width = 0;
-                    var plot_width = $(document).width()/3;
+                    var plot_width = ($(document).width()-300)/2;
                     var max_y = chart_data['max-y'];
                     charts = {};
                     if(chart_data['plot-multi']){
@@ -413,8 +414,8 @@
                                 last_title = plot_title[0];
                             var chart_name = 'chart'+i;
                             var new_element = $element.append('<div id="'+chart_name+'"></div>');
-                            plot_data[i]['bindto'] = '#'+chart_name;
-                            chart_width += plot_width;
+                            var chart_selector = '#'+chart_name;
+                            plot_data[i]['bindto'] = chart_selector;
                             if(common_x){
                                 plot_data[i]['data']['columns'].unshift(common_x);
                             }
@@ -423,8 +424,9 @@
                             if(plot_data.length > 1)
                                 effective_width = plot_width;
                             else
-                                effective_width = $(document).width();
-                            plot_data[i]['size'] = {width: effective_width-$element.find('.chart-title').outerWidth(true)};
+                                effective_width = plot_width*2-$element.find('.chart-title').width();
+                            chart_width += effective_width;
+                            plot_data[i]['size'] = {width: effective_width};
                             plot_data[i]['size']['height'] = 320+plot_columns.length*5;
                             //plot_data[i]['data']['colors'] = {};
                             var raw_name, raw_index;
@@ -460,6 +462,7 @@
                                 }
                             }
                             var chart = c3.generate(plot_data[i]);
+                            $(chart_selector).data('c3-chart', chart);
                             charts[row_index] = chart;
 
                         }
@@ -528,7 +531,16 @@
                             $('.selected').removeClass('selected');
                             $('.current-plot').removeClass('current-plot');
                             $(this).parent().parent().addClass('selected');
-                            $(this).addClass('current-plot')
+                            $(this).addClass('current-plot');
+                            $(".c3").resizable({
+                                //when box is resized redraw the d3
+                                stop: function (event, ui) {
+                                    $(this).data('c3-chart').resize({
+                                    height: ui.size.height,
+                                    width: ui.size.width
+                                    })
+                                }
+                            });
                     });
                     $.contextMenu({
                         selector: 'tr > th',

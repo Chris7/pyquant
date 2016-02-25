@@ -349,6 +349,8 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
     ydata_peaks /= ydata_peaks.max()
 
     peaks_found = {}
+    if peak_width_start > peak_width_end:
+        peak_width_start = peak_width_end
     peak_width = peak_width_start
     while peak_width <= peak_width_end:
         row_peaks = np.array(argrelmax(ydata_peaks, order=peak_width)[0], dtype=int)

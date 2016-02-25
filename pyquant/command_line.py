@@ -178,6 +178,7 @@ class Worker(Process):
             self.quant_mrm_map = {label: list(group) for label, group in groupby(self.quant_msn_map, key=operator.itemgetter(0))}
         self.peaks_n = self.parser_args.peaks_n
         self.rt_guide = not self.parser_args.no_rt_guide
+        self.filter_peaks = not self.parser_args.disable_peak_filtering
 
     def get_calibrated_mass(self, mass):
         return mass/(1-self.spline(mass)/1e6) if self.spline else mass
@@ -777,7 +778,7 @@ class Worker(Process):
                                 # fit, residual = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=sub_peak_index, debug=self.debug)
                                 if self.debug:
                                     print('fitting XIC for', quant_label, index)
-                                fit, residual = peaks.findAllPeaks(xdata, ydata, bigauss_fit=True, filter=True, max_peaks=self.max_peaks,
+                                fit, residual = peaks.findAllPeaks(xdata, ydata, bigauss_fit=True, filter=self.filter_peaks, max_peaks=self.max_peaks,
                                                                    rt_peak=nearest_positive_peak, debug=self.debug, peak_width_start=1,
                                                                    snr=self.parser_args.snr_filter, amplitude_filter=self.parser_args.intensity_filter,
                                                                    peak_width_end=self.parser_args.min_peak_separation)
