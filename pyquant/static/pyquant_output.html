@@ -265,6 +265,7 @@
                 var dt_data = JSON.parse(pako.inflate(window.atob("$html_output"), { to: 'string' }));
                 var peak_data = JSON.parse(pako.inflate(window.atob("$peak_output"), { to: 'string' }));
                 var non_numeric_rows = [0,1,2];
+                var multiple_peaks = peak_data['header'].length != 0;
                 var numeric_rows = [];
                 var $headers = $('#raw-table > thead > tr > th');
                     $headers.each(function(index, el){
@@ -286,7 +287,9 @@
                     'fixedHeader': {header: true},
                     'aoColumnDefs': [
                       { "sType": "pq-num", "aTargets": numeric_rows },
-                      { "targets": 0, "data": null, "defaultContent": '<button data-type="xic" class="btn btn-primary">Plot XIC</button><button data-type="isotope" class="btn btn-primary">Plot Isotopes</button><button class="btn btn-info" data-type="children">Show Peaks</button>'}
+                      { "targets": 0,
+                       "data": null,
+                        "defaultContent": '<button data-type="xic" class="btn btn-primary">Plot XIC</button><button data-type="isotope" class="btn btn-primary">Plot Isotopes</button>'+(multiple_peaks ? '<button class="btn btn-info" data-type="children">Show Peaks</button>': '')}
                     ],
                 });
 
