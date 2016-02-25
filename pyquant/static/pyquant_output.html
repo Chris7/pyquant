@@ -469,6 +469,15 @@
                         if(plot_data.length)
                             $element.css('width', chart_width+$element.find('.chart-title').outerWidth(true)+20);
                     }
+                    $(".c3").resizable({
+                        //when box is resized redraw the d3
+                        stop: function (event, ui) {
+                            $(this).data('c3-chart').resize({
+                            height: ui.size.height,
+                            width: ui.size.width
+                            })
+                        }
+                    });
                 };
                 var initDataViewer = function(){
                         $('td > button').click(function(event){
@@ -532,15 +541,6 @@
                             $('.current-plot').removeClass('current-plot');
                             $(this).parent().parent().addClass('selected');
                             $(this).addClass('current-plot');
-                            $(".c3").resizable({
-                                //when box is resized redraw the d3
-                                stop: function (event, ui) {
-                                    $(this).data('c3-chart').resize({
-                                    height: ui.size.height,
-                                    width: ui.size.width
-                                    })
-                                }
-                            });
                     });
                     $.contextMenu({
                         selector: 'tr > th',
