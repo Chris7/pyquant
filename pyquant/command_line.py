@@ -414,7 +414,8 @@ class Worker(Process):
             finished_isotopes = {i: set([]) for i in precursors.keys()}
             result_dict = {'peptide': target_scan.get('mod_peptide', peptide),
                            'scan': scanId, 'ms1': ms1, 'charge': charge,
-                           'modifications': target_scan.get('modifications'), 'rt': rt}
+                           'modifications': target_scan.get('modifications'), 'rt': rt,
+                           'accession': target_scan.get('accession')}
             ms_index = 0
             delta = -1
             theo_dist = peaks.calculate_theoretical_distribution(peptide.upper()) if peptide else None
@@ -1191,6 +1192,7 @@ def run_pyquant():
         reporter_mode = True
         mass_accuracy_correction = False
         calc_stats = False
+        msn_for_quant = 2
     if args.ms3:
         msn_for_quant = 3
         mass_accuracy_correction = False
@@ -1362,7 +1364,7 @@ def run_pyquant():
             d = {
                     'file': fname, 'quant_scan': {}, 'id_scan': {
                     'id': specId, 'theor_mass': scan.getTheorMass(), 'peptide': peptide, 'mod_peptide': scan.modifiedPeptide, 'rt': scan.rt,
-                    'charge': scan.charge, 'modifications': scan.getModifications(), 'mass': float(scan.mass)
+                    'charge': scan.charge, 'modifications': scan.getModifications(), 'mass': float(scan.mass), 'accession': getattr(scan, 'acc', None),
                 }
             }
             found_scans[mass_key] = d#.add(mass_key)
@@ -1404,6 +1406,7 @@ def run_pyquant():
     RESULT_ORDER = [
         ('peptide', 'Peptide'),
         ('modifications', 'Modifications'),
+        ('accession', 'Accession'),
         ('charge', 'Charge'),
         ('ms1', 'MS{} Spectrum ID'.format(msn_for_quant)),
     ]
@@ -1453,7 +1456,7 @@ def run_pyquant():
     if scan_filemap and raw_data_only:
         # pop the peptide/mods from result_order
         to_pop = []
-        to_pop_keys = {'peptide', 'modifications'}
+        to_pop_keys = {'peptide', 'modifications', 'accession'}
         for i,v in enumerate(RESULT_ORDER):
             if v[0] in to_pop_keys:
                 to_pop.append(i)

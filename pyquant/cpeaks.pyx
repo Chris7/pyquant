@@ -805,7 +805,7 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
     isotope_index = 0
     use_theo = False
     # This is purposefully verbose to be more explicit
-    if fragment_scan == False:
+    if reporter_mode == False and fragment_scan == False:
         while get_ppm(start_mz, first_mz) > tolerance:
             # let's try using our theoretical mass
             first_mz = find_nearest(non_empty, theo_mz)
