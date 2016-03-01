@@ -179,6 +179,7 @@ class Worker(Process):
         self.peaks_n = self.parser_args.peaks_n
         self.rt_guide = not self.parser_args.no_rt_guide
         self.filter_peaks = not self.parser_args.disable_peak_filtering
+        self.report_ratios = not self.parser_args.no_ratios
 
     def get_calibrated_mass(self, mass):
         return mass/(1-self.spline(mass)/1e6) if self.spline else mass
@@ -1018,47 +1019,48 @@ class Worker(Process):
                     result_dict.update({
                         '{}_intensity'.format(silac_label1): sum(qv1.values())
                     })
-                    for silac_label2 in data.keys():
-                        if self.ref_label is not None and str(silac_label2.lower()) != self.ref_label.lower():
-                            continue
-                        if silac_label1 == silac_label2:
-                            continue
-                        qv2 = quant_vals.get(silac_label2, {})
-                        ratio = 'NA'
-                        if qv1 is not None and qv2 is not None:
-                            if self.mono:
-                                common_isotopes = set(qv1.keys()).intersection(qv2.keys())
-                                x = []
-                                y = []
-                                l1, l2 = 0,0
-                                for i in common_isotopes:
-                                    q1 = qv1.get(i)
-                                    q2 = qv2.get(i)
-                                    if q1 > 100 and q2 > 100 and q1 > l1*0.15 and q2 > l2*0.15:
-                                        x.append(i)
-                                        y.append(q1/q2)
-                                        l1, l2 = q1, q2
-                                # fit it and take the intercept
-                                if len(x) >= 3 and np.std(np.log2(y))>0.3:
-                                    classifier = EllipticEnvelope(contamination=0.25, random_state=0)
-                                    fit_data = np.log2(np.array(y).reshape(len(y),1))
-                                    true_pred = (True, 1)
-                                    classifier.fit(fit_data)
-                                    #print peptide, ms1, np.mean([y[i] for i,v in enumerate(classifier.predict(fit_data)) if v in true_pred]), y
-                                    ratio = np.mean([y[i] for i,v in enumerate(classifier.predict(fit_data)) if v in true_pred])
+                    if self.report_ratios:
+                        for silac_label2 in data.keys():
+                            if self.ref_label is not None and str(silac_label2.lower()) != self.ref_label.lower():
+                                continue
+                            if silac_label1 == silac_label2:
+                                continue
+                            qv2 = quant_vals.get(silac_label2, {})
+                            ratio = 'NA'
+                            if qv1 is not None and qv2 is not None:
+                                if self.mono:
+                                    common_isotopes = set(qv1.keys()).intersection(qv2.keys())
+                                    x = []
+                                    y = []
+                                    l1, l2 = 0,0
+                                    for i in common_isotopes:
+                                        q1 = qv1.get(i)
+                                        q2 = qv2.get(i)
+                                        if q1 > 100 and q2 > 100 and q1 > l1*0.15 and q2 > l2*0.15:
+                                            x.append(i)
+                                            y.append(q1/q2)
+                                            l1, l2 = q1, q2
+                                    # fit it and take the intercept
+                                    if len(x) >= 3 and np.std(np.log2(y))>0.3:
+                                        classifier = EllipticEnvelope(contamination=0.25, random_state=0)
+                                        fit_data = np.log2(np.array(y).reshape(len(y),1))
+                                        true_pred = (True, 1)
+                                        classifier.fit(fit_data)
+                                        #print peptide, ms1, np.mean([y[i] for i,v in enumerate(classifier.predict(fit_data)) if v in true_pred]), y
+                                        ratio = np.mean([y[i] for i,v in enumerate(classifier.predict(fit_data)) if v in true_pred])
+                                    else:
+                                        ratio = np.array(y).mean()
                                 else:
-                                    ratio = np.array(y).mean()
-                            else:
-                                common_isotopes = set(qv1.keys()).union(qv2.keys())
-                                quant1 = sum([qv1.get(i, 0) for i in common_isotopes])
-                                quant2 = sum([qv2.get(i, 0) for i in common_isotopes])
-                                ratio = quant1/quant2 if quant1 and quant2 else 'NA'
-                            try:
-                                if np.abs(np.log2(ratio)) > self.ratio_cutoff:
-                                    write_html = True
-                            except:
-                                pass
-                        result_dict.update({'{}_{}_ratio'.format(silac_label1, silac_label2): ratio})
+                                    common_isotopes = set(qv1.keys()).union(qv2.keys())
+                                    quant1 = sum([qv1.get(i, 0) for i in common_isotopes])
+                                    quant2 = sum([qv2.get(i, 0) for i in common_isotopes])
+                                    ratio = quant1/quant2 if quant1 and quant2 else 'NA'
+                                try:
+                                    if np.abs(np.log2(ratio)) > self.ratio_cutoff:
+                                        write_html = True
+                                except:
+                                    pass
+                            result_dict.update({'{}_{}_ratio'.format(silac_label1, silac_label2): ratio})
 
                 if write_html:
                     result_dict.update({'html_info': html_images})
@@ -1424,11 +1426,20 @@ def run_pyquant():
         for silac_label in iterator:
             RESULT_ORDER.extend([
                 ('{}_precursor'.format(silac_label), '{} Precursor'.format(silac_label)),
-                ('{}_calibrated_precursor'.format(silac_label), '{} Calibrated Precursor'.format(silac_label)),
-                ('{}_isotopes'.format(silac_label), '{} Isotopes Found'.format(silac_label)),
-                ('{}_intensity'.format(silac_label), '{} Intensity'.format(silac_label)),
-                ('{}_residual'.format(silac_label), '{} Residual'.format(silac_label)),
             ])
+            if msn_for_quant == 1:
+                RESULT_ORDER.extend([
+                    ('{}_calibrated_precursor'.format(silac_label), '{} Calibrated Precursor'.format(silac_label)),
+                    ('{}_isotopes'.format(silac_label), '{} Isotopes Found'.format(silac_label)),
+                ])
+            RESULT_ORDER.extend([
+                ('{}_intensity'.format(silac_label), '{} Intensity'.format(silac_label)),
+            ])
+            if msn_for_quant == 1:
+                RESULT_ORDER.extend([
+                    ('{}_residual'.format(silac_label), '{} Residual'.format(silac_label)),
+                ])
+
             if not reporter_mode:
                 PEAK_REPORTING.extend([
                     ('auc', '{} Peak Area'.format(silac_label)),
@@ -1444,7 +1455,7 @@ def run_pyquant():
             if args.peaks_n == 1:
                 RESULT_ORDER.extend(PEAK_REPORTING)
                 PEAK_REPORTING = []
-            if not args.merge_labels:
+            if not args.merge_labels and not args.no_ratios:
                 for silac_label2 in labels:
                     if silac_label != silac_label2 and (ref_label is None or ref_label.lower() == silac_label2.lower()):
                         RESULT_ORDER.extend([('{}_{}_ratio'.format(silac_label, silac_label2), '{}/{}'.format(silac_label, silac_label2)),

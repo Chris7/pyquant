@@ -92,6 +92,7 @@ output_group.add_argument('--html', help="Output a HTML table summary.", action=
 output_group.add_argument('--resume', help="Will resume from the last run. Only works if not directing output to stdout.", action='store_true')
 output_group.add_argument('--sample', help="How much of the data to sample. Enter as a decimal (ie 1.0 for everything, 0.1 for 10%%)", type=float, default=1.0)
 output_group.add_argument('--disable-stats', help="Disable confidence statistics on data.", action='store_true')
+output_group.add_argument('--no-ratios', help="Disable reporting of ratios in output.", action='store_true')
 output_group.add_argument('-o', '--out', nargs='?', help='The prefix for the file output', type=str)
 
 PER_PEAK = 'per-peak'

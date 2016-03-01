@@ -289,7 +289,7 @@
                       { "sType": "pq-num", "aTargets": numeric_rows },
                       { "targets": 0,
                        "data": null,
-                        "defaultContent": '<button data-type="xic" class="btn btn-primary">Plot XIC</button><button data-type="isotope" class="btn btn-primary">Plot Isotopes</button>'+(multiple_peaks ? '<button class="btn btn-info" data-type="children">Show Peaks</button>': '')}
+                        "defaultContent": '<button data-type="xic" class="btn btn-primary btn-xs" data-toggle="tooltip" data-trigger="hover" title="Plot Extracted Ion Chromatogram (XIC)">X</button><button data-type="isotope" class="btn btn-primary btn-xs" data-toggle="tooltip" data-trigger="hover" title="Plot Ions Selected">I</button>'+(multiple_peaks ? '<button class="btn btn-info btn-xs" data-type="children" data-trigger="hover" data-toggle="tooltip" title="Plot Extracted Peaks">P</button>': '')}
                     ],
                 });
 
@@ -483,67 +483,67 @@
                     });
                 };
                 var initDataViewer = function(){
-                        $('td > button').click(function(event){
-                            var $this = $(this);
-                            var cell_info = dt.cell($(this).parent()).index();
-                            var row_index = cell_info['row'];
-                            var col_index = cell_info['column'];
-                            var data_type = $this.data('type');
-                            if(data_type == "sub-plot"){
+                    $('td > button').click(function(event){
+                        var $this = $(this);
+                        var cell_info = dt.cell($(this).parent()).index();
+                        var row_index = cell_info['row'];
+                        var col_index = cell_info['column'];
+                        var data_type = $this.data('type');
+                        if(data_type == "sub-plot"){
+                            return;
+                        }
+                        if(data_type == "children"){
+                            var dt_row = dt.row($(this).closest('tr'));
+                            if(dt_row.child.isShown()){
+                                $(this).text("Show Peaks");
+                                dt_row.child.hide();
                                 return;
                             }
-                            if(data_type == "children"){
-                                var dt_row = dt.row($(this).closest('tr'));
-                                if(dt_row.child.isShown()){
-                                    $(this).text("Show Peaks");
-                                    dt_row.child.hide();
-                                    return;
+                            $(this).text("Hide Peaks");
+                            var $table = $('<table cellpadding="5" cellspacing="0" border="0" style="padding-left:50px;">');
+                            var $header = $('<thead/>');
+                            var $header_row = $('<tr/>');
+                            $header.append($header_row);
+                            $table.append($header);
+                            peak_data.header.forEach(function(val){
+                                $header_row.append($('<th>'+val+'</th>'));
+                            });
+                            var $body = $('<tbody/>');
+                            $table.append($body);
+                            peak_data.data[row_index].forEach(function(arr, index){
+                                var $row = $('<tr data-index="'+index+'" />');
+                                arr.forEach(function(val){
+                                    $row.append($('<td>'+val+'</td>'));
+                                });
+                                $body.append($row);
+                            });
+                            dt_row.child($table.html()).show();
+                            $('[data-index]').on('mouseover', function(event){
+                                var row_index = dt.row($(this).closest('tbody').closest('tr').prev()).index();
+                                var chart = charts[row_index];
+                                if(typeof(chart) === "undefined"){
+                                    plot_func(row_index, 'xic');
+                                    chart = charts[row_index];
                                 }
-                                $(this).text("Hide Peaks");
-                                var $table = $('<table cellpadding="5" cellspacing="0" border="0" style="padding-left:50px;">');
-                                var $header = $('<thead/>');
-                                var $header_row = $('<tr/>');
-                                $header.append($header_row);
-                                $table.append($header);
-                                peak_data.header.forEach(function(val){
-                                    $header_row.append($('<th>'+val+'</th>'));
-                                });
-                                var $body = $('<tbody/>');
-                                $table.append($body);
-                                peak_data.data[row_index].forEach(function(arr, index){
-                                    var $row = $('<tr data-index="'+index+'" />');
-                                    arr.forEach(function(val){
-                                        $row.append($('<td>'+val+'</td>'));
-                                    });
-                                    $body.append($row);
-                                });
-                                dt_row.child($table.html()).show();
-                                $('[data-index]').on('mouseover', function(event){
-                                    var row_index = dt.row($(this).closest('tbody').closest('tr').prev()).index();
-                                    var chart = charts[row_index];
-                                    if(typeof(chart) === "undefined"){
-                                        plot_func(row_index, 'xic');
-                                        chart = charts[row_index];
+                                var to_focus = [];
+                                var fit_index = $(this).data('index');
+                                chart.data().forEach(function(val){
+                                    var id = val.id
+                                    if((id.endsWith('raw') || id.endsWith('fit '+fit_index) || id.endsWith('x'))){
+                                        to_focus.push(id);
                                     }
-                                    var to_focus = [];
-                                    var fit_index = $(this).data('index');
-                                    chart.data().forEach(function(val){
-                                        var id = val.id
-                                        if((id.endsWith('raw') || id.endsWith('fit '+fit_index) || id.endsWith('x'))){
-                                            to_focus.push(id);
-                                        }
-                                    });
-                                    chart.focus(to_focus);
                                 });
-                                return;
-                                }
-                            if(current_plot && (current_plot[0] == data_type))
-                                return;
-                            plot_func(row_index, data_type);
-                            $('.selected').removeClass('selected');
-                            $('.current-plot').removeClass('current-plot');
-                            $(this).parent().parent().addClass('selected');
-                            $(this).addClass('current-plot');
+                                chart.focus(to_focus);
+                            });
+                            return;
+                            }
+                        if(current_plot && (current_plot[0] == data_type))
+                            return;
+                        plot_func(row_index, data_type);
+                        $('.selected').removeClass('selected');
+                        $('.current-plot').removeClass('current-plot');
+                        $(this).parent().parent().addClass('selected');
+                        $(this).addClass('current-plot');
                     });
                     $.contextMenu({
                         selector: 'tr > th',
@@ -646,6 +646,9 @@
                 $('#raw-table').on( 'draw.dt', function () {
                     if(reload){
                         initDataViewer();
+                        $('[data-toggle="tooltip"]').tooltip({
+                            container: 'body'
+                        });
                         reload = false;
                     }
                 });
