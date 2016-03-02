@@ -2,6 +2,10 @@
 # https://raw.githubusercontent.com/pydata/pandas/master/appveyor.yml
 # https://bitbucket.org/pygame/pygame/pull-requests/45/create-python-wheel-builds-using-appveyor/diff
 
+branches:
+  only:
+    - build
+
 matrix:
   fast_finish: true     # immediately finish build once one of the jobs fails.
 
