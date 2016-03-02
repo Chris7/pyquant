@@ -1,6 +1,7 @@
 #!/bin/bash
 BASEDIR=$PWD
 DATADIR="$BASEDIR/../pyquant/tests/data"
+mkdir -p $DATADIR
 MSFFILE="$DATADIR/Chris_Ecoli_1-2-4-(01).msf"
 MZMLFILE="$DATADIR/Chris_Ecoli_1-2-4.mzML"
 if [ ! -e $MSFFILE ]; then
