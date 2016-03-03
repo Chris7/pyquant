@@ -53,7 +53,7 @@ ion_search_group.add_argument('--msn-ion', help='M/Z values to search for in the
 ion_search_group.add_argument('--msn-ion-rt', help='RT values each ion is expected at.', nargs='+', type=float)
 ion_search_group.add_argument('--msn-peaklist', help='A file containing peaks to search for in the scans.', type=argparse.FileType('rb'))
 ion_search_group.add_argument('--msn-ppm', help='The error tolerance for identifying the ion(s).', type=float, default=200)
-ion_search_group.add_argument('--msn-rt-window', help='The range of retention times for identifying the ion(s). (ex:  7.54-9.43)', type=str)
+ion_search_group.add_argument('--msn-rt-window', help='The range of retention times for identifying the ion(s). (ex:  7.54-9.43)', type=str, nargs='+')
 ion_search_group.add_argument('--msn-all-scans', help='Search for the ion across all scans (ie if you have 3 ions, you will have 3 results with one long XIC)', action='store_true')
 
 quant_parameters = pyquant_parser.add_argument_group('Quantification Parameters')
@@ -62,13 +62,24 @@ quant_parameters.add_argument('--reporter-ion', help='Indicates that reporter io
 quant_parameters.add_argument('--isotopologue-limit', help='How many isotopologues to quantify', type=int, default=-1)
 quant_parameters.add_argument('--overlapping-labels', help='This declares the mz values of labels will overlap. It is useful for data such as neucode, but not needed for only SILAC labeling.', action='store_true')
 quant_parameters.add_argument('--labels-needed', help='How many labels need to be detected to quantify a scan (ie if you have a 2 state experiment and set this to 2, it will only quantify scans where both occur.', default=1, type=int)
+quant_parameters.add_argument('--merge-labels', help='Merge labels together to a single XIC.', action='store_true')
 quant_parameters.add_argument('--min-scans', help='How many quantification scans are needed to quantify a scan.', default=1, type=int)
 quant_parameters.add_argument('--min-resolution', help='The minimal resolving power of a scan to consider for quantification. Useful for skipping low-res scans', default=0, type=float)
 quant_parameters.add_argument('--no-mass-accuracy-correction', help='Disables the mass accuracy correction.', action='store_true')
+quant_parameters.add_argument('--no-contaminant-detection', help='Disables routine to check if an ion is a contaminant of a nearby peptide (checks if its a likely isotopologue).', action='store_true')
 
 peak_parameters = pyquant_parser.add_argument_group('Peak Fitting Parameters')
 peak_parameters.add_argument('--peak-cutoff', help='The threshold from the initial retention time a peak can fall by before being discarded', type=float, default=0.05)
-peak_parameters.add_argument('--max-peaks', help='The maximal number of peaks to detect per scan. A lower value can help with very noisy data.', type=int, default=4)
+peak_parameters.add_argument('--max-peaks', help='The maximal number of peaks to detect per scan. A lower value can help with very noisy data.', type=int, default=-1)
+peak_parameters.add_argument('--peaks-n', help='The number of peaks to report per scan. Useful for ions with multiple elution times.', type=int, default=1)
+peak_parameters.add_argument('--no-rt-guide', help='Do not use the retention tme to guide peak selection.', action='store_true')
+peak_parameters.add_argument('--snr-filter', help='Filter peaks below a given SNR.', type=int, default=0)
+peak_parameters.add_argument('--intensity-filter', help='Filter peaks whose peak are below a given intensity.', type=int, default=0)
+peak_parameters.add_argument('--min-peak-separation', help='Peaks separated by less than this distance will be combined. For very crisp data, set this to 2. (minimal value is 1)', type=int, default=4)
+peak_parameters.add_argument('--disable-peak-filtering', help='This will disable smoothing of data prior to peak finding. If you have very good LC, this may be used to identify small peaks.', action='store_true')
+
+xic_parameters = pyquant_parser.add_argument_group('XIC Options')
+xic_parameters.add_argument('--export-msn', help='This will export spectra of a given MSN that were used to provide the quantification.', action='store_false')
 
 
 mrm_parameters = pyquant_parser.add_argument_group('SRM/MRM Parameters')
@@ -81,7 +92,16 @@ output_group.add_argument('--html', help="Output a HTML table summary.", action=
 output_group.add_argument('--resume', help="Will resume from the last run. Only works if not directing output to stdout.", action='store_true')
 output_group.add_argument('--sample', help="How much of the data to sample. Enter as a decimal (ie 1.0 for everything, 0.1 for 10%%)", type=float, default=1.0)
 output_group.add_argument('--disable-stats', help="Disable confidence statistics on data.", action='store_true')
+output_group.add_argument('--no-ratios', help="Disable reporting of ratios in output.", action='store_true')
 output_group.add_argument('-o', '--out', nargs='?', help='The prefix for the file output', type=str)
+
+PER_PEAK = 'per-peak'
+PER_FILE = 'per-file'
+PER_ID = 'per-id'
+
+spectra_output = pyquant_parser.add_argument_group("Spectra Output Options")
+spectra_output.add_argument('--export-mzml', help='Create an mzml file of spectra contained within each peak.', action='store_true')
+spectra_output.add_argument('--export-mode', help='How to export the scans. per-peak: A mzML per peak identified. per-id: A mzML per ion identified (each row of the output gets an mzML). per-file: All scans matched per raw file.', type=str, default='per-peak', choices={PER_PEAK, PER_ID, PER_FILE})
 
 convenience_group = pyquant_parser.add_argument_group('Convenience Parameters')
 convenience_group.add_argument('--neucode', help='This will select parameters specific for neucode. Note: You still must define a labeling scheme.', action='store_true')
