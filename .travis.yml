@@ -23,6 +23,7 @@ install:
   - source activate test-environment
   # Coverage packages are on my binstar channel
   - conda install --yes -c dan_blanchard python-coveralls nose-cov
+  - pip install --upgrade pip
   - pip install -r requirements.txt
   - pip install .
 language: python
