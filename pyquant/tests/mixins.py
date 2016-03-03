@@ -6,7 +6,7 @@ class FileMixins(object):
         self.base_dir = os.path.split(os.path.abspath(__file__))[0]
         self.data_dir = os.path.join(self.base_dir, 'data')
         self.executable = os.path.abspath(os.path.join(self.base_dir, '..', '..', 'scripts', 'pyQuant'))
-        self.search_file = os.path.join(self.data_dir, 'SILAC_1_2_4.msf')
+        self.search_file = os.path.join(self.data_dir, 'Chris_Ecoli_1-2-4-(01).msf')
         self.mzml =  os.path.join(self.data_dir, 'Chris_Ecoli_1-2-4.mzML')
         self.out_dir = 'pq_tests'
         try:
