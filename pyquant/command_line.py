@@ -354,6 +354,8 @@ class Worker(Process):
             charge = target_scan['charge']
             mass = target_scan['mass']
 
+            combine_xics = scan_info.get('combine_xics')
+
             precursor = target_scan['precursor']
             calibrated_precursor = self.get_calibrated_mass(precursor)
             theor_mass = target_scan.get('theor_mass', calibrated_precursor)
@@ -363,19 +365,23 @@ class Worker(Process):
             if self.debug:
                 sys.stderr.write('thread {4} on ms {0} {1} {2} {3}\n'.format(ms1, rt, precursor, scan_info, id(self)))
 
-            precursors = {}
+            precursors = defaultdict(dict)
             silac_dict = {'data': None, 'df': pd.DataFrame(), 'precursor': 'NA',
                           'isotopes': {}, 'peaks': OrderedDict(), 'intensity': 'NA'}
             data = OrderedDict()
             # data['Light'] = copy.deepcopy(silac_dict)
             combined_data = pd.DataFrame()
-            highest_shift = 20
             if self.mrm:
                 mrm_labels = [i for i in self.mrm_pair_info.columns if i.lower() not in ('retention time')]
                 mrm_info = None
                 for index, values in self.mrm_pair_info.iterrows():
                     if values['Light'] == mass:
                         mrm_info = values
+            for ion in target_scan.get('ion_set', []):
+                precursors[str(ion)]['uncalibrated_mz'] = ion
+                precursors[str(ion)]['calibrated_mz'] = self.get_calibrated_mass(ion)
+                precursors[str(ion)]['theoretical_mz'] = ion
+                data[str(ion)] = copy.deepcopy(silac_dict)
             for silac_label, silac_masses in self.mass_labels.items():
                 silac_shift=0
                 global_mass = None
@@ -403,15 +409,25 @@ class Worker(Process):
                     if global_mass is not None:
                         silac_shift += sum([global_mass for mod_aa in peptide if mod_aa not in added_residues])
                     silac_shift += cterm_mass+nterm_mass
-                    # get the non-specific ones
-                    if silac_shift > highest_shift:
-                        highest_shift = silac_shift
-                precursors[silac_label] = silac_shift
+
+                label_mz = precursor+silac_shift/float(charge)
+                precursors[silac_label]['uncalibrated_mz'] = label_mz
+                precursors[silac_label]['calibrated_mz'] = self.get_calibrated_mass(label_mz)
+                precursors[silac_label]['theoretical_mz'] = theor_mass+silac_shift/float(charge)
                 data[silac_label] = copy.deepcopy(silac_dict)
             if not precursors:
-                precursors = {'Precursor': 0.0}
-            precursors = OrderedDict(sorted(precursors.items(), key=operator.itemgetter(1)))
-            shift_maxes = {i: j for i,j in zip(precursors.keys(), list(precursors.values())[1:])}
+                precursors['Precursor']['uncalibrated_mz'] = precursor
+                precursors['Precursor']['calibrated_mz'] = self.get_calibrated_mass(precursor)
+                precursors['Precursor']['theoretical_mz'] = precursor
+                data['Precursor'] = copy.deepcopy(silac_dict)
+            precursors = OrderedDict(sorted(precursors.items(), cmp=lambda x, y: int(x[1]['uncalibrated_mz']-y[1]['uncalibrated_mz'])))
+            shift_maxes = {i: max([j['uncalibrated_mz'], j['calibrated_mz'], j['theoretical_mz']]) for i,j in zip(precursors.keys(), list(precursors.values())[1:])}
+            lowest_precursor_mz = min([label_val for label, label_info in precursors.items() for label_info_key, label_val in label_info.items() if label_info_key.endswith('mz')])
+            highest_precursor_mz = max(shift_maxes.values()) if shift_maxes else lowest_precursor_mz
+            # do these here, remember when you tried to do this in one line with () and spent an hour debugging it?
+            lowest_precursor_mz -= 5
+            highest_precursor_mz += 5
+
             finished_isotopes = {i: set([]) for i in precursors.keys()}
             result_dict = {'peptide': target_scan.get('mod_peptide', peptide),
                            'scan': scanId, 'ms1': ms1, 'charge': charge,
@@ -451,7 +467,7 @@ class Worker(Process):
                     if current_scan in scans_to_skip:
                         continue
                     else:
-                        df, scan_params = self.getScan(current_scan, start=None if self.mrm else precursor-5, end=None if self.mrm else precursor+highest_shift)
+                        df, scan_params = self.getScan(current_scan, start=None if self.mrm else lowest_precursor_mz, end=None if self.mrm else highest_precursor_mz)
                         # check if it's a low res scan, if so skip it
                         if self.min_resolution and df is not None:
                             scan_resolution = np.average(df.index[1:]/np.array([df.index[i]-df.index[i-1] for i in xrange(1,len(df))]))
@@ -464,7 +480,7 @@ class Worker(Process):
                         xdata = df.index.values.astype(float)
                         ydata = df.fillna(0).values.astype(float)
                         iterator = precursors.items() if not self.mrm else [(mrm_label, 0)]
-                        for precursor_label, precursor_shift in iterator:
+                        for precursor_label, precursor_info in iterator:
                             selected = {}
                             if self.mrm:
                                 labels_found.add(precursor_label)
@@ -474,23 +490,17 @@ class Worker(Process):
                                 key = (df.name, i)
                                 isotopes_chosen[key] = {'label': precursor_label, 'isotope_index': target_scan.get('product_ion', 0), 'amplitude': j}
                             else:
-                                if self.reporter_mode:
-                                    measured_precursor = precursor_shift
-                                    uncalibrated_precursor = precursor_shift
-                                    theoretical_precursor = precursor_shift
-                                else:
-                                    uncalibrated_precursor = precursor+precursor_shift/float(charge)
-                                    measured_precursor = self.get_calibrated_mass(uncalibrated_precursor)
-                                    theoretical_precursor = theor_mass+precursor_shift/float(charge)
+                                uncalibrated_precursor = precursor_info['uncalibrated_mz']
+                                measured_precursor = precursor_info['calibrated_mz']
+                                theoretical_precursor = precursor_info['theoretical_mz']
                                 data[precursor_label]['calibrated_precursor'] = measured_precursor
                                 data[precursor_label]['precursor'] = uncalibrated_precursor
-                                shift_max = shift_maxes.get(precursor_label)
-                                shift_max = self.get_calibrated_mass(precursor+shift_max/float(charge)) if shift_max is not None and self.overlapping_mz is False else None
+                                shift_max = shift_maxes.get(precursor_label) if self.overlapping_mz is False else None
                                 is_fragmented_scan = (current_scan == initial_scan) and (precursor == measured_precursor)
                                 envelope = peaks.findEnvelope(xdata, ydata, measured_mz=measured_precursor, theo_mz=theoretical_precursor, max_mz=shift_max,
                                                               charge=charge, precursor_ppm=self.precursor_ppm, isotope_ppm=self.isotope_ppm, reporter_mode=self.reporter_mode,
                                                               isotope_ppms=self.isotope_ppms if self.fitting_run else None, quant_method=self.quant_method, debug=self.debug,
-                                                              theo_dist=theo_dist if self.mono or precursor_shift == 0.0 else None, label=precursor_label, skip_isotopes=finished_isotopes[precursor_label],
+                                                              theo_dist=theo_dist if (self.mono or precursor_label not in shift_maxes) else None, label=precursor_label, skip_isotopes=finished_isotopes[precursor_label],
                                                               last_precursor=last_precursors[delta].get(precursor_label, measured_precursor),
                                                               isotopologue_limit=self.isotopologue_limit, fragment_scan=is_fragmented_scan,
                                                               centroid=scan_params.get('centroid', False))
@@ -541,13 +551,18 @@ class Worker(Process):
                             else:
                                 combined_data = pd.concat([combined_data, selected], axis=1).fillna(0)
                             del selected
-                        if not self.mrm and (not self.parser_args.msn_all_scans and len(labels_found) < self.labels_needed):
-                            found.discard(precursor_label)
-                            if df is not None and df.name in combined_data.columns:
-                                del combined_data[df.name]
-                                for i in isotopes_chosen.keys():
-                                    if i[0] == df.name:
-                                        del isotopes_chosen[i]
+                        if not self.mrm and ((len(labels_found) < self.labels_needed) or (self.parser_args.require_all_ions and len(labels_found) < len(precursors))):
+                            if self.parser_args.msn_all_scans:
+                                if self.debug:
+                                    print('Not all ions found, setting', df.name, 'to zero')
+                                combined_data[df.name] = 0
+                            else:
+                                found.discard(precursor_label)
+                                if df is not None and df.name in combined_data.columns:
+                                    del combined_data[df.name]
+                                    for i in isotopes_chosen.keys():
+                                        if i[0] == df.name:
+                                            del isotopes_chosen[i]
                         del df
 
                 if not found or (np.abs(ms_index) > 7 and self.flat_slope(combined_data, delta)):
@@ -582,8 +597,14 @@ class Worker(Process):
                 ms_index += delta
             rt_figure = {}
             isotope_figure = {}
-            if self.parser_args.merge_labels:
-                combined_data = combined_data.sum(axis=0).to_frame(name=combined_data.index[0]).T
+            if self.parser_args.merge_labels or combine_xics:
+                label_name = '_'.join(map(str, combined_data.index))
+                combined_data = combined_data.sum(axis=0).to_frame(name=label_name).T
+                isotope_labels = {label_name: {'isotope_index': 0, 'label': label_name}}
+                data[label_name] = {}
+                data[label_name]['calibrated_precursor'] = '_'.join(map(str, (data[i].get('calibrated_precursor') for i in sorted(data.keys()) if i != label_name)))
+                data[label_name]['precursor'] = '_'.join(map(str, (data[i].get('precursor') for i in sorted(data.keys()) if i != label_name)))
+            combined_data.to_csv('/home/chris/tdat.csv')
             if isotopes_chosen and isotope_labels and not combined_data.empty:
                 if self.mrm:
                     combined_data = combined_data.T
@@ -867,7 +888,7 @@ class Worker(Process):
                                     rt_figure['data'].append(rt_base)
                                 rt_base['data']['columns'].append(['{0} {1} raw'.format(quant_label, index)]+ydata.tolist())
 
-                peak_info = {i: {} for i in self.mrm_pair_info.columns} if self.mrm else {i: {} for i in data.keys()}
+                peak_info = {i: {} for i in self.mrm_pair_info.columns} if self.mrm else {i: {} for i in precursors.keys()}
                 if self.reporter_mode or combined_peaks:
                     if self.reporter_mode:
                         for row_num, (index, values) in enumerate(combined_data.iterrows()):
@@ -1065,31 +1086,13 @@ class Worker(Process):
                 if write_html:
                     result_dict.update({'html_info': html_images})
                 for peak_label, peak_data in six.iteritems(peak_info):
-                    # all_xic_peak_info = []
-                    # for peak_isotope, isotope_peaks in six.iteritems(peak_data):
-                    #     for xic_index, xic_peak_info in six.iteritems(peak_data):
-                    #         all_xic_peak_info.append(xic_peak_info)
-                            # w1, w2 = xic_peak_info.get('std', None), xic_peak_info.get('std2', None)
-                            # all_xic_peak_info.append({
-                            #     'peak_intensity': xic_peak_info.get('amp', 'NA'),
-                            #     'auc': xic_peak_info.get('auc', 'NA'),
-                            #     'mean': xic_peak_info.get('mean', 'NA'),
-                            #     'snr': np.mean(pd.Series(xic_peak_info.get('snr', [])).replace([np.inf, -np.inf, np.nan], 0)),
-                            #     'sbr': np.mean(pd.Series(xic_peak_info.get('sbr', [])).replace([np.inf, -np.inf, np.nan], 0)),
-                            #     'sdr': np.mean(pd.Series(xic_peak_info.get('sdr', [])).replace([np.inf, -np.inf, np.nan], 0)),
-                            #     'rt_width': w1+w2 if w1 and w2 else 'NA',
-                            #     'mean_diff': np.mean(pd.Series(xic_peak_info.get('mean_diff', [])).replace([np.inf, -np.inf, np.nan], 0))
-                            # })
                     result_dict.update({
                         '{}_peaks'.format(peak_label): peak_data,
                         '{}_isotopes'.format(peak_label): sum((isotopes_chosen['label'] == peak_label) & (isotopes_chosen['amplitude']>0)),
                     })
-            if self.parser_args.merge_labels:
-                merged_precursor = ','.join((str(v['precursor']) for v in data.values()))
-                merged_calprecursor = ','.join((str(v.get('calibrated_precursor', v['precursor'])) for v in data.values()))
             for silac_label, silac_data in six.iteritems(data):
-                precursor = merged_precursor if self.parser_args.merge_labels else silac_data['precursor']
-                calc_precursor = merged_calprecursor if self.parser_args.merge_labels else silac_data.get('calibrated_precursor', silac_data['precursor'])
+                precursor = silac_data['precursor']
+                calc_precursor = silac_data.get('calibrated_precursor', silac_data['precursor'])
                 result_dict.update({
                     '{}_residual'.format(silac_label): np.mean(pd.Series(silac_data.get('residual', [])).replace([np.inf, -np.inf, np.nan], 0)),
                     '{}_precursor'.format(silac_label): precursor,
@@ -1101,7 +1104,6 @@ class Worker(Process):
             })
             self.results.put(result_dict)
             del result_dict
-            del data
             del combined_data
             del isotopes_chosen
         except:
@@ -1204,12 +1206,11 @@ def run_pyquant():
     scan_filemap = {}
     found_scans = {}
     raw_files = {}
-    mass_labels = {'Light': {0: set([])}} if not reporter_mode else {}
+    mass_labels = {}#'Light': {0: set([])}} if not reporter_mode else {}
 
     name_mapping = {}
 
     if args.label_scheme:
-        mass_labels = {}
         label_info = pd.read_table(args.label_scheme.name, sep='\t', header=None, dtype='str')
         try:
             label_info.columns = ['Label', 'AA', 'Mass', 'UserName']
@@ -1404,83 +1405,13 @@ def run_pyquant():
                 raw_files[fname] = [d]
             del scan
 
-    labels = mass_labels.keys()
-    RESULT_ORDER = [
-        ('peptide', 'Peptide'),
-        ('modifications', 'Modifications'),
-        ('accession', 'Accession'),
-        ('charge', 'Charge'),
-        ('ms1', 'MS{} Spectrum ID'.format(msn_for_quant)),
-    ]
-    if msn_for_quant != msn_for_id:
-        RESULT_ORDER.extend([
-            ('scan', 'MS{} Spectrum ID'.format(msn_for_id)),
-        ])
-    RESULT_ORDER.extend([
-        ('rt', 'Retention Time'),
-    ])
-
-    PEAK_REPORTING = []
-    if labels:
-        iterator = [sorted(labels)[0]] if args.merge_labels else labels
-        for silac_label in iterator:
-            RESULT_ORDER.extend([
-                ('{}_precursor'.format(silac_label), '{} Precursor'.format(silac_label)),
-            ])
-            if msn_for_quant == 1:
-                RESULT_ORDER.extend([
-                    ('{}_calibrated_precursor'.format(silac_label), '{} Calibrated Precursor'.format(silac_label)),
-                    ('{}_isotopes'.format(silac_label), '{} Isotopes Found'.format(silac_label)),
-                ])
-            RESULT_ORDER.extend([
-                ('{}_intensity'.format(silac_label), '{} Intensity'.format(silac_label)),
-            ])
-            if msn_for_quant == 1:
-                RESULT_ORDER.extend([
-                    ('{}_residual'.format(silac_label), '{} Residual'.format(silac_label)),
-                ])
-
-            if not reporter_mode:
-                PEAK_REPORTING.extend([
-                    ('auc', '{} Peak Area'.format(silac_label)),
-                    ('amp', '{} Peak Max'.format(silac_label)),
-                    ('mean', '{} Peak Center'.format(silac_label)),
-                    ('peak_width', '{} RT Width'.format(silac_label)),
-                    ('mean_diff', '{} Mean Offset'.format(silac_label)),
-                    ('snr', '{} SNR'.format(silac_label)),
-                    ('sbr', '{} SBR'.format(silac_label)),
-                    ('sdr', '{} Density'.format(silac_label)),
-                    # ('residual', '{} Residual'.format(silac_label)),
-                ])
-            if args.peaks_n == 1:
-                RESULT_ORDER.extend(PEAK_REPORTING)
-                PEAK_REPORTING = []
-            if not args.merge_labels and not args.no_ratios:
-                for silac_label2 in labels:
-                    if silac_label != silac_label2 and (ref_label is None or ref_label.lower() == silac_label2.lower()):
-                        RESULT_ORDER.extend([('{}_{}_ratio'.format(silac_label, silac_label2), '{}/{}'.format(silac_label, silac_label2)),
-                                             ])
-                        if calc_stats:
-                            RESULT_ORDER.extend([('{}_{}_confidence'.format(silac_label, silac_label2), '{}/{} Confidence'.format(silac_label, silac_label2)),
-                                                 ])
-
     if scan_filemap and raw_data_only:
-        # pop the peptide/mods from result_order
-        to_pop = []
-        to_pop_keys = {'peptide', 'modifications', 'accession'}
-        for i,v in enumerate(RESULT_ORDER):
-            if v[0] in to_pop_keys:
-                to_pop.append(i)
-        for i in sorted(to_pop, reverse=True):
-            del RESULT_ORDER[i]
         # determine if we want to do ms1 ion detection, ms2 ion detection, all ms2 of each file
         if args.msn_ion or args.msn_peaklist:
-            RESULT_ORDER.extend([('ions_found', 'Ions Found')])
             ion_search = True
-            ions_selected = args.msn_ion if args.msn_ion else []#
+            ions_selected = [list(set(map(float, ion.split(',')))) for ion in args.msn_ion] if args.msn_ion else []
             if args.msn_peaklist:
                 ion_table = pd.read_table(args.msn_peaklist)
-
             # [float(i.strip()) for i in args.msn_peaklist if i]
             d = {'ions': ions_selected, 'rt_info': args.msn_ion_rt}
             for i in scan_filemap:
@@ -1502,6 +1433,82 @@ def run_pyquant():
     completed = 0
     sys.stderr.write('Beginning quantification.\n')
     scan_count = len(found_scans)
+
+    # before we start, get the information we will be generating
+    labels = mass_labels.keys()
+    if not labels:
+        if ion_search:
+            labels = ['_'.join(map(str, sorted(ion_set))) for ion_set in ions_selected]
+        else:
+            labels = ['']
+    if not scan_filemap and raw_data_only:
+        RESULT_ORDER = []
+    else:
+        RESULT_ORDER = [
+            ('peptide', 'Peptide'),
+            ('modifications', 'Modifications'),
+            ('accession', 'Accession'),
+        ]
+    RESULT_ORDER.extend([
+        ('charge', 'Charge'),
+        ('ms1', 'MS{} Spectrum ID'.format(msn_for_quant)),
+    ])
+    if msn_for_quant != msn_for_id:
+        RESULT_ORDER.extend([
+            ('scan', 'MS{} Spectrum ID'.format(msn_for_id)),
+        ])
+    RESULT_ORDER.extend([
+        ('rt', 'Retention Time'),
+    ])
+
+    if ion_search:
+        RESULT_ORDER.extend([('ions_found', 'Ions Found')])
+
+    PEAK_REPORTING = []
+    iterator = ['_'.join(map(str, sorted(labels)))] if args.merge_labels else labels
+    for label in iterator:
+        label_key = ' {}'.format(label) if label != '' else label
+        RESULT_ORDER.extend([
+            ('{}_precursor'.format(label), '{} Precursor'.format(label_key)),
+        ])
+        if msn_for_quant == 1:
+            RESULT_ORDER.extend([
+                ('{}_calibrated_precursor'.format(label), '{} Calibrated Precursor'.format(label_key)),
+                ('{}_isotopes'.format(label), '{} Isotopes Found'.format(label_key)),
+            ])
+        RESULT_ORDER.extend([
+            ('{}_intensity'.format(label), '{} Intensity'.format(label_key)),
+        ])
+        if msn_for_quant == 1:
+            RESULT_ORDER.extend([
+                ('{}_residual'.format(label), '{} Residual'.format(label_key)),
+            ])
+
+        if not reporter_mode:
+            PEAK_REPORTING.extend([
+                ('auc', '{} Peak Area'.format(label_key)),
+                ('amp', '{} Peak Max'.format(label_key)),
+                ('mean', '{} Peak Center'.format(label_key)),
+                ('peak_width', '{} RT Width'.format(label_key)),
+                ('mean_diff', '{} Mean Offset'.format(label_key)),
+                ('snr', '{} SNR'.format(label_key)),
+                ('sbr', '{} SBR'.format(label_key)),
+                ('sdr', '{} Density'.format(label_key)),
+                # ('residual', '{} Residual'.format(label_key)),
+            ])
+        if args.peaks_n == 1:
+            RESULT_ORDER.extend(PEAK_REPORTING)
+            PEAK_REPORTING = []
+        if not args.merge_labels and not args.no_ratios:
+            for label2 in labels:
+                label_key2 = ' {}'.format(label2) if label2 != '' else label2
+                if label_key != label_key2 and (ref_label is None or ref_label.lower() == label_key2.lower()):
+                    RESULT_ORDER.extend([('{}_{}_ratio'.format(label, label2), '{}/{}'.format(label_key, label_key2)),
+                                         ])
+                    if calc_stats:
+                        RESULT_ORDER.extend([('{}_{}_confidence'.format(label, label2), '{}/{} Confidence'.format(label_key, label_key2)),
+                                             ])
+
     headers = ['Raw File']+[i[1] for i in RESULT_ORDER]
     if resume and os.path.exists(out):
         if not out:
@@ -1678,13 +1685,16 @@ def run_pyquant():
                 if scan is None:
                     continue
                 if args.msn_all_scans:
-                    for ion_index, ion in enumerate(ions):
+                    # if not args.require_all_ions:
+                    #     ions = set([j for i in ions for j in i])
+                    for ion_index, ion_set in enumerate(ions):
                         d = {
                             'quant_scan': {'id': scan_id, 'scans': scans_to_fetch},
                             'id_scan': {
-                                'id': scan_id, 'theor_mass': ion, 'rt': rt_info[ion_index] if rt_info else scan['rt'],
-                                'charge': 1, 'mass': float(ion), 'ions_found': ion,
+                                'id': scan_id, 'theor_mass': ion_set[0], 'rt': rt_info[ion_index] if rt_info else scan['rt'],
+                                'charge': 1, 'mass': ion_set[0], 'ions_found': ion, 'ion_set': ion_set,
                             },
+                            'combine_xics': True,
                         }
                         ion_search_list.append((scan_id, d))
                     break
@@ -1696,25 +1706,44 @@ def run_pyquant():
                 mass, charge, rt = scan['mass'], scan['charge'], scan['rt']
                 ions_found = []
                 added = set([])
-                for ion_index, (ion, nearest_mz_index) in enumerate(zip(ions, peaks.find_nearest_indices(scan_mzs, ions))):
-                    nearest_mz = scan_mzs[nearest_mz_index]
-                    if peaks.get_ppm(ion, nearest_mz) < ion_tolerance:
-                        if args.mva:
-                            d = raw_scans[ion_index]
-                            scan_rt = d['id_scan']['rt']
-                            if scan_rt-args.rt_window < rt < scan_rt+args.rt_window:
-                                ions_found.append({'ion': ion, 'nearest_mz': nearest_mz, 'charge': d['id_scan']['charge'], 'scan_info': d})
-                        else:
-                            ion_rt = rt_info[ion_index] if rt_info else None
-                            if ion_rt is None or (rt-args.rt_window < ion_rt < rt+args.rt_window):
-                                ions_found.append({'ion': ion, 'nearest_mz': nearest_mz, 'rt': ion_rt})
+                for ion_set in ions:
+                    for ion_index, (ion, nearest_mz_index) in enumerate(zip(ion_set, peaks.find_nearest_indices(scan_mzs, ion_set))):
+                        nearest_mz = scan_mzs[nearest_mz_index]
+                        found_ions = []
+                        if peaks.get_ppm(ion, nearest_mz) < ion_tolerance:
+                            if args.mva:
+                                d = raw_scans[ion_index]
+                                scan_rt = d['id_scan']['rt']
+                                if scan_rt-args.rt_window < rt < scan_rt+args.rt_window:
+                                    found_ions.append({
+                                        'ion': ion,
+                                        'nearest_mz': nearest_mz,
+                                        'charge': d['id_scan']['charge'],
+                                        'scan_info': d,
+                                        'ion_set': ion_set,
+                                    })
+                            else:
+                                ion_rt = rt_info[ion_index] if rt_info else None
+                                if ion_rt is None or (rt-args.rt_window < ion_rt < rt+args.rt_window):
+                                    found_ions.append({
+                                        'ion': ion,
+                                        'nearest_mz': nearest_mz,
+                                        'rt': ion_rt,
+                                        'ion_set': ion_set,
+                                    })
+                        elif args.require_all_ions:
+                            # this means an ion in the set was not found, if we require all ions, continue to the next set
+                            continue
+                        # if we require all ions, only put in a single copy since we'll be finding the same ions in every
+                        # scan anyways, otherwise put the entire set in since we may be missing ions
+                        ions_found += found_ions[0] if args.require_all_ions else found_ions
                 if ions_found:
                     # we have two options here. If we are quantifying a preceeding scan or the ion itself per scan
                     isotope_ppm = args.isotope_ppm/1e6
                     if msn_for_quant == msn_for_id or args.mva:
                         for ion_dict in ions_found:
                             ion, nearest_mz = ion_dict['ion'], ion_dict['nearest_mz']
-                            ion_found = '{}({})'.format(ion, nearest_mz)
+                            ion_found = ','.join(map(str, ion_dict['ion_set']))
                             spectra_to_quant = scan_id
                             # we are quantifying the ion itself
                             if charge == 0 or args.mva:
@@ -1730,8 +1759,6 @@ def run_pyquant():
                                             charge_peaks_found += 1
                                             peak_height += mz_vals[closest_mz]
                                     charge_states.append((charge_peaks_found, i, peak_height))
-                                # print int(ion_dict['charge']), charge_states
-                                # print int(ion_dict['charge']), charge_states
                                 charge_states = sorted(charge_states, key=operator.itemgetter(0, 2), reverse=True)
                                 if args.mva and int(ion_dict['charge']) not in [i[0] for i in charge_states]:
                                     continue
@@ -1768,7 +1795,9 @@ def run_pyquant():
                                     'id_scan': {
                                         'id': scan_id, 'theor_mass': ion, 'rt': rt if ion_rt is None else ion_rt,
                                         'charge': charge_to_use, 'mass': float(nearest_mz), 'ions_found': ion_found,
+                                        'ion_set': ion_dict['ion_set']
                                     },
+                                    'combine_xics': True,
                                 }
                             key = (scan_id, d['id_scan']['theor_mass'], charge_to_use)
                             if key in added:
@@ -1778,7 +1807,6 @@ def run_pyquant():
                                 replicate_search_list[(d['id_scan']['rt'], ion_dict['ion'])].append((spectra_to_quant, d))
                             else:
                                 ion_search_list.append((spectra_to_quant, d))
-                            # print 'adding', ion, nearest_mz, d
                     else:
                         # we are identifying the ion in a particular scan, and quantifying a preceeding scan
                         # find the closest scan to this, which will be the parent scan
@@ -1821,7 +1849,6 @@ def run_pyquant():
             for i in replicate_search_list:
                 ion_rt, ion = i
                 best_scan = sorted([(np.abs((rep_mapper.predict(j[1]['replicate_scan_rt']) if rep_mapper else j[1]['replicate_scan_rt'])-ion_rt), j[1]) for j in replicate_search_list[i]], key=operator.itemgetter(0))[0][1]
-                # import pdb; pdb.set_trace();
                 raw_scans.append(best_scan)
 
         for i in xrange(threads):
@@ -1846,8 +1873,6 @@ def run_pyquant():
 
         # this is to fix the header at the end to include peak information if we have multiple peaks
         most_peaks_found = 0
-
-        lowest_label = min([j for i,v in mass_labels.items() for j in v])
         mrm_added = set([])
         exclusion_masses = mrm_pair_info.loc[:,[i for i in mrm_pair_info.columns if i.lower() not in ('light', 'retention time')]].values.flatten() if args.mrm else set([])
         for scan_index, v in enumerate(raw_scans):
@@ -1910,6 +1935,7 @@ def run_pyquant():
             charge = int(charge)
 
             if msn_for_quant != 1:
+                lowest_label = min([j for i,v in mass_labels.items() for j in v])
                 target_scan['theor_mass'] = lowest_label
                 target_scan['precursor'] = lowest_label
             else:

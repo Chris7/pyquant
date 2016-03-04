@@ -322,23 +322,20 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
     cdef list minima, fit_accuracy, smaller_minima, larger_minima, guess, bnds
     cdef dict peaks_found, final_peaks, peak_info
     cdef int peak_width, last_peak, next_peak, left, right, i, v, minima_index, left_stop, right_stop, right_stop_index
-    cdef float peak_min, peak_max, rel_peak, average, variance, best_rss, rt_peak_val, minima_value
+    cdef float peak_min, peak_max, rel_peak, average, variance, best_rss, rt_peak_val, minima_value, ydata_peaks_std
     cdef np.ndarray[FLOAT_t, ndim=1] peak_values, peak_indices, ydata, ydata_peaks, best_fit
 
     amplitude_filter /= ydata_original.max()
     ydata = ydata_original/ydata_original.max()
 
     ydata_peaks = np.copy(ydata)
-    if snr != 0:
-        ydata_peaks[ydata_peaks/np.std(ydata_peaks)<snr] = 0
-    if amplitude_filter != 0:
-        ydata_peaks[ydata_peaks<amplitude_filter] = 0
     if filter:
         if len(ydata) >= 5:
             ydata_peaks = convolve(ydata_peaks, kaiser(10, 12), mode='same')#gaussian_filter1d(convolve(ydata_peaks, kaiser(10, 14), mode='same'), 3, mode='constant')##gaussian_filter1d(ydata_peaks, 3, mode='constant')
             ydata_peaks[ydata_peaks<0] = 0
     ydata_peaks[np.isnan(ydata_peaks)] = 0
     mapper = interp1d(xdata, ydata_peaks)
+    ydata_peaks_std = np.std(ydata_peaks)
     if rt_peak != 0:
         try:
             rt_peak_val = mapper(rt_peak)
@@ -358,6 +355,10 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             row_peaks = np.array([np.argmax(ydata)], dtype=int)
         if debug:
             sys.stderr.write('{}'.format(row_peaks))
+        if snr != 0:
+            row_peaks = row_peaks[ydata_peaks[row_peaks]/ydata_peaks_std>=snr]
+        if amplitude_filter != 0:
+            row_peaks = row_peaks[ydata_peaks[row_peaks]>=amplitude_filter]
         # Max peaks is to avoid spending a significant amount of time fitting bad data. It can lead to problems
         # if the user is searching the entire ms spectra because of the number of peaks possible to find
         if max_peaks != -1 and row_peaks.size > max_peaks:
@@ -378,7 +379,11 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         # if row_peaks.size > 1:
         #     peak_width_end += 1
         peak_width += 1
-    # collapse identical orders
+    # Now that we've found our peaks, we can obliterate part of ydata_peaks
+    if snr != 0:
+        ydata_peaks[ydata_peaks/ydata_peaks_std<snr] = 0
+    if amplitude_filter != 0:
+        ydata_peaks[ydata_peaks<amplitude_filter] = 0
     if debug:
         sys.stderr.write('found: {}\n'.format(peaks_found))
     final_peaks = {}
@@ -454,7 +459,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
                     for i in xrange(left, left_stop, -1):
                         minima_index = minima_array[i]
                         minima_value = ydata_peaks[minima_index]
-                        if minima_value > rel_peak or minima_value < rel_peak*0.1 or ydata_peaks[minima_index-1]*0.9>minima_value:
+                        if minima_value > rel_peak or minima_value < rel_peak*0.1 or ydata_peaks[minima_index-1]*0.9>minima_value or (peak_index-i > 3 and minima_value > rel_peak*0.25):
                             if i == left:
                                 left = minima_index
                             break
@@ -497,8 +502,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
                 peak_indices = xdata[left:right]
 
             if debug:
-                pass
-                #print('bounds', peak_index, left, right, peak_values.tolist(), peak_indices.tolist(), bnds)
+                print('bounds', peak_index, left, right, peak_values.tolist(), peak_indices.tolist(), bnds)
 
             if peak_values.any():
                 average = np.average(peak_indices, weights=peak_values)
@@ -540,8 +544,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             bnds = deepcopy(initial_bounds)
         jacobian = bigauss_jac if bigauss_fit else gauss_jac
         if debug:
-            pass
-            #print('guess and bnds', guess, bnds)
+            print('guess and bnds', guess, bnds)
         results = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=jacobian)]
         while not results[-1].success and routines:
             routine = routines.pop(0)
@@ -800,7 +803,6 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
         return empty_dict
     first_mz = find_nearest(non_empty, start_mz)
     attempts = 0
-
 
     isotope_index = 0
     use_theo = False
