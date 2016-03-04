@@ -604,7 +604,6 @@ class Worker(Process):
                 data[label_name] = {}
                 data[label_name]['calibrated_precursor'] = '_'.join(map(str, (data[i].get('calibrated_precursor') for i in sorted(data.keys()) if i != label_name)))
                 data[label_name]['precursor'] = '_'.join(map(str, (data[i].get('precursor') for i in sorted(data.keys()) if i != label_name)))
-            combined_data.to_csv('/home/chris/tdat.csv')
             if isotopes_chosen and isotope_labels and not combined_data.empty:
                 if self.mrm:
                     combined_data = combined_data.T
