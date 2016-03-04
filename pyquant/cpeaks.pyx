@@ -925,7 +925,6 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
     #best_locations = sorted(looper(selected=valid_vals, df=df, theo=valid_theor), key=itemgetter(0))[0][1]
     best_locations = [sorted(valid_locations2[i], key=itemgetter(0))[0] for i in valid_keys]
 
-
     for index, isotope_index in enumerate(valid_keys):
         if skip_isotopes is not None and isotope_index in skip_isotopes:
             continue

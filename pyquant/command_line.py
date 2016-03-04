@@ -456,7 +456,7 @@ class Worker(Process):
                     current_scan = initial_scan
                 else:
                     if scans_to_quant:
-                        current_scan = scans_to_quant.pop()
+                        current_scan = scans_to_quant.pop(0)
                     elif scans_to_quant is None:
                         current_scan = find_prior_scan(map_to_search, current_scan) if delta == -1 else find_next_scan(map_to_search, current_scan)
                     else:
@@ -525,7 +525,7 @@ class Worker(Process):
                                     peak_intensity = vals.get('int')
                                     if peak_intensity == 0 or (self.peak_cutoff and peak_intensity < last_peak_height[precursor_label][isotope]*self.peak_cutoff):
                                         low_int_isotopes[(precursor_label, isotope)] += 1
-                                        if low_int_isotopes[(precursor_label, isotope)] >= 2:
+                                        if not self.parser_args.msn_all_scans and low_int_isotopes[(precursor_label, isotope)] >= 2:
                                             if self.debug:
                                                 print('finished with isotope', precursor_label, envelope)
                                             finished_isotopes[precursor_label].add(isotope)
@@ -553,9 +553,10 @@ class Worker(Process):
                             del selected
                         if not self.mrm and ((len(labels_found) < self.labels_needed) or (self.parser_args.require_all_ions and len(labels_found) < len(precursors))):
                             if self.parser_args.msn_all_scans:
-                                if self.debug:
-                                    print('Not all ions found, setting', df.name, 'to zero')
-                                combined_data[df.name] = 0
+                                if self.parser_args.require_all_ions:
+                                    if self.debug:
+                                        print('Not all ions found, setting', df.name, 'to zero')
+                                    combined_data[df.name] = 0
                             else:
                                 found.discard(precursor_label)
                                 if df is not None and df.name in combined_data.columns:
@@ -597,6 +598,7 @@ class Worker(Process):
                 ms_index += delta
             rt_figure = {}
             isotope_figure = {}
+
             if self.parser_args.merge_labels or combine_xics:
                 label_name = '_'.join(map(str, combined_data.index))
                 combined_data = combined_data.sum(axis=0).to_frame(name=label_name).T
@@ -981,9 +983,14 @@ class Worker(Process):
                                                 quant_vals[quant_label][isotope_index] = int_val
                                             except KeyError:
                                                 quant_vals[quant_label] = {isotope_index: int_val}
+                                    cleft, cright = mean-2*std, mean+2*std2
+                                    curve_indices = (xdata>=cleft) & (xdata<=cright)
+                                    cf_data = ydata[curve_indices]
+                                    ss_tot = np.sum((cf_data-np.mean(cf_data))**2)
+                                    ss_res = np.sum((cf_data-peaks.bigauss_ndim(xdata[curve_indices], peak_params))**2)
                                     peak_info_dict = {'mean': mean, 'std': std, 'std2': std2, 'amp': amp,
                                                       'mean_diff': mean_diff, 'snr': snr, 'sbr': sbr, 'sdr': sdr,
-                                                      'auc': int_val, 'peak_width': std+std2}
+                                                      'auc': int_val, 'peak_width': std+std2, 'coef_det': 1-ss_res/ss_tot}
                                     try:
                                         peak_info[quant_label][isotope_index][xic_peak_index] = peak_info_dict
                                     except KeyError:
@@ -1437,7 +1444,10 @@ def run_pyquant():
     labels = mass_labels.keys()
     if not labels:
         if ion_search:
-            labels = ['_'.join(map(str, sorted(ion_set))) for ion_set in ions_selected]
+            if args.require_all_ions:
+                labels = ['_'.join(map(str, sorted(ion_set))) for ion_set in ions_selected]
+            else:
+                labels = list(map(str, set(sorted([ion for ion_set in ions_selected for ion in ion_set]))))
         else:
             labels = ['']
     if not scan_filemap and raw_data_only:
@@ -1493,6 +1503,7 @@ def run_pyquant():
                 ('snr', '{} SNR'.format(label_key)),
                 ('sbr', '{} SBR'.format(label_key)),
                 ('sdr', '{} Density'.format(label_key)),
+                ('coef_det', '{} R^2'.format(label_key)),
                 # ('residual', '{} Residual'.format(label_key)),
             ])
         if args.peaks_n == 1:
@@ -1693,7 +1704,7 @@ def run_pyquant():
                                 'id': scan_id, 'theor_mass': ion_set[0], 'rt': rt_info[ion_index] if rt_info else scan['rt'],
                                 'charge': 1, 'mass': ion_set[0], 'ions_found': ion, 'ion_set': ion_set,
                             },
-                            'combine_xics': True,
+                            'combine_xics': args.require_all_ions,
                         }
                         ion_search_list.append((scan_id, d))
                     break
