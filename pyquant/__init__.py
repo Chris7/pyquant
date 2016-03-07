@@ -109,6 +109,7 @@ convenience_group.add_argument('--neucode', help='This will select parameters sp
 convenience_group.add_argument('--isobaric-tags', help='This will select parameters specific for isobaric tag based labeling (TMT/iTRAQ).', action='store_true')
 convenience_group.add_argument('--ms3', help='This will select parameters specific for ms3 based quantification.', action='store_true')
 convenience_group.add_argument('--maxquant', help='This will select parameters specific for a MaxQuant evidence file.', action='store_true')
+convenience_group.add_argument('--gcms', help='This will select parameters specific for ion identification and quantification in GCMS experiments.', action='store_true')
 #'This will select parameters specific for Selective/Multiple Reaction Monitoring (SRM/MRM).'
 convenience_group.add_argument('--mrm', help=argparse.SUPPRESS, action='store_true')
 

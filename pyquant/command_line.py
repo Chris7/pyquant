@@ -921,7 +921,7 @@ class Worker(Process):
                                     # unguided, sort by amplitude
                                     xic_peaks.sort(key=operator.itemgetter('amp'), reverse=True)
                                 for xic_peak_index, xic_peak in enumerate(xic_peaks):
-                                    if self.peaks_n != -1 and xic_peak_index > self.peaks_n:
+                                    if self.peaks_n != -1 and xic_peak_index >= self.peaks_n: # xic_peak index is 0 based, peaks_n is 1 based, hence the >=
                                         break
                                     # if we move more than a # of ms1 to the dominant peak, update to our known peak
                                     gc = 'k'
@@ -990,7 +990,8 @@ class Worker(Process):
                                     ss_res = np.sum((cf_data-peaks.bigauss_ndim(xdata[curve_indices], peak_params))**2)
                                     peak_info_dict = {'mean': mean, 'std': std, 'std2': std2, 'amp': amp,
                                                       'mean_diff': mean_diff, 'snr': snr, 'sbr': sbr, 'sdr': sdr,
-                                                      'auc': int_val, 'peak_width': std+std2, 'coef_det': 1-ss_res/ss_tot}
+                                                      'auc': int_val, 'peak_width': std+std2, 'coef_det': 1-ss_res/ss_tot,
+                                                      'label': quant_label}
                                     try:
                                         peak_info[quant_label][isotope_index][xic_peak_index] = peak_info_dict
                                     except KeyError:
@@ -1206,13 +1207,23 @@ def run_pyquant():
     if args.ms3:
         msn_for_quant = 3
         mass_accuracy_correction = False
+    if args.gcms:
+        msn_for_quant = 1
+        msn_for_id = 1
+        args.precursor_ppm = args.msn_ppm
+        isotopologue_limit = 1
+        args.msn_all_scans = True
+        args.no_mass_accuracy_correction = True
+        args.no_contaminant_detection = True
+        args.no_rt_guide = True
+        args.disable_stats = True
 
     mrm_pair_info = pd.read_table(args.mrm_map) if args.mrm and args.mrm_map else None
 
     scan_filemap = {}
     found_scans = {}
     raw_files = {}
-    mass_labels = {}#'Light': {0: set([])}} if not reporter_mode else {}
+    mass_labels = {}#{'Light': {0: set([])}} if not reporter_mode else {}
 
     name_mapping = {}
 
@@ -1470,53 +1481,52 @@ def run_pyquant():
         ('rt', 'Retention Time'),
     ])
 
-    if ion_search:
+    if ion_search and not args.msn_all_scans:
         RESULT_ORDER.extend([('ions_found', 'Ions Found')])
 
     PEAK_REPORTING = []
+    if not reporter_mode and args.peaks_n != 1:
+        PEAK_REPORTING.extend([
+            ('label', 'Peak Label'),
+            ('auc', 'Peak Area'),
+            ('amp', 'Peak Max'),
+            ('mean', 'Peak Center'),
+            ('peak_width', 'RT Width'),
+            ('mean_diff', 'Mean Offset'),
+            ('snr', 'SNR'),
+            ('sbr', 'SBR'),
+            ('sdr', 'Density'),
+            ('coef_det', 'R^2'),
+        ])
     iterator = ['_'.join(map(str, sorted(labels)))] if args.merge_labels else labels
     for label in iterator:
-        label_key = ' {}'.format(label) if label != '' else label
+        label_key = '{} '.format(label) if label != '' else label
         RESULT_ORDER.extend([
-            ('{}_precursor'.format(label), '{} Precursor'.format(label_key)),
+            ('{}_precursor'.format(label), '{}Precursor'.format(label_key)),
+        ])
+        if msn_for_quant == 1:
+            if not args.no_mass_accuracy_correction:
+                RESULT_ORDER.extend([
+                    ('{}_calibrated_precursor'.format(label), '{}Calibrated Precursor'.format(label_key)),
+                ])
+            RESULT_ORDER.extend([
+                ('{}_isotopes'.format(label), '{}Isotopes Found'.format(label_key)),
+            ])
+        RESULT_ORDER.extend([
+            ('{}_intensity'.format(label), '{}Intensity'.format(label_key)),
         ])
         if msn_for_quant == 1:
             RESULT_ORDER.extend([
-                ('{}_calibrated_precursor'.format(label), '{} Calibrated Precursor'.format(label_key)),
-                ('{}_isotopes'.format(label), '{} Isotopes Found'.format(label_key)),
+                ('{}_residual'.format(label), '{}Residual'.format(label_key)),
             ])
-        RESULT_ORDER.extend([
-            ('{}_intensity'.format(label), '{} Intensity'.format(label_key)),
-        ])
-        if msn_for_quant == 1:
-            RESULT_ORDER.extend([
-                ('{}_residual'.format(label), '{} Residual'.format(label_key)),
-            ])
-
-        if not reporter_mode:
-            PEAK_REPORTING.extend([
-                ('auc', '{} Peak Area'.format(label_key)),
-                ('amp', '{} Peak Max'.format(label_key)),
-                ('mean', '{} Peak Center'.format(label_key)),
-                ('peak_width', '{} RT Width'.format(label_key)),
-                ('mean_diff', '{} Mean Offset'.format(label_key)),
-                ('snr', '{} SNR'.format(label_key)),
-                ('sbr', '{} SBR'.format(label_key)),
-                ('sdr', '{} Density'.format(label_key)),
-                ('coef_det', '{} R^2'.format(label_key)),
-                # ('residual', '{} Residual'.format(label_key)),
-            ])
-        if args.peaks_n == 1:
-            RESULT_ORDER.extend(PEAK_REPORTING)
-            PEAK_REPORTING = []
-        if not args.merge_labels and not args.no_ratios:
+        if not args.merge_labels and not args.no_ratios and label != '':
             for label2 in labels:
-                label_key2 = ' {}'.format(label2) if label2 != '' else label2
+                label_key2 = '{} '.format(label2) if label2 != '' else label2
                 if label_key != label_key2 and (ref_label is None or ref_label.lower() == label_key2.lower()):
-                    RESULT_ORDER.extend([('{}_{}_ratio'.format(label, label2), '{}/{}'.format(label_key, label_key2)),
+                    RESULT_ORDER.extend([('{}_{}_ratio'.format(label, label2), '{}/{}'.format(label_key.strip(), label_key2.strip())),
                                          ])
                     if calc_stats:
-                        RESULT_ORDER.extend([('{}_{}_confidence'.format(label, label2), '{}/{} Confidence'.format(label_key, label_key2)),
+                        RESULT_ORDER.extend([('{}_{}_confidence'.format(label, label2), '{}/{} Confidence'.format(label_key.strip(), label_key2.strip())),
                                              ])
 
     headers = ['Raw File']+[i[1] for i in RESULT_ORDER]
@@ -1702,7 +1712,7 @@ def run_pyquant():
                             'quant_scan': {'id': scan_id, 'scans': scans_to_fetch},
                             'id_scan': {
                                 'id': scan_id, 'theor_mass': ion_set[0], 'rt': rt_info[ion_index] if rt_info else scan['rt'],
-                                'charge': 1, 'mass': ion_set[0], 'ions_found': ion, 'ion_set': ion_set,
+                                'charge': 1, 'mass': ion_set[0], 'ions_found': None, 'ion_set': ion_set,
                             },
                             'combine_xics': args.require_all_ions,
                         }
@@ -2085,7 +2095,6 @@ def run_pyquant():
                     raw.writeScans(handle=o, scans=scans)
 
         reader_in.put(None)
-
 
         del msn_map
         del scan_rt_map

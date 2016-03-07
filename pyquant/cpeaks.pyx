@@ -4,7 +4,7 @@ from copy import deepcopy
 cimport numpy as np
 cimport cython
 ctypedef np.float_t FLOAT_t
-from scipy import optimize, integrate
+from scipy import optimize, integrate, stats
 from scipy.interpolate import interp1d
 from scipy.ndimage.filters import gaussian_filter1d
 from scipy.signal import argrelmax, argrelmin, convolve, kaiser
@@ -563,6 +563,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         else:
             bic = res.fun
         res.bic = bic
+
         if res.x[2] < min_spacing:
             res.x[2] = min_spacing
         if len(res.x) > 3 and res.x[3] < min_spacing:
@@ -579,6 +580,20 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
                     rstd = lstd
                 if mean-lstd*2 < rt_peak < mean+rstd*2:
                     res._contains_rt = True
+
+        # TODO: Evaluate the F-test based method
+        # if best_res:
+        #     cmodel_ssq = best_res.fun
+        #     new_model_ssq = res.fun
+        #     df = len(xdata)-len(res.x)
+        #     f_ratio = (cmodel_ssq-new_model_ssq)/(new_model_ssq/df)
+        #     res.p = 1-stats.f.cdf(f_ratio, 1, df)
+        #     bic = res.p
+        #
+        # if not best_res or res.p < best_res.p:
+        #     best_res = res
+        #     best_fit = np.copy(res.x)
+        #     best_rss = res.fun
 
         if bic < lowest_bic or (getattr(best_res, '_contains_rt', False) and res._contains_rt == True):
             if debug:
