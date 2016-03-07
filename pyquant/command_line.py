@@ -2078,6 +2078,8 @@ def run_pyquant():
                                     if i[0] in xic_peak_info:
                                         res_dict[i[0]] = xic_peak_info[i[0]]
                 res_dict['filename'] = filename
+                # first entry of peak report is label, sort alphabetically
+                peak_report.sort(key=operator.itemgetter(0))
                 res_dict['peak_report'] = peak_report
                 # This is the tsv output we provide
                 res_list = [filename]+[res_dict.get(i[0], 'NA') for i in RESULT_ORDER]+['\t'.join(i) for i in peak_report]
