@@ -1280,6 +1280,8 @@ def run_pyquant():
         source_file = args.tsv.name
     elif args.scan_file:
         source_file = args.scan_file[0].name
+    elif args.scan_file_dir:
+        source_file = os.path.split(args.scan_file_dir)[1]
 
     if args.scan_file:
         nfunc = lambda i: (os.path.splitext(os.path.split(i.name)[1])[0], os.path.abspath(i.name)) if hasattr(i, 'name') else (os.path.splitext(os.path.split(i)[1])[0], os.path.abspath(i))
