@@ -1428,7 +1428,7 @@ def run_pyquant():
         # determine if we want to do ms1 ion detection, ms2 ion detection, all ms2 of each file
         if args.msn_ion or args.msn_peaklist:
             ion_search = True
-            ions_selected = [list(set(map(float, ion.split(',')))) for ion in args.msn_ion] if args.msn_ion else []
+            ions_selected = [sorted(list(set(map(float, ion.split(','))))) for ion in args.msn_ion] if args.msn_ion else []
             if args.msn_peaklist:
                 ion_table = pd.read_table(args.msn_peaklist)
             # [float(i.strip()) for i in args.msn_peaklist if i]
@@ -1458,9 +1458,9 @@ def run_pyquant():
     if not labels:
         if ion_search:
             if args.require_all_ions:
-                labels = ['_'.join(map(str, sorted(ion_set))) for ion_set in ions_selected]
+                labels = ['_'.join(map(str, ion_set)) for ion_set in ions_selected]
             else:
-                labels = list(map(str, set(sorted([ion for ion_set in ions_selected for ion in ion_set]))))
+                labels = list(map(str, set([ion for ion_set in ions_selected for ion in ion_set])))
         else:
             labels = ['']
     if not scan_filemap and raw_data_only:
@@ -2003,6 +2003,7 @@ def run_pyquant():
         key_map = msn_rt_map.keys()
         rt_scan_map = pd.Series(key_map, index=[msn_rt_map[i] for i in key_map])
         rt_scan_map.sort_index(inplace=True)
+
         while workers or result is not None:
             try:
                 result = result_queue.get(timeout=0.1)
@@ -2096,7 +2097,7 @@ def run_pyquant():
         if scans_to_export:
             for export_filename, scans in six.iteritems(export_mapping):
                 with open(export_filename, 'w') as o:
-                    raw.writeScans(handle=o, scans=scans)
+                    raw.writeScans(handle=o, scans=sorted(scans))
 
         reader_in.put(None)
 
