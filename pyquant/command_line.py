@@ -1517,6 +1517,12 @@ def run_pyquant():
         RESULT_ORDER.extend([
             ('{}_intensity'.format(label), '{}Intensity'.format(label_key)),
         ])
+        if args.peaks_n == 1:
+            RESULT_ORDER.extend([
+                ('{}_peak_width'.format(label), '{}RT Width'.format(label_key)),
+                ('{}_mean_diff'.format(label), '{}Mean Offset'.format(label_key)),
+            ])
+
         if msn_for_quant == 1:
             RESULT_ORDER.extend([
                 ('{}_residual'.format(label), '{}Residual'.format(label_key)),
@@ -2077,9 +2083,11 @@ def run_pyquant():
                             if args.peaks_n != 1:
                                 peak_report.append(list(map(str, (xic_peak_info.get(i[0], 'NA') for i in PEAK_REPORTING))))
                             else:
+                                # TODO: fix this terrible loop
                                 for i in RESULT_ORDER:
-                                    if i[0] in xic_peak_info:
-                                        res_dict[i[0]] = xic_peak_info[i[0]]
+                                    for j in xic_peak_info:
+                                        if '{}_{}'.format(label_name, j) == i[0]:
+                                            res_dict[i[0]] = xic_peak_info[j]
                 res_dict['filename'] = filename
                 # first entry of peak report is label, sort alphabetically
                 peak_report.sort(key=operator.itemgetter(0))
