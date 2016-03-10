@@ -2095,9 +2095,10 @@ def run_pyquant():
                 temp_file.flush()
 
         if scans_to_export:
+            raw_file = GuessIterator(filepath, full=True, store=False)
             for export_filename, scans in six.iteritems(export_mapping):
                 with open(export_filename, 'w') as o:
-                    raw.writeScans(handle=o, scans=sorted(scans))
+                    raw_file.parser.writeScans(handle=o, scans=sorted(scans))
 
         reader_in.put(None)
 
