@@ -75,7 +75,7 @@ peak_parameters.add_argument('--max-peaks', help='The maximal number of peaks to
 peak_parameters.add_argument('--peaks-n', help='The number of peaks to report per scan. Useful for ions with multiple elution times.', type=int, default=1)
 peak_parameters.add_argument('--no-rt-guide', help='Do not use the retention tme to guide peak selection.', action='store_true')
 peak_parameters.add_argument('--snr-filter', help='Filter peaks below a given SNR.', type=float, default=0)
-peak_parameters.add_argument('--intensity-filter', help='Filter peaks whose peak are below a given intensity.', type=int, default=0)
+peak_parameters.add_argument('--intensity-filter', help='Filter peaks whose peak are below a given intensity.', type=float, default=0)
 peak_parameters.add_argument('--min-peak-separation', help='Peaks separated by less than this distance will be combined. For very crisp data, set this to 2. (minimal value is 1)', type=int, default=4)
 peak_parameters.add_argument('--disable-peak-filtering', help='This will disable smoothing of data prior to peak finding. If you have very good LC, this may be used to identify small peaks.', action='store_true')
 
