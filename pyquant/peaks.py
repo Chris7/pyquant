@@ -10,7 +10,7 @@ if os.environ.get('PYQUANT_DEV', False) == 'True':
         import pyximport; pyximport.install(setup_args={'include_dirs': np.get_include()}, reload_support=True)
     except:
         pass
-from .cpeaks import *
+from pyquant.cpeaks import *
 
 if six.PY3:
     xrange = range
