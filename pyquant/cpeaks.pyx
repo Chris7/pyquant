@@ -365,7 +365,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             # pick the top n peaks for max_peaks
             # this selects the row peaks in ydata, reversed the sorting order (to be greatest to least), then
             # takes the number of peaks we allow and then sorts those peaks
-            row_peaks = np.sort(row_peaks[np.argsort(ydata_peaks[row_peaks])[::-1]][:max_peaks+1])
+            row_peaks = np.sort(row_peaks[np.argsort(ydata_peaks[row_peaks])[::-1]][:max_peaks])
             #peak_width_end += 1
             #peak_width += 1
             #continue
@@ -564,10 +564,14 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             bic = res.fun
         res.bic = bic
 
-        if res.x[2] < min_spacing:
-            res.x[2] = min_spacing
-        if len(res.x) > 3 and res.x[3] < min_spacing:
-            res.x[3] = min_spacing
+        step_size = 4 if bigauss_fit else 3
+        for index, value in enumerate(res.x[2::step_size]):
+          if value < min_spacing:
+            res.x[2+index*step_size] = min_spacing
+        if bigauss_fit:
+          for index, value in enumerate(res.x[3::step_size]):
+            if value < min_spacing:
+              res.x[3+index*step_size] = min_spacing
         # does this data contain our rt peak?
         res._contains_rt = False
         if rt_peak != 0:
