@@ -321,7 +321,7 @@ class Worker(Process):
     def convertScan(self, scan):
         import numpy as np
         scan_vals = scan['vals']
-        res = pd.Series(scan_vals[:, 1].astype(np.uint64), index=np.round(scan_vals[:, 0], self.precision), name=int(scan['title']) if self.mrm else scan['rt'], dtype='uint64')
+        res = pd.Series(scan_vals[:, 1].astype(np.uint64), index=np.round(scan_vals[:, 0], self.precision), name=scan['title'] if self.mrm else scan['rt'], dtype='uint64')
         # mz values can sometimes be not sorted -- rare but it happens
         res = res.sort_index()
         del scan_vals
@@ -360,7 +360,10 @@ class Worker(Process):
             calibrated_precursor = self.get_calibrated_mass(precursor)
             theor_mass = target_scan.get('theor_mass', calibrated_precursor)
             rt = target_scan['rt'] # this will be the RT of the target_scan, which is not always equal to the RT of the quant_scan
-
+            if self.mrm and rt != 0.:
+                self.rt_guide = True
+            elif self.mrm:
+                self.rt_guide = False
             peptide = target_scan.get('peptide')
             if self.debug:
                 sys.stderr.write('thread {4} on ms {0} {1} {2} {3}\n'.format(ms1, rt, precursor, scan_info, id(self)))
@@ -372,11 +375,15 @@ class Worker(Process):
             # data['Light'] = copy.deepcopy(silac_dict)
             combined_data = pd.DataFrame()
             if self.mrm:
-                mrm_labels = [i for i in self.mrm_pair_info.columns if i.lower() not in ('retention time')]
                 mrm_info = None
-                for index, values in self.mrm_pair_info.iterrows():
-                    if values['Light'] == mass:
-                        mrm_info = values
+                mrm_labels = []
+                if self.mrm_pair_info is not None:
+                    mrm_labels = [i for i in self.mrm_pair_info.columns if i.lower() not in ('retention time')]
+                    for index, values in self.mrm_pair_info.iterrows():
+                        if values['Light'] == mass:
+                            mrm_info = values
+                for label in mrm_labels:
+                    data[label] = copy.deepcopy(silac_dict)
             for ion in target_scan.get('ion_set', []):
                 precursors[str(ion)]['uncalibrated_mz'] = ion
                 precursors[str(ion)]['calibrated_mz'] = self.get_calibrated_mass(ion)
@@ -578,17 +585,19 @@ class Worker(Process):
                             ms_index = 0
                         else:
                             if self.mrm:
-                                if mrm_info is not None and mrm_labels:
-                                    mrm_label = mrm_labels.pop() if mrm_info is not None else 'Light'
-                                    mass = mass if mrm_info is None else mrm_info[mrm_label]
-                                    delta = -1
-                                    current_scan = self.quant_mrm_map[mass][0][1]
-                                    last_peak_height = {i: defaultdict(int) for i in precursors.keys()}
-                                    initial_scan = current_scan
-                                    finished_isotopes = {i: set([]) for i in precursors.keys()}
-                                    ms_index = 0
-                                else:
-                                    break
+                                # print(mrm_info, mrm_labels)
+                                # if mrm_info is not None and mrm_labels:
+                                #     mrm_label = mrm_labels.pop() if mrm_info is not None else 'Light'
+                                #     mass = mass if mrm_info is None else mrm_info[mrm_label]
+                                #     delta = -1
+                                #     current_scan = self.quant_mrm_map[mass][0][1]
+                                #     last_peak_height = {i: defaultdict(int) for i in precursors.keys()}
+                                #     initial_scan = current_scan
+                                #     finished_isotopes = {i: set([]) for i in precursors.keys()}
+                                #     ms_index = 0
+                                # else:
+                                #     break
+                                pass
                             else:
                                 break
                 else:
@@ -675,6 +684,8 @@ class Worker(Process):
                     combined_peaks = defaultdict(dict)
 
                     merged_data = combined_data.sum(axis=0)
+                    if self.mrm:
+                        merged_data = merged_data[merged_data!=0]
                     rt_attempts = 0
                     found_rt = False
                     merged_x = merged_data.index.astype(float).values
@@ -775,6 +786,8 @@ class Worker(Process):
 
                         for row_num, (index, values) in enumerate(combined_data.iterrows()):
                             quant_label = isotope_labels.loc[index, 'label']
+                            if self.mrm:
+                                values = values[values!=0]
                             xdata = values.index.values.astype(float)
                             ydata = values.fillna(0).values.astype(float)
                             if sum(ydata>0) >= self.min_scans:
@@ -782,8 +795,12 @@ class Worker(Process):
                                 # otherwise, there are no penalties on the variance if it is
                                 # at the border since the data does not exist. We only add for lower values to avoid
                                 # including monster peaks we may be explicitly excluding above
-                                fit_lb = merged_lb
-                                fit_rb = merged_rb
+                                if self.mrm:
+                                    fit_lb = peaks.find_nearest_index(xdata, merged_x[merged_lb])
+                                    fit_rb = peaks.find_nearest_index(xdata, merged_x[merged_rb])
+                                else:
+                                    fit_lb = merged_lb
+                                    fit_rb = merged_rb
                                 while fit_rb+1 < len(ydata) and ydata[fit_rb+1] <= ydata[fit_rb-1]:
                                     fit_rb += 1
                                 while fit_lb != 0 and ydata[fit_lb] >= ydata[fit_lb-1]:
@@ -884,12 +901,12 @@ class Worker(Process):
                                 if quant_label in rt_figure_mapper:
                                     rt_base = rt_figure_mapper[(quant_label, index)]
                                 else:
-                                    rt_base = {'data': {'x': 'x', 'columns': []}, 'grid': {'x': {'lines': [{'value': rt, 'text': 'Initial RT {0:0.4f}'.format(rt), 'position': 'middle'}]}}, 'subchart': {'show': True}, 'axis': {'x': {'label': 'Retention Time'}, 'y': {'label': 'Intensity'}}}
+                                    rt_base = {'data': {'x': 'x', 'columns': [['x']+xdata.tolist()]}, 'grid': {'x': {'lines': [{'value': rt, 'text': 'Initial RT {0:0.4f}'.format(rt), 'position': 'middle'}]}}, 'subchart': {'show': True}, 'axis': {'x': {'label': 'Retention Time'}, 'y': {'label': 'Intensity'}}}
                                     rt_figure_mapper[(quant_label, index)] = rt_base
                                     rt_figure['data'].append(rt_base)
                                 rt_base['data']['columns'].append(['{0} {1} raw'.format(quant_label, index)]+ydata.tolist())
 
-                peak_info = {i: {} for i in self.mrm_pair_info.columns} if self.mrm else {i: {} for i in precursors.keys()}
+                peak_info = {i: {} for i in self.mrm_pair_info.columns} if self.mrm and self.mrm_pair_info is not None else {i: {} for i in precursors.keys()}
                 if self.reporter_mode or combined_peaks:
                     if self.reporter_mode:
                         for row_num, (index, values) in enumerate(combined_data.iterrows()):
@@ -906,6 +923,8 @@ class Worker(Process):
                                     continue
                                 isotope_index = isotope_labels.loc[index, 'isotope_index']
                                 rt_values = combined_data.loc[index]
+                                if self.mrm:
+                                    rt_values = rt_values[rt_values!=0]
                                 xdata = rt_values.index.values.astype(float)
                                 ydata = rt_values.fillna(0).values.astype(float)
                                 # pick the biggest within a rt cutoff of 0.2, otherwise pick closest
@@ -1009,7 +1028,7 @@ class Worker(Process):
                                         rt_base = rt_figure_mapper[(quant_label, index)]
                                         key = '{} {}'.format(quant_label, index)
                                         for i,v in enumerate(rt_base['data']['columns']):
-                                            if key in v[0]:
+                                            if not isinstance(v, (int, float)) and key in v[0]:
                                                 break
                                         rt_base['data']['columns'].insert(i, ['{0} {1} fit {2}'.format(quant_label, index, xic_peak_index)]+np.nan_to_num(peaks.bigauss_ndim(xdata, peak_params)).tolist())
                         del combined_peaks
@@ -1650,7 +1669,7 @@ def run_pyquant():
             msn_map.append((scan.ms_level if not args.mrm else scan.mass, scan_id))
             rt = scan.rt
             if scan.ms_level == msn_for_quant:
-                msn_rt_map[scan_id] = int(scan.title) if args.mrm else rt
+                msn_rt_map[scan_id] = rt
             scan_rt_map[scan_id] = rt
             scan_info_map[scan_id]['parent'] = scan.parent
             scan_info_map[scan_id]['msn'] = scan.ms_level
@@ -1902,18 +1921,27 @@ def run_pyquant():
         # this is to fix the header at the end to include peak information if we have multiple peaks
         most_peaks_found = 0
         mrm_added = set([])
-        exclusion_masses = mrm_pair_info.loc[:,[i for i in mrm_pair_info.columns if i.lower() not in ('light', 'retention time')]].values.flatten() if args.mrm else set([])
+        exclusion_masses = mrm_pair_info.loc[:,[i for i in mrm_pair_info.columns if i.lower() not in ('light', 'retention time')]].values.flatten() if args.mrm and mrm_pair_info is not None else set([])
         for scan_index, v in enumerate(raw_scans):
             target_scan = v['id_scan']
             quant_scan = v['quant_scan']
             scanId = target_scan['id']
             scan_mass = target_scan.get('mass')
             if args.mrm:
-                if scan_mass in mrm_added:
+                key = scan_mass
+                if key in mrm_added:
                     continue
-                mrm_added.add(scan_mass)
+                mrm_added.add(key)
                 if scan_mass in exclusion_masses:
                     continue
+                quant_scan['scans'] = [i[1] for i in msn_map if i[0] == key]
+                if mrm_pair_info is not None:
+                    mrm_info = mrm_pair_info.loc[(mrm_pair_info==scan_mass).index]
+                    if not mrm_info.empty:
+                        for col_name in mrm_info.columns:
+                            if col_name.lower() not in ('light', 'retention time'):
+                                for heavy_mass in  mrm_pair_info.loc[(mrm_pair_info==scan_mass).index][col_name]:
+                                    quant_scan['scans'] += [i[1] for i in msn_map if i[0] == heavy_mass]
 
             if quant_scan.get('id') is None:
                 # we will hit this in a normal proteomic run
@@ -1950,6 +1978,10 @@ def run_pyquant():
             if rt is None:
                 rt = float(msn_rt_map[msn_to_quant])
                 target_scan['rt'] = rt
+            if rt == 0. and mrm_pair_info is not None:
+                # TODO: Consider cases where masses appear twice in the table -- can this happen
+                rt = mrm_pair_info.loc[(mrm_pair_info==scan_mass).index,'Retention Time'].iloc[0]
+                target_scan['rt'] = rt
 
             if args.mva and rep_mapper is not None:
                 target_scan['rt'] = rep_mapper.predict(float(target_scan['rt']))[0]
@@ -1962,7 +1994,7 @@ def run_pyquant():
                 continue
             charge = int(charge)
 
-            if msn_for_quant != 1:
+            if msn_for_quant != 1 and not args.mrm:
                 lowest_label = min([j for i,v in mass_labels.items() for j in v])
                 target_scan['theor_mass'] = lowest_label
                 target_scan['precursor'] = lowest_label

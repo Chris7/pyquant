@@ -419,8 +419,10 @@
                             var new_element = $element.append('<div id="'+chart_name+'"></div>');
                             var chart_selector = '#'+chart_name;
                             plot_data[i]['bindto'] = chart_selector;
-                            if(common_x){
-                                plot_data[i]['data']['columns'].unshift(common_x);
+                            if(common_x ){
+                                if(i == 0 && plot_data[i]['data']['columns'][0] && plot_data[i]['data']['columns'][0][0] != 'x') {
+                                    plot_data[i]['data']['columns'].unshift(common_x);
+                                }
                             }
                             var plot_columns = plot_data[i]['data']['columns'];
                             var effective_width = 0;
