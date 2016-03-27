@@ -42,6 +42,7 @@ cpdef float gauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, nd
     return residual
 
 cpdef np.ndarray[FLOAT_t, ndim=2] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
+    # https://www.wolframalpha.com/input/?i=derivative+of+((y-(a*exp(-(u-x)%5E2%2F(2s%5E2))))%5E2,+a)
     cdef np.ndarray[FLOAT_t, ndim=2] jac
     cdef np.ndarray[FLOAT_t, ndim=1] lx, ly, rx, ry
     cdef float amp, mu, stdl, stdr, sigma1, sigma2
@@ -79,6 +80,56 @@ cpdef np.ndarray[FLOAT_t, ndim=2] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params
             jac[i, 0] += sum((-2*amp*((rx-mu)**2)*exp_term*(ry-amp_exp_term))/(sigma2**3))
     return jac.transpose()
 
+cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_hess(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] p, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
+    # https://www.wolframalpha.com/input/?i=second+derivative+of+((y-(a*exp(-(u-x)%5E2%2F(2s%5E2))))%5E2,+a)
+    cdef np.ndarray[FLOAT_t, ndim=1] Hp
+    cdef np.ndarray[FLOAT_t, ndim=1] lx, ly, rx, ry
+    cdef object exp
+    cdef float amp, mu, stdl, stdr, sigma1, sigma2
+    cdef int i
+    Hp = np.zeros_like(params)
+    for i in xrange(params.shape[0]):
+        if i%4 == 0:
+            amp = params[i]
+        elif i%4 == 1:
+            mu = params[i]
+        elif i%4 == 2:
+            stdl = params[i]
+        elif i%4 == 3:
+            stdr = params[i]
+            sigma1 = stdl/1.177
+            sigma2 = stdr/1.177
+            lx = x[x<=mu]
+            ly = y[x<=mu]
+            rx = x[x>mu]
+            ry = y[x>mu]
+            # jac[i-3] += sum(prefix*(amp-ly*exp_term))
+            exp = np.exp
+            Hp[i-3] += sum(2*exp(-(lx - mu)**2/sigma1**2))*p[i-3] + \
+                       sum(2*exp(-(-mu + rx)**2/sigma2**2))*p[i-3] + \
+                       sum(2*amp*(lx - mu)**2*exp(-(lx - mu)**2/sigma1**2)/sigma1**3 - 2*(lx - mu)**2*(-amp*exp(-(lx - mu)**2/(2*sigma1**2)) + ly)*exp(-(lx - mu)**2/(2*sigma1**2))/sigma1**3)*p[i-2] + \
+                       sum(2*amp*(-mu + rx)**2*exp(-(-mu + rx)**2/sigma2**2)/sigma2**3 - 2*(-mu + rx)**2*(-amp*exp(-(-mu + rx)**2/(2*sigma2**2)) + ry)*exp(-(-mu + rx)**2/(2*sigma2**2))/sigma2**3)*p[i-2] + \
+                       sum(-amp*(-2*lx + 2*mu)*exp(-(lx - mu)**2/sigma1**2)/sigma1**2 + (-2*lx + 2*mu)*(-amp*exp(-(lx - mu)**2/(2*sigma1**2)) + ly)*exp(-(lx - mu)**2/(2*sigma1**2))/sigma1**2)*p[i-1] + \
+                       sum(-amp*(2*mu - 2*rx)*exp(-(-mu + rx)**2/sigma2**2)/sigma2**2 + (2*mu - 2*rx)*(-amp*exp(-(-mu + rx)**2/(2*sigma2**2)) + ry)*exp(-(-mu + rx)**2/(2*sigma2**2))/sigma2**2)*p[i]
+            Hp[i-2] += sum(2*amp*(lx - mu)**2*exp(-(lx - mu)**2/sigma1**2)/sigma1**3 - 2*(lx - mu)**2*(-amp*exp(-(lx - mu)**2/(2*sigma1**2)) + ly)*exp(-(lx - mu)**2/(2*sigma1**2))/sigma1**3)*p[i-3] + \
+                       sum(2*amp*(-mu + rx)**2*exp(-(-mu + rx)**2/sigma2**2)/sigma2**3 - 2*(-mu + rx)**2*(-amp*exp(-(-mu + rx)**2/(2*sigma2**2)) + ry)*exp(-(-mu + rx)**2/(2*sigma2**2))/sigma2**3)*p[i-3] + \
+                       sum(2*amp**2*(lx - mu)**4*exp(-(lx - mu)**2/sigma1**2)/sigma1**6 + 6*amp*(lx - mu)**2*(-amp*exp(-(lx - mu)**2/(2*sigma1**2)) + ly)*exp(-(lx - mu)**2/(2*sigma1**2))/sigma1**4 - 2*amp*(lx - mu)**4*(-amp*exp(-(lx - mu)**2/(2*sigma1**2)) + ly)*exp(-(lx - mu)**2/(2*sigma1**2))/sigma1**6)*p[i-2] + \
+                       sum(2*amp**2*(-mu + rx)**4*exp(-(-mu + rx)**2/sigma2**2)/sigma2**6 + 6*amp*(-mu + rx)**2*(-amp*exp(-(-mu + rx)**2/(2*sigma2**2)) + ry)*exp(-(-mu + rx)**2/(2*sigma2**2))/sigma2**4 - 2*amp*(-mu + rx)**4*(-amp*exp(-(-mu + rx)**2/(2*sigma2**2)) + ry)*exp(-(-mu + rx)**2/(2*sigma2**2))/sigma2**6)*p[i-2] + \
+                       sum(-amp**2*(-2*lx + 2*mu)*(lx - mu)**2*exp(-(lx - mu)**2/sigma1**2)/sigma1**5 - 2*amp*(-2*lx + 2*mu)*(-amp*exp(-(lx - mu)**2/(2*sigma1**2)) + ly)*exp(-(lx - mu)**2/(2*sigma1**2))/sigma1**3 + amp*(-2*lx + 2*mu)*(lx - mu)**2*(-amp*exp(-(lx - mu)**2/(2*sigma1**2)) + ly)*exp(-(lx - mu)**2/(2*sigma1**2))/sigma1**5) * p[i-1] + \
+                       sum(-amp**2*(-mu + rx)**2*(2*mu - 2*rx)*exp(-(-mu + rx)**2/sigma2**2)/sigma2**5 - 2*amp*(2*mu - 2*rx)*(-amp*exp(-(-mu + rx)**2/(2*sigma2**2)) + ry)*exp(-(-mu + rx)**2/(2*sigma2**2))/sigma2**3 + amp*(-mu + rx)**2*(2*mu - 2*rx)*(-amp*exp(-(-mu + rx)**2/(2*sigma2**2)) + ry)*exp(-(-mu + rx)**2/(2*sigma2**2))/sigma2**5)*p[i]
+            Hp[i-1] += sum(-amp*(-2*lx + 2*mu)*exp(-(lx - mu)**2/sigma1**2)/sigma1**2 + (-2*lx + 2*mu)*(-amp*exp(-(lx - mu)**2/(2*sigma1**2)) + ly)*exp(-(lx - mu)**2/(2*sigma1**2))/sigma1**2)*p[i-3] + \
+                       sum(-amp*(2*mu - 2*rx)*exp(-(-mu + rx)**2/sigma2**2)/sigma2**2 + (2*mu - 2*rx)*(-amp*exp(-(-mu + rx)**2/(2*sigma2**2)) + ry)*exp(-(-mu + rx)**2/(2*sigma2**2))/sigma2**2)*p[i-3] + \
+                       sum(-amp**2*(-2*lx + 2*mu)*(lx - mu)**2*exp(-(lx - mu)**2/sigma1**2)/sigma1**5 - 2*amp*(-2*lx + 2*mu)*(-amp*exp(-(lx - mu)**2/(2*sigma1**2)) + ly)*exp(-(lx - mu)**2/(2*sigma1**2))/sigma1**3 + amp*(-2*lx + 2*mu)*(lx - mu)**2*(-amp*exp(-(lx - mu)**2/(2*sigma1**2)) + ly)*exp(-(lx - mu)**2/(2*sigma1**2))/sigma1**5)*p[i-2] + \
+                       sum(-amp**2*(-mu + rx)**2*(2*mu - 2*rx)*exp(-(-mu + rx)**2/sigma2**2)/sigma2**5 - 2*amp*(2*mu - 2*rx)*(-amp*exp(-(-mu + rx)**2/(2*sigma2**2)) + ry)*exp(-(-mu + rx)**2/(2*sigma2**2))/sigma2**3 + amp*(-mu + rx)**2*(2*mu - 2*rx)*(-amp*exp(-(-mu + rx)**2/(2*sigma2**2)) + ry)*exp(-(-mu + rx)**2/(2*sigma2**2))/sigma2**5)*p[i-2] + \
+                       sum(amp**2*(-2*lx + 2*mu)**2*exp(-(lx - mu)**2/sigma1**2)/(2*sigma1**4) + 2*amp*(-amp*exp(-(lx - mu)**2/(2*sigma1**2)) + ly)*exp(-(lx - mu)**2/(2*sigma1**2))/sigma1**2 - amp*(-2*lx + 2*mu)**2*(-amp*exp(-(lx - mu)**2/(2*sigma1**2)) + ly)*exp(-(lx - mu)**2/(2*sigma1**2))/(2*sigma1**4))*p[i-1]
+            Hp[i] += sum(-amp*(-2*lx + 2*mu)*exp(-(lx - mu)**2/sigma1**2)/sigma1**2 + (-2*lx + 2*mu)*(-amp*exp(-(lx - mu)**2/(2*sigma1**2)) + ly)*exp(-(lx - mu)**2/(2*sigma1**2))/sigma1**2)*p[i-3] + \
+                       sum(-amp*(2*mu - 2*rx)*exp(-(-mu + rx)**2/sigma2**2)/sigma2**2 + (2*mu - 2*rx)*(-amp*exp(-(-mu + rx)**2/(2*sigma2**2)) + ry)*exp(-(-mu + rx)**2/(2*sigma2**2))/sigma2**2)*p[i-3] + \
+                       sum(-amp**2*(-2*lx + 2*mu)*(lx - mu)**2*exp(-(lx - mu)**2/sigma1**2)/sigma1**5 - 2*amp*(-2*lx + 2*mu)*(-amp*exp(-(lx - mu)**2/(2*sigma1**2)) + ly)*exp(-(lx - mu)**2/(2*sigma1**2))/sigma1**3 + amp*(-2*lx + 2*mu)*(lx - mu)**2*(-amp*exp(-(lx - mu)**2/(2*sigma1**2)) + ly)*exp(-(lx - mu)**2/(2*sigma1**2))/sigma1**5)*p[i-2] + \
+                       sum(-amp**2*(-mu + rx)**2*(2*mu - 2*rx)*exp(-(-mu + rx)**2/sigma2**2)/sigma2**5 - 2*amp*(2*mu - 2*rx)*(-amp*exp(-(-mu + rx)**2/(2*sigma2**2)) + ry)*exp(-(-mu + rx)**2/(2*sigma2**2))/sigma2**3 + amp*(-mu + rx)**2*(2*mu - 2*rx)*(-amp*exp(-(-mu + rx)**2/(2*sigma2**2)) + ry)*exp(-(-mu + rx)**2/(2*sigma2**2))/sigma2**5)*p[i-2] + \
+                       sum(amp**2*(2*mu - 2*rx)**2*exp(-(-mu + rx)**2/sigma2**2)/(2*sigma2**4) + 2*amp*(-amp*exp(-(-mu + rx)**2/(2*sigma2**2)) + ry)*exp(-(-mu + rx)**2/(2*sigma2**2))/sigma2**2 - amp*(2*mu - 2*rx)**2*(-amp*exp(-(-mu + rx)**2/(2*sigma2**2)) + ry)*exp(-(-mu + rx)**2/(2*sigma2**2))/(2*sigma2**4))*p[i]
+    print params, p, Hp
+    return Hp
+
 cpdef np.ndarray[FLOAT_t, ndim=2] gauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
     cdef np.ndarray[FLOAT_t, ndim=2] jac
     cdef float amp, mu, sigma
@@ -97,6 +148,24 @@ cpdef np.ndarray[FLOAT_t, ndim=2] gauss_jac(np.ndarray[FLOAT_t, ndim=1] params, 
             jac[i, 0] += sum(-2*amp*((x-mu)**2)*exp_term*(y-amp_exp_term)/(sigma**3))
     # print(params, jac)
     return jac.transpose()
+
+cpdef np.ndarray[FLOAT_t, ndim=1] gauss_hess(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] p, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
+    cdef np.ndarray[FLOAT_t, ndim=1] Hp
+    cdef float amp, mu, sigma
+    Hp = np.zeros_like(params)
+    for i in xrange(len(params)):
+        if i%3 == 0:
+            amp = params[i]
+        elif i%3 == 1:
+            mu = params[i]
+        elif i%3 == 2:
+            sigma = params[i]
+            exp_term = np.exp(-((x-mu)**2)/(2*sigma**2))
+            amp_exp_term = amp*exp_term
+            Hp[i-2] += sum(2*exp_term)*p[i-2]+sum(-2*(2*amp - y*np.exp((mu - x)**2/(2*sigma**2)))*(mu - x)*np.exp(-(mu - x)**2/sigma**2)/sigma**2)*p[i-1]+sum(2*(2*amp - y*np.exp((mu - x)**2/(2*sigma**2)))*(mu - x)**2*np.exp(-(mu - x)**2/sigma**2)/sigma**3)*p[i]
+            Hp[i-1] += sum(-2*(2*amp - y*np.exp((mu - x)**2/(2*sigma**2)))*(mu - x)*np.exp(-(mu - x)**2/sigma**2)/sigma**2)*p[i-2]+sum(2*amp*(sigma**2*(-amp + y*np.exp((mu - x)**2/(2*sigma**2))) + (2*amp - y*np.exp((mu - x)**2/(2*sigma**2)))*(mu - x)**2)*np.exp(-(mu - x)**2/sigma**2)/sigma**4)*p[i-1]+sum(2*amp*(mu - x)*(2*sigma**2*(amp - y*np.exp((mu - x)**2/(2*sigma**2))) - (2*amp - y*np.exp((mu - x)**2/(2*sigma**2)))*(mu - x)**2)*np.exp(-(mu - x)**2/sigma**2)/sigma**5)*p[i]
+            Hp[i] += sum(2*(2*amp - y*np.exp((mu - x)**2/(2*sigma**2)))*(mu - x)**2*np.exp(-(mu - x)**2/sigma**2)/sigma**3)*p[i-2]+sum(2*amp*(mu - x)*(2*sigma**2*(amp - y*np.exp((mu - x)**2/(2*sigma**2))) - (2*amp - y*np.exp((mu - x)**2/(2*sigma**2)))*(mu - x)**2)*np.exp(-(mu - x)**2/sigma**2)/sigma**5)*p[i-1]+sum(2*amp*(mu - x)**2*(3*sigma**2*(-amp + y*np.exp((mu - x)**2/(2*sigma**2))) + (2*amp - y*np.exp((mu - x)**2/(2*sigma**2)))*(mu - x)**2)*np.exp(-(mu - x)**2/sigma**2)/sigma**6)*p[i]
+    return Hp
 
 cdef np.ndarray[FLOAT_t, ndim=1] bigauss(np.ndarray[FLOAT_t, ndim=1] x, float amp, float mu, float stdl, float stdr):
     cdef float sigma1 = stdl/1.177
@@ -316,7 +385,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
                          float min_dist=0, filter=False, bigauss_fit=False, rt_peak=0.0, mrm=False,
                          int max_peaks=4, debug=False, peak_width_start=2, snr=0, amplitude_filter=0,
                          peak_width_end=4):
-    cdef object fit_func, jacobian
+    cdef object fit_func, jacobian, hessian
     cdef np.ndarray[long, ndim=1] row_peaks, smaller_peaks, larger_peaks
     cdef np.ndarray[long, ndim=1] minima_array
     cdef list minima, fit_accuracy, smaller_minima, larger_minima, guess, bnds
@@ -543,9 +612,10 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
         if len(bnds) == 0:
             bnds = deepcopy(initial_bounds)
         jacobian = bigauss_jac if bigauss_fit else gauss_jac
+        hessian = None#bigauss_hess if bigauss_fit else gauss_hess
         if debug:
             print('guess and bnds', guess, bnds)
-        results = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=jacobian)]
+        results = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=jacobian, hessp=hessian)]
         while not results[-1].success and routines:
             routine = routines.pop(0)
             results.append(optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=jacobian))
