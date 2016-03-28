@@ -322,7 +322,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
     cdef list minima, fit_accuracy, smaller_minima, larger_minima, guess, bnds
     cdef dict peaks_found, final_peaks, peak_info
     cdef int peak_width, last_peak, next_peak, left, right, i, v, minima_index, left_stop, right_stop, right_stop_index
-    cdef float peak_min, peak_max, rel_peak, average, variance, best_rss, rt_peak_val, minima_value, ydata_peaks_std
+    cdef float peak_min, peak_max, rel_peak, average, variance, best_rss, rt_peak_val, minima_value, ydata_peaks_std, peak_left, peak_right
     cdef np.ndarray[FLOAT_t, ndim=1] peak_values, peak_indices, ydata, ydata_peaks, best_fit
 
     amplitude_filter /= ydata_original.max()
@@ -444,6 +444,9 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             next_peak = len(xdata) if peak_index == row_peaks[-1] else row_peaks[peak_num+1]
             fitted_peaks.append(peak_index)
             rel_peak = ydata_peaks[peak_index]
+            # bounds for fitting the peak mean
+            peak_left = xdata[peak_index-1]
+            peak_right = xdata[peak_index+1]
             # find the points around it to estimate the std of the peak
             if minima_array.size:
                 left = np.searchsorted(minima_array, peak_index)-1
@@ -484,10 +487,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
                     right = next_peak
                 if right < peak_index:
                     right = next_peak
-                if right >= len(xdata):
-                    bnds.extend([(rel_peak, 1.01), (xdata[left], xdata[-1]), (min_spacing, peak_range)])
-                else:
-                    bnds.extend([(rel_peak, 1.01), (xdata[left], xdata[right]), (min_spacing, peak_range)])
+                bnds.extend([(rel_peak, 1.01), (peak_left, peak_right), (min_spacing, peak_range)])
                 if bigauss_fit:
                     bnds.extend([(min_spacing, peak_range)])
                 peak_values = ydata[left:right]
@@ -495,7 +495,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
             else:
                 left = 0
                 right = len(xdata)
-                bnds.extend([(rel_peak, 1.01), (xdata[left], xdata[-1]), (min_spacing, peak_range)])
+                bnds.extend([(rel_peak, 1.01), (peak_left, peak_right), (min_spacing, peak_range)])
                 if bigauss_fit:
                     bnds.extend([(min_spacing, peak_range)])
                 peak_values = ydata[left:right]
