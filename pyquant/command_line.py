@@ -501,7 +501,7 @@ class Worker(Process):
                                 envelope = peaks.findEnvelope(xdata, ydata, measured_mz=measured_precursor, theo_mz=theoretical_precursor, max_mz=shift_max,
                                                           charge=charge, precursor_ppm=self.precursor_ppm, isotope_ppm=self.isotope_ppm, reporter_mode=1 if self.reporter_mode else 0,
                                                           quant_method=str(self.quant_method), debug=1 if self.debug else 0,
-                                                          theo_dist=theo_dist if (self.mono or precursor_label not in shift_maxes) else None,
+                                                          theo_dist=theo_dist.index.values.astype(int) if (self.mono or precursor_label not in shift_maxes) else None,
                                                           label=precursor_label, skip_isotopes=np.array(sorted(finished_isotopes[precursor_label]), dtype=int),
                                                           last_precursor=last_precursors[delta].get(precursor_label, measured_precursor),
                                                           isotopologue_limit=self.isotopologue_limit, fragment_scan=1 if is_fragmented_scan else 0,
