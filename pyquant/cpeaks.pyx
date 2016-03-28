@@ -1,7 +1,9 @@
+# cython: profile=True
 import numpy as np
 import sys
 from copy import deepcopy
 cimport numpy as np
+from libcpp cimport bool
 cimport cython
 ctypedef np.float_t FLOAT_t
 from scipy import optimize, integrate, stats
@@ -869,19 +871,21 @@ def find_nearest_indices(np.ndarray[FLOAT_t, ndim=1] array, value):
             out.append(idx)
     return out
 
-cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, measured_mz=None, theo_mz=None, max_mz=None, precursor_ppm=5, isotope_ppm=2.5, isotope_ppms=None, charge=2, debug=False,
-                 isotope_offset=0, isotopologue_limit=-1, theo_dist=None, label=None, skip_isotopes=None, last_precursor=None, quant_method='integrate', reporter_mode=False, fragment_scan=False,
-                 centroid=False, contaminant_search=True):
+cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, np.ndarray[long, ndim=1] theo_dist,
+                        np.ndarray[long, ndim=1] skip_isotopes, float measured_mz=0.,
+                        float theo_mz=0., float max_mz=0., float precursor_ppm=5, float isotope_ppm=2.5,
+                        float charge=2, int debug=0, int isotope_offset=0, int isotopologue_limit=-1,
+                        str label='', float last_precursor=0.,
+                        str quant_method='integrate', int reporter_mode=0, int fragment_scan=False,
+                        int centroid=False, int contaminant_search=True):
     # returns the envelope of isotopic peaks as well as micro envelopes  of each individual cluster
-    cdef float spacing = NEUTRON/float(charge)
+    cdef float spacing = NEUTRON/charge
     cdef float tolerance, precursor_tolerance
-    start_mz = measured_mz if isotope_offset == 0 else measured_mz+isotope_offset*NEUTRON/float(charge)
+    start_mz = measured_mz if isotope_offset == 0 else measured_mz+isotope_offset*NEUTRON/charge
     initial_mz = start_mz
-    if max_mz is not None:
-        max_mz = max_mz-spacing*0.9 if isotope_offset == 0 else max_mz+isotope_offset*NEUTRON*0.9/float(charge)
-    if isotope_ppms is None:
-        isotope_ppms = {}
-    tolerance = isotope_ppms.get(0, precursor_ppm)/1000000.0
+    if max_mz is not 0.:
+        max_mz = max_mz-spacing*0.9 if isotope_offset == 0 else max_mz+isotope_offset*NEUTRON*0.9/charge
+    tolerance = precursor_ppm/1000000.0
     env_dict, micro_dict, ppm_dict = OrderedDict(),OrderedDict(),OrderedDict()
     empty_dict = {'envelope': env_dict, 'micro_envelopes': micro_dict, 'ppms': ppm_dict}
 
@@ -902,7 +906,7 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
             first_mz = find_nearest(non_empty, theo_mz)
             if get_ppm(theo_mz, first_mz) > tolerance:
                 # let's check our last boundary
-                if last_precursor is not None:
+                if last_precursor != 0.:
                     first_mz = find_nearest(non_empty, last_precursor)
                     if get_ppm(last_precursor, first_mz) > tolerance:
                         # repeat all of that for the next isotopic index
@@ -922,8 +926,8 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
             else:
                 use_theo = True
                 break
-            tolerance = isotope_ppms.get(isotope_index, isotope_ppm)/1000000.0
-            if isotope_index == 2 or (max_mz is not None and first_mz >= max_mz):
+            tolerance = isotope_ppm/1000000.0
+            if isotope_index == 2 or (max_mz is not 0. and first_mz >= max_mz):
                 if debug:
                     print('unable to find start ion')
                 return empty_dict
@@ -938,7 +942,7 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
 
     if 'params' in start_info:
         if fragment_scan == False and start_info['error'] > tolerance:
-            start = last_precursor if last_precursor is not None else theo_mz if use_theo else start_mz
+            start = last_precursor if last_precursor != 0. else theo_mz if use_theo else start_mz
         else:
             start = start_info['params'][1]
     else:
@@ -971,13 +975,13 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
                     contaminant_int = contaminant_bounds.get('int', 0.)
 
         # set the tolerance for isotopes
-        tolerance = isotope_ppms.get(isotope_index, isotope_ppm)/1000000.0
+        tolerance = isotope_ppm/1000000.0
 
         while pos < df_len:
             # search for the ppm error until it rises again, we select the minima and if this minima is
             # outside our ppm error, we stop the expansion of our isotopic cluster
             current_loc = non_empty[pos]
-            if max_mz is not None and current_loc >= max_mz:
+            if max_mz is not 0. and current_loc >= max_mz:
                 if not valid_locations:
                     break
                 displacement = last_displacement+tolerance if last_displacement is not None else tolerance*2
@@ -993,7 +997,7 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
                     # pick the peak closest to our error tolerance
                     valid_locations2[isotope_index] = valid_locations
                     isotope_index += 1
-                    tolerance = isotope_ppms.get(isotope_index, isotope_ppm)/1000000.0
+                    tolerance = isotope_ppm/1000000.0
                     offset = spacing*isotope_index
                     displacement = get_ppm(start+offset, current_loc)
                     valid_locations = []
@@ -1006,17 +1010,29 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
 
     #combine any overlapping micro envelopes
     #final_micros = self.merge_list(micro_dict)
-    valid_keys = sorted(set(valid_locations2.keys()).intersection(theo_dist.keys() if theo_dist is not None else valid_locations2.keys()))
+
     # This attempts to use a diophantine equation to match the clusters to the theoretical distribution of isotopes
     #valid_vals = [j[1] for i in valid_keys for j in valid_locations2[i]]
     #valid_theor = pd.Series([theo_dist[i] for i in valid_keys])
     #valid_theor = valid_theor/valid_theor.max()
     #best_locations = sorted(looper(selected=valid_vals, df=df, theo=valid_theor), key=itemgetter(0))[0][1]
-    best_locations = [sorted(valid_locations2[i], key=itemgetter(0))[0] for i in valid_keys]
+    valid_keys = []
+    if theo_dist.size:
+        best_locations = []
+        for i in valid_locations2.keys():
+            if i in theo_dist:
+                valid_keys.append(1)
+                best_locations.append(sorted(valid_locations2[i], key=itemgetter(0))[0])
+            else:
+                valid_keys.append(0)
+    else:
+        valid_keys = [1 for i in valid_locations2.keys()]
+        best_locations = [sorted(valid_locations2[i], key=itemgetter(0))[0] for i in valid_locations2.keys()]
 
-    for index, isotope_index in enumerate(valid_keys):
-        if skip_isotopes is not None and isotope_index in skip_isotopes:
+    for index, to_use in enumerate(valid_keys):
+        if to_use == 0 or (skip_isotopes.size and isotope_index in skip_isotopes):
             continue
+        isotope_index = index
         _, _, empty_index = best_locations[index]
         micro_index = find_nearest_index(xdata, non_empty[empty_index])
         if ydata[micro_index] == 0:
@@ -1025,7 +1041,7 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
             micro_index -= 2
         # if micro_index == 0:
         #     pass
-        isotope_tolerance = isotope_ppms.get(isotope_index, isotope_ppm)/1000000.0
+        isotope_tolerance = isotope_ppm/1000000.0
         micro_bounds = findMicro(xdata, ydata, micro_index, ppm=precursor_tolerance if isotope_index == 0 else isotope_tolerance,
                                  calc_start_mz=start, start_mz=start_mz, isotope=isotope_index, spacing=spacing, quant_method=quant_method, centroid=centroid)
         if isotope_index == 0:
@@ -1077,8 +1093,6 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
     if contaminant_int > 1:
         for i,(isotope_index, isotope_intensity) in enumerate(isotope_pattern):
             if contaminant_int > isotope_intensity:
-                if debug:
-                    print('contaminant loss', label)
                 env_dict.pop(isotope_index)
                 micro_dict.pop(isotope_index)
                 ppm_dict.pop(isotope_index)
@@ -1102,8 +1116,6 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
                         # the pattern broke, remove isotopes beyond this point
                         remove = True
                     if remove:
-                        if debug:
-                            print('pattern2.1 loss', label, j[0], isotope_pattern)
                         env_dict.pop(j[0])
                         micro_dict.pop(j[0])
                         ppm_dict.pop(j[0])
@@ -1126,8 +1138,6 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
                         else:
                             shift = True
                     if remove:
-                        if debug:
-                            print('pattern2.2 loss', label, j[0], isotope_pattern)
                         env_dict.pop(j[0])
                         micro_dict.pop(j[0])
                         ppm_dict.pop(j[0])

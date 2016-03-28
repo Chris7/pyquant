@@ -1,3 +1,4 @@
+# cython: profile=True
 import os
 from collections import Counter
 from scipy.misc import comb
@@ -5,9 +6,9 @@ import pandas as pd
 import six
 from pythomics.proteomics.config import RESIDUE_COMPOSITION
 import numpy as np
-if os.environ.get('PYQUANT_DEV', False) == 'True':
+if True:#os.environ.get('PYQUANT_DEV', False) == 'True':
     try:
-        import pyximport; pyximport.install(setup_args={'include_dirs': np.get_include()}, reload_support=True)
+        import pyximport; pyximport.install(setup_args={'include_dirs': np.get_include()}, reload_support=True, linetrace=True, binding=True)
     except:
         pass
 from .cpeaks import *

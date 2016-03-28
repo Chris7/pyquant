@@ -40,23 +40,23 @@ from pythomics.proteomics.parsers import GuessIterator
 from pythomics.proteomics import config
 from . import peaks
 
-# def line_profiler(view=None, extra_view=None):
-#     import line_profiler
-#
-#     def wrapper(view):
-#         def wrapped(*args, **kwargs):
-#             prof = line_profiler.LineProfiler()
-#             prof.add_function(view)
-#             if extra_view:
-#                 [prof.add_function(v) for v in extra_view]
-#             with prof:
-#                 resp = view(*args, **kwargs)
-#             prof.print_stats()
-#             return resp
-#         return wrapped
-#     if view:
-#         return wrapper(view)
-#     return wrapper
+def line_profiler(view=None, extra_view=None):
+    import line_profiler
+
+    def wrapper(view):
+        def wrapped(*args, **kwargs):
+            prof = line_profiler.LineProfiler()
+            prof.add_function(view)
+            if extra_view:
+                [prof.add_function(v) for v in extra_view]
+            with prof:
+                resp = view(*args, **kwargs)
+            prof.print_stats()
+            return resp
+        return wrapped
+    if view:
+        return wrapper(view)
+    return wrapper
 
 description = """
 PyQuant is a quantification program for mass spectrometry data. It attempts to be a general implementation to quantify
@@ -132,7 +132,7 @@ class Reader(Process):
 class Worker(Process):
     def __init__(self, queue=None, results=None, precision=6, raw_name=None, mass_labels=None, isotope_ppms=None,
                  debug=False, html=False, mono=False, precursor_ppm=5.0, isotope_ppm=2.5, quant_method='integrate',
-                 reader_in=None, reader_out=None, thread=None, fitting_run=False, msn_rt_map=None, reporter_mode=False,
+                 reader_in=None, reader_out=None, thread=None, msn_rt_map=None, reporter_mode=False,
                  spline=None, isotopologue_limit=-1, labels_needed=1, overlapping_mz=False, min_resolution=0, min_scans=3,
                  quant_msn_map=None, mrm=False, mrm_pair_info=None, peak_cutoff=0.05, ratio_cutoff=1, replicate=False,
                  ref_label=None, max_peaks=4, parser_args=None):
@@ -155,7 +155,6 @@ class Worker(Process):
         self.html = html
         self.mono = mono
         self.thread = thread
-        self.fitting_run = fitting_run
         self.isotope_ppms = isotope_ppms
         self.quant_method = quant_method
         self.reporter_mode = reporter_mode
@@ -340,6 +339,8 @@ class Worker(Process):
         return (self.convertScan(scan), {'centroid': scan.get('centroid', False)}) if scan is not None else (None, {})
 
     # @memory_profiler
+    # @profile(print_stats=1)
+    # @line_profiler(extra_view=[peaks.findEnvelope])
     def quantify_peaks(self, params):
         try:
             html_images = {}
@@ -351,7 +352,7 @@ class Worker(Process):
             scans_to_quant = quant_scan.get('scans')
             if scans_to_quant:
                 scans_to_quant.pop(scans_to_quant.index(ms1))
-            charge = target_scan['charge']
+            charge = float(target_scan['charge'])
             mass = target_scan['mass']
 
             combine_xics = scan_info.get('combine_xics')
@@ -410,10 +411,10 @@ class Worker(Process):
                         silac_shift += sum([global_mass for mod_aa in peptide if mod_aa not in added_residues])
                     silac_shift += cterm_mass+nterm_mass
 
-                label_mz = precursor+silac_shift/float(charge)
+                label_mz = precursor+silac_shift/charge
                 precursors[silac_label]['uncalibrated_mz'] = label_mz
                 precursors[silac_label]['calibrated_mz'] = self.get_calibrated_mass(label_mz)
-                precursors[silac_label]['theoretical_mz'] = theor_mass+silac_shift/float(charge)
+                precursors[silac_label]['theoretical_mz'] = theor_mass+silac_shift/charge
                 data[silac_label] = copy.deepcopy(silac_dict)
             if not precursors:
                 precursors['Precursor']['uncalibrated_mz'] = precursor
@@ -430,13 +431,13 @@ class Worker(Process):
 
             finished_isotopes = {i: set([]) for i in precursors.keys()}
             result_dict = {'peptide': target_scan.get('mod_peptide', peptide),
-                           'scan': scanId, 'ms1': ms1, 'charge': charge,
+                           'scan': scanId, 'ms1': ms1, 'charge': str(int(charge)),
                            'modifications': target_scan.get('modifications'), 'rt': rt,
                            'accession': target_scan.get('accession')}
             ms_index = 0
             delta = -1
             theo_dist = peaks.calculate_theoretical_distribution(peptide.upper()) if peptide else None
-            spacing = config.NEUTRON/float(charge)
+            spacing = config.NEUTRON/charge
             isotope_labels = {}
             isotopes_chosen = {}
             last_precursors = {-1: {}, 1: {}}
@@ -495,15 +496,16 @@ class Worker(Process):
                                 theoretical_precursor = precursor_info['theoretical_mz']
                                 data[precursor_label]['calibrated_precursor'] = measured_precursor
                                 data[precursor_label]['precursor'] = uncalibrated_precursor
-                                shift_max = shift_maxes.get(precursor_label) if self.overlapping_mz is False else None
+                                shift_max = shift_maxes.get(precursor_label, 0.) if self.overlapping_mz is False else 0.
                                 is_fragmented_scan = (current_scan == initial_scan) and (precursor == measured_precursor)
                                 envelope = peaks.findEnvelope(xdata, ydata, measured_mz=measured_precursor, theo_mz=theoretical_precursor, max_mz=shift_max,
-                                                              charge=charge, precursor_ppm=self.precursor_ppm, isotope_ppm=self.isotope_ppm, reporter_mode=self.reporter_mode,
-                                                              isotope_ppms=self.isotope_ppms if self.fitting_run else None, quant_method=self.quant_method, debug=self.debug,
-                                                              theo_dist=theo_dist if (self.mono or precursor_label not in shift_maxes) else None, label=precursor_label, skip_isotopes=finished_isotopes[precursor_label],
-                                                              last_precursor=last_precursors[delta].get(precursor_label, measured_precursor),
-                                                              isotopologue_limit=self.isotopologue_limit, fragment_scan=is_fragmented_scan,
-                                                              centroid=scan_params.get('centroid', False))
+                                                          charge=charge, precursor_ppm=self.precursor_ppm, isotope_ppm=self.isotope_ppm, reporter_mode=1 if self.reporter_mode else 0,
+                                                          quant_method=str(self.quant_method), debug=1 if self.debug else 0,
+                                                          theo_dist=theo_dist if (self.mono or precursor_label not in shift_maxes) else None,
+                                                          label=precursor_label, skip_isotopes=np.array(sorted(finished_isotopes[precursor_label]), dtype=int),
+                                                          last_precursor=last_precursors[delta].get(precursor_label, measured_precursor),
+                                                          isotopologue_limit=self.isotopologue_limit, fragment_scan=1 if is_fragmented_scan else 0,
+                                                          centroid=1 if scan_params.get('centroid', False) else 0)
                                 if not envelope['envelope']:
                                     if self.debug:
                                         print('envelope empty', envelope, measured_precursor, initial_scan, current_scan, last_precursors)
