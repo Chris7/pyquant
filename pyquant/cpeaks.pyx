@@ -123,18 +123,7 @@ cpdef float bigauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, 
     if any([np.isnan(i) for i in guess]):
         return np.inf
     cdef np.ndarray[FLOAT_t, ndim=1] data = bigauss_ndim(xdata, guess)
-    # absolute deviation as our distance metric. Empirically found to give better results than
-    # residual sum of squares for this data.
     cdef float residual = sum((ydata-data)**2)
-    # cdef float fit, real, res
-    # cdef float residual = 0
-    # for i in range(len(ydata)):
-    #     fit = data[i]
-    #     real = ydata[i]
-    #     res = (real-fit)**2
-    #     if real > fit > 0.01:
-    #         res = res*2*real/fit
-    #     residual += res
     return residual
 
 cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata,
@@ -165,7 +154,6 @@ cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.nda
     if rb < min_spacing:
         rb = min_spacing*5
     bnds = np.array([(rel_peak*0.75, 1.01) if rel_peak > 0 else (0.0, 1.0), (xdata[0], xdata[-1]), (min_spacing, lb), (min_spacing, rb)])
-    #print bnds, xdata, peak_loc
     average = np.average(xdata, weights=ydata)
     variance = np.sqrt(np.average((xdata-average)**2, weights=ydata))
     if variance == 0:
@@ -935,13 +923,7 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
             pos += 1
 
     #combine any overlapping micro envelopes
-    #final_micros = self.merge_list(micro_dict)
     valid_keys = sorted(set(valid_locations2.keys()).intersection(theo_dist.keys() if theo_dist is not None else valid_locations2.keys()))
-    # This attempts to use a diophantine equation to match the clusters to the theoretical distribution of isotopes
-    #valid_vals = [j[1] for i in valid_keys for j in valid_locations2[i]]
-    #valid_theor = pd.Series([theo_dist[i] for i in valid_keys])
-    #valid_theor = valid_theor/valid_theor.max()
-    #best_locations = sorted(looper(selected=valid_vals, df=df, theo=valid_theor), key=itemgetter(0))[0][1]
     best_locations = [sorted(valid_locations2[i], key=itemgetter(0))[0] for i in valid_keys]
 
     for index, isotope_index in enumerate(valid_keys):

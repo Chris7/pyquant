@@ -1,6 +1,7 @@
 __author__ = 'chris'
 from unittest import TestCase
 import numpy as np
+from .utils import timer
 from .. import peaks
 
 def get_gauss_value(x, amp, mu, std):
@@ -25,10 +26,11 @@ class GaussianTests(TestCase):
 #     y = peaks.gauss(x, amp, mu, std)
 #     assert np.max(y) == 1
 #     assert y[np.where(x)==1] == get_gauss_value(1, amp, mu, std)
-
+    @timer
     def test_gauss_ndim(self):
         assert np.round(self.two_gauss[np.where(self.x==0)],2) == np.round(get_gauss_value(0, self.amp, self.mu, self.std)+get_gauss_value(0, self.amp, self.mu2, self.std),2)
 
+    @timer
     def test_peak_fitting(self):
         # first, a simple case
         params, residual = peaks.findAllPeaks(self.x, self.one_gauss)

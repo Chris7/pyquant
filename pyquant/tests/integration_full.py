@@ -7,6 +7,7 @@ import numpy as np
 import subprocess
 
 from .mixins import FileMixins
+from .utils import timer
 from . import config
 
 
@@ -18,6 +19,7 @@ class EColiTest(FileMixins, TestCase):
         self.r_std = 0.5
         self.k_std = 0.7
 
+    @timer
     def test_pyquant(self):
         com = [self.executable, '--search-file', self.search_file, '--scan-file', self.mzml, '-p', str(config.CORES), '-o', self.output, '--html', '--precursor-ppm', '2']
         subprocess.call(com)
