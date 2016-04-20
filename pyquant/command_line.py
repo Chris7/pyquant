@@ -40,23 +40,23 @@ from pythomics.proteomics.parsers import GuessIterator
 from pythomics.proteomics import config
 from . import peaks
 
-# def line_profiler(view=None, extra_view=None):
-#     import line_profiler
-#
-#     def wrapper(view):
-#         def wrapped(*args, **kwargs):
-#             prof = line_profiler.LineProfiler()
-#             prof.add_function(view)
-#             if extra_view:
-#                 [prof.add_function(v) for v in extra_view]
-#             with prof:
-#                 resp = view(*args, **kwargs)
-#             prof.print_stats()
-#             return resp
-#         return wrapped
-#     if view:
-#         return wrapper(view)
-#     return wrapper
+def line_profiler(view=None, extra_view=None):
+    import line_profiler
+
+    def wrapper(view):
+        def wrapped(*args, **kwargs):
+            prof = line_profiler.LineProfiler()
+            prof.add_function(view)
+            if extra_view:
+                [prof.add_function(v) for v in extra_view]
+            with prof:
+                resp = view(*args, **kwargs)
+            prof.print_stats()
+            return resp
+        return wrapped
+    if view:
+        return wrapper(view)
+    return wrapper
 
 description = """
 PyQuant is a quantification program for mass spectrometry data. It attempts to be a general implementation to quantify
@@ -193,7 +193,6 @@ class Worker(Process):
         slope, intercept, r_value, p_value, std_err = linregress(xrange(len(data)),data)
         return np.abs(slope) < 0.2 if self.mono else np.abs(slope) < 0.1
 
-    # @line_profiler
     def replaceOutliers(self, common_peaks, combined_data, debug=False):
         x = []
         y = []
@@ -340,6 +339,7 @@ class Worker(Process):
         return (self.convertScan(scan), {'centroid': scan.get('centroid', False)}) if scan is not None else (None, {})
 
     # @memory_profiler
+    # @line_profiler(extra_view=[peaks.findEnvelope, peaks.findAllPeaks, peaks.findMicro])
     def quantify_peaks(self, params):
         try:
             html_images = {}
@@ -1998,6 +1998,15 @@ def run_pyquant():
             scan_count = len(scans_to_submit)
         for i in scans_to_submit:
             in_queue.put(i[1])
+            # in_queue.put(i[1])
+            # in_queue.put(i[1])
+            # in_queue.put(i[1])
+            # in_queue.put(i[1])
+            # in_queue.put(i[1])
+            # in_queue.put(i[1])
+            # in_queue.put(i[1])
+            # in_queue.put(i[1])
+            # in_queue.put(i[1])
 
         sys.stderr.write('{0} processed and placed into queue.\n'.format(filename))
 
