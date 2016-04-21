@@ -1,4 +1,4 @@
-FROM debian:jessie
+FROM ubuntu:14.04
 
 RUN apt-get update && apt-get install -y \
     libxml2-dev \
@@ -10,8 +10,16 @@ RUN apt-get update && apt-get install -y \
     libblas-dev \
     gfortran \
     libxslt1-dev \
-    zlib1g-dev
+    zlib1g-dev \
+    git
 
 RUN pip install numpy scipy pandas cython
 
-RUN pip install pyquant-ms
+RUN git clone https://github.com/Chris7/pyquant.git
+
+WORKDIR pyquant
+
+RUN pip install .
+
+ENTRYPOINT ["pyQuant"]
+CMD ["--help"]
