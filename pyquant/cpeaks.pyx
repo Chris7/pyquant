@@ -41,7 +41,7 @@ cpdef float gauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, nd
     cdef float residual = sum((ydata-data)**2)
     return residual
 
-cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
+cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_jac_old(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
     cdef np.ndarray[FLOAT_t, ndim=1] jac
     cdef np.ndarray[FLOAT_t, ndim=1] lx, ly, rx, ry
     cdef float amp, mu, stdl, stdr, sigma1, sigma2
@@ -79,7 +79,37 @@ cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params
             jac[i] += sum((-2*amp*((rx-mu)**2)*exp_term*(ry-amp_exp_term))/(sigma2**3))
     return jac
 
-cpdef np.ndarray[FLOAT_t, ndim=1] gauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
+cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
+    cdef np.ndarray[FLOAT_t, ndim=1] jac, common, amp_term, left_common, right_common
+    cdef np.ndarray[FLOAT_t, ndim=1] lx, ly, rx, ry
+    cdef float amp, mu, sigma1, sigma2
+    cdef int i
+    jac = np.zeros_like(params)
+    common = -bigauss_ndim(x, params) + y
+    for i in xrange(params.shape[0]):
+        if i%4 == 0:
+            amp = params[i]
+        elif i%4 == 1:
+            mu = params[i]
+        elif i%4 == 2:
+            sigma1 = params[i]
+        elif i%4 == 3:
+            sigma2 = params[i]
+            lx = x[x<=mu]
+            amp_term = np.exp(-(-mu + lx)**2/(2*sigma1**2))
+            left_common = common[x<=mu]
+            jac[i-3] += sum(-2*left_common*amp_term)
+            jac[i-2] += sum(amp*(2*mu - 2*lx)*left_common*amp_term/sigma1**2)
+            jac[i-1] += sum(-2*amp*(-mu + lx)**2*left_common*amp_term/sigma1**3)
+            rx = x[x>mu]
+            amp_term = np.exp(-(-mu + rx)**2/(2*sigma2**2))
+            right_common = common[x>mu]
+            jac[i-3] += sum(-2*right_common*amp_term)
+            jac[i-2] += sum(amp*(2*mu - 2*rx)*right_common*amp_term/sigma2**2)
+            jac[i] += sum(-2*amp*(-mu + rx)**2*right_common*amp_term/sigma2**3)
+    return jac
+
+cpdef np.ndarray[FLOAT_t, ndim=1] gauss_jac_old(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
     cdef np.ndarray[FLOAT_t, ndim=1] jac
     cdef float amp, mu, sigma
     jac = np.zeros_like(params)
@@ -95,7 +125,24 @@ cpdef np.ndarray[FLOAT_t, ndim=1] gauss_jac(np.ndarray[FLOAT_t, ndim=1] params, 
             jac[i-2] += sum(-2*exp_term*(y-amp_exp_term))
             jac[i-1] += sum(-2*amp*(x-mu)*exp_term*(y-amp_exp_term)/(sigma**2))
             jac[i] += sum(-2*amp*((x-mu)**2)*exp_term*(y-amp_exp_term)/(sigma**3))
-    # print(params, jac)
+    return jac
+
+cpdef np.ndarray[FLOAT_t, ndim=1] gauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
+    cdef np.ndarray[FLOAT_t, ndim=1] jac, common, amp_term
+    cdef float amp, mu, sigma
+    jac = np.zeros_like(params)
+    common = -gauss_ndim(x, params) + y
+    for i in xrange(params.shape[0]):
+        if i%3 == 0:
+            amp = params[i]
+        elif i%3 == 1:
+            mu = params[i]
+        elif i%3 == 2:
+            sigma = params[i]
+            amp_term = np.exp(-(-mu + x)**2/(2*sigma**2))
+            jac[i-2] += sum(-2*common*amp_term)
+            jac[i-1] += sum(amp*(2*mu - 2*x)*common*amp_term/sigma**2)
+            jac[i] += sum(-2*amp*(-mu + x)**2*common*amp_term/sigma**3)
     return jac
 
 cdef np.ndarray[FLOAT_t, ndim=1] bigauss(np.ndarray[FLOAT_t, ndim=1] x, float amp, float mu, float stdl, float stdr):

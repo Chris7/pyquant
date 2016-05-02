@@ -1,5 +1,5 @@
 __author__ = 'chris'
-from unittest import TestCase
+import unittest
 import numpy as np
 from .utils import timer
 from .. import peaks
@@ -7,7 +7,7 @@ from .. import peaks
 def get_gauss_value(x, amp, mu, std):
     return amp*np.exp(-(x - mu)**2/(2*std**2))
 
-class GaussianTests(TestCase):
+class GaussianTests(unittest.TestCase):
     def setUp(self):
         self.amp, self.mu, self.std, self.mu2 = 1., 0., 1., 3.
         self.one_gauss_params = np.array([self.amp, self.mu, self.std], dtype=np.float)
@@ -49,3 +49,38 @@ class GaussianTests(TestCase):
             except AssertionError:
                 failures += 1
         self.assertLess(failures, 3)
+
+class FittingTests(unittest.TestCase):
+    def setUp(self):
+        super(FittingTests, self).setUp()
+        self.amp, self.mu, self.std, self.mu2 = 1., 0., 1., 3.
+        self.one_gauss_params = np.array([self.amp, self.mu, self.std], dtype=np.float)
+        self.two_gauss_params = np.array([self.amp, self.mu, self.std, self.amp, self.mu2, self.std], dtype=np.float)
+        self.x = np.array(np.linspace(-5, 5, 101), dtype=np.float)
+        self.one_gauss = peaks.gauss_ndim(self.x, self.one_gauss_params)
+        self.two_gauss = peaks.gauss_ndim(self.x, self.two_gauss_params)
+
+        self.std_2, self.std2_2 = 0.5, 0.75
+        self.one_bigauss_params = np.array([self.amp, self.mu, self.std, self.std_2], dtype=np.float)
+        self.two_bigauss_params = np.array([self.amp, self.mu, self.std, self.std_2, self.amp, self.mu2, self.std, self.std2_2], dtype=np.float)
+        self.one_bigauss = peaks.bigauss_ndim(self.x, self.one_bigauss_params)
+        self.two_bigauss = peaks.bigauss_ndim(self.x, self.two_bigauss_params)
+
+    def test_jacobians(self):
+        one_gauss_jac = peaks.gauss_jac(self.one_gauss_params, self.x, self.one_gauss)
+        self.assertEqual(one_gauss_jac.tolist(), np.zeros_like(self.one_gauss_params).tolist())
+
+        two_gauss_jac = peaks.gauss_jac(self.two_gauss_params, self.x, self.two_gauss)
+        self.assertEqual(two_gauss_jac.tolist(), np.zeros_like(self.two_gauss_params).tolist())
+        one_bigauss_jac = peaks.bigauss_jac(self.one_bigauss_params, self.x, self.one_bigauss)
+        self.assertEqual(one_bigauss_jac.tolist(), np.zeros_like(self.one_bigauss_params).tolist())
+
+        two_bigauss_jac = peaks.bigauss_jac(self.two_bigauss_params, self.x, self.two_bigauss)
+        self.assertEqual(two_bigauss_jac.tolist(), np.zeros_like(self.two_bigauss_params).tolist())
+
+    def test_hessians(self):
+        pass
+
+
+if __name__ == '__main__':
+    unittest.main()
