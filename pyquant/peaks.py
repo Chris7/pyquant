@@ -428,7 +428,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
 
     peaks_found = {}
     if peak_width_start > peak_width_end:
-        peak_width_start = peak_width_end
+        peak_width_end = peak_width_start + 1
     peak_width = peak_width_start
     while peak_width <= peak_width_end:
         row_peaks = np.array(argrelmax(ydata_peaks, order=peak_width)[0], dtype=int)
