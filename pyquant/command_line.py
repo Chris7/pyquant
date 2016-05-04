@@ -2179,7 +2179,7 @@ def run_pyquant():
                     label2_log = 'L{}'.format(silac_label2)
                     label2_logp = 'L{}_p'.format(silac_label2)
                     label2_int = '{} Intensity'.format(silac_label2)
-                    label2_pint = '{} Peak Intensity'.format(silac_label1)
+                    label2_pint = '{} Peak Intensity'.format(silac_label2)
                     label2_hif = '{} Isotopes Found'.format(silac_label2)
                     label2_hifp = '{} Isotopes Found p'.format(silac_label2)
 
@@ -2224,10 +2224,12 @@ def run_pyquant():
 
                     cols = []
                     for i in (silac_label1, silac_label2):
-                        cols.extend(['{} {}'.format(i,j) for j in ['Intensity', 'Isotopes Found', 'Peak Intensity', 'SNR', 'Residual']])
+                        cols.extend(['{} {}'.format(i,j) for j in ['Intensity', 'Isotopes Found', 'Peak Area', 'SNR', 'Residual']])
 
                     fit_data = data.loc[:, cols]
-                    # print(np.log2)
+
+                    # TODO: Fix this in hte model to be peak area
+                    fit_data.rename(columns={'{} Peak Area'.format(silac_label1): label1_pint, '{} Peak Area'.format(silac_label2): label2_pint}, inplace=True)
                     fit_data.loc[:,(label2_int, label1_int, label2_pint, label1_pint)] = np.log2(fit_data.loc[:,(label2_int, label1_int, label2_pint, label1_pint)].astype(float))
                     from sklearn import preprocessing
                     from patsy import dmatrix
