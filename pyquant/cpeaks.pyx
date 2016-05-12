@@ -2,8 +2,12 @@ import numpy as np
 import sys
 from copy import deepcopy
 cimport numpy as np
+
 cimport cython
-ctypedef np.float_t FLOAT_t
+ctypedef fused FLOAT_t:
+    np.float32_t
+    np.float64_t
+
 from scipy import optimize, integrate
 from scipy.interpolate import interp1d
 from scipy.ndimage.filters import gaussian_filter1d
@@ -12,7 +16,7 @@ from operator import itemgetter, attrgetter
 from collections import OrderedDict
 from pythomics.proteomics.config import NEUTRON
 
-cdef int within_bounds(np.ndarray[FLOAT_t, ndim=1] res, np.ndarray[FLOAT_t, ndim=2] bnds):
+cdef int within_bounds(np.ndarray[FLOAT_t[:], ndim=1] res, np.ndarray[FLOAT_t[:], ndim=2] bnds):
     for i,j in zip(res, bnds):
         if j[0] is not None and i < j[0]:
             return 0
@@ -20,30 +24,30 @@ cdef int within_bounds(np.ndarray[FLOAT_t, ndim=1] res, np.ndarray[FLOAT_t, ndim
             return 0
     return 1
 
-cdef np.ndarray[FLOAT_t, ndim=1] gauss(np.ndarray[FLOAT_t, ndim=1] x, float amp, float mu, float std):
-    cdef np.ndarray[FLOAT_t, ndim=1] y = amp*np.exp(-(x - mu)**2/(2*std**2))
+cdef np.ndarray[FLOAT_t[:], ndim=1] gauss(np.ndarray[FLOAT_t[:], ndim=1] x, float amp, float mu, float std):
+    cdef np.ndarray[FLOAT_t[:], ndim=1] y = amp*np.exp(-(x - mu)**2/(2*std**2))
     return y
 
-cpdef np.ndarray[FLOAT_t, ndim=1] gauss_ndim(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] params):
-    cdef np.ndarray[FLOAT_t, ndim=1] amps
-    cdef np.ndarray[FLOAT_t, ndim=1] mus
-    cdef np.ndarray[FLOAT_t, ndim=1] sigmas
+cpdef np.ndarray[FLOAT_t[:], ndim=1] gauss_ndim(np.ndarray[FLOAT_t[:], ndim=1] xdata, np.ndarray[FLOAT_t[:], ndim=1] params):
+    cdef np.ndarray[FLOAT_t[:], ndim=1] amps
+    cdef np.ndarray[FLOAT_t[:], ndim=1] mus
+    cdef np.ndarray[FLOAT_t[:], ndim=1] sigmas
     amps, mus, sigmas = params[::3], params[1::3], params[2::3]
-    cdef np.ndarray[FLOAT_t, ndim=1] data = np.zeros(len(xdata))
+    cdef np.ndarray[FLOAT_t[:], ndim=1] data = np.zeros(len(xdata))
     for amp, mu, sigma in zip(amps, mus, sigmas):
         data += gauss(xdata, amp, mu, sigma)
     return data
 
-cpdef float gauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata):
-    cdef np.ndarray[FLOAT_t, ndim=1] data = gauss_ndim(xdata, guess)
+cpdef float gauss_func(np.ndarray[FLOAT_t[:], ndim=1] guess, np.ndarray[FLOAT_t[:], ndim=1] xdata, np.ndarray[FLOAT_t[:], ndim=1] ydata):
+    cdef np.ndarray[FLOAT_t[:], ndim=1] data = gauss_ndim(xdata, guess)
     # absolute deviation as our distance metric. Empirically found to give better results than
     # residual sum of squares for this data.
     cdef float residual = sum((ydata-data)**2)
     return residual
 
-cpdef np.ndarray[FLOAT_t, ndim=2] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
-    cdef np.ndarray[FLOAT_t, ndim=2] jac
-    cdef np.ndarray[FLOAT_t, ndim=1] lx, ly, rx, ry
+cpdef np.ndarray[FLOAT_t[:], ndim=2] bigauss_jac(np.ndarray[FLOAT_t[:], ndim=1] params, np.ndarray[FLOAT_t[:], ndim=1] x, np.ndarray[FLOAT_t[:], ndim=1] y):
+    cdef np.ndarray[FLOAT_t[:], ndim=2] jac
+    cdef np.ndarray[FLOAT_t[:], ndim=1] lx, ly, rx, ry
     cdef float amp, mu, stdl, stdr, sigma1, sigma2
     cdef int i
     jac = np.zeros((params.shape[0], 1))
@@ -79,8 +83,8 @@ cpdef np.ndarray[FLOAT_t, ndim=2] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params
             jac[i, 0] += sum((-2*amp*((rx-mu)**2)*exp_term*(ry-amp_exp_term))/(sigma2**3))
     return jac.transpose()
 
-cpdef np.ndarray[FLOAT_t, ndim=2] gauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
-    cdef np.ndarray[FLOAT_t, ndim=2] jac
+cpdef np.ndarray[FLOAT_t[:], ndim=2] gauss_jac(np.ndarray[FLOAT_t[:], ndim=1] params, np.ndarray[FLOAT_t[:], ndim=1] x, np.ndarray[FLOAT_t[:], ndim=1] y):
+    cdef np.ndarray[FLOAT_t[:], ndim=2] jac
     cdef float amp, mu, sigma
     jac = np.zeros([len(params), 1])
     for i in xrange(len(params)):
@@ -98,31 +102,31 @@ cpdef np.ndarray[FLOAT_t, ndim=2] gauss_jac(np.ndarray[FLOAT_t, ndim=1] params, 
     # print(params, jac)
     return jac.transpose()
 
-cdef np.ndarray[FLOAT_t, ndim=1] bigauss(np.ndarray[FLOAT_t, ndim=1] x, float amp, float mu, float stdl, float stdr):
+cdef np.ndarray[FLOAT_t[:], ndim=1] bigauss(np.ndarray[FLOAT_t[:], ndim=1] x, float amp, float mu, float stdl, float stdr):
     cdef float sigma1 = stdl/1.177
     cdef float sigma2 = stdr/1.177
-    cdef np.ndarray[FLOAT_t, ndim=1] lx = x[x<=mu]
-    cdef np.ndarray[FLOAT_t, ndim=1] left = amp*np.exp(-(lx-mu)**2/(2*sigma1**2))
-    cdef np.ndarray[FLOAT_t, ndim=1] rx = x[x>mu]
-    cdef np.ndarray[FLOAT_t, ndim=1] right = amp*np.exp(-(rx-mu)**2/(2*sigma2**2))
-    cdef np.ndarray[FLOAT_t, ndim=1] y = np.concatenate([left, right], axis=0)
+    cdef np.ndarray[FLOAT_t[:], ndim=1] lx = x[x<=mu]
+    cdef np.ndarray[FLOAT_t[:], ndim=1] left = amp*np.exp(-(lx-mu)**2/(2*sigma1**2))
+    cdef np.ndarray[FLOAT_t[:], ndim=1] rx = x[x>mu]
+    cdef np.ndarray[FLOAT_t[:], ndim=1] right = amp*np.exp(-(rx-mu)**2/(2*sigma2**2))
+    cdef np.ndarray[FLOAT_t[:], ndim=1] y = np.concatenate([left, right], axis=0)
     return y
 
-cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_ndim(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] params):
-    cdef np.ndarray[FLOAT_t, ndim=1] amps
-    cdef np.ndarray[FLOAT_t, ndim=1] mus
-    cdef np.ndarray[FLOAT_t, ndim=1] sigmasl
-    cdef np.ndarray[FLOAT_t, ndim=1] sigmasr
+cpdef np.ndarray[FLOAT_t[:], ndim=1] bigauss_ndim(np.ndarray[FLOAT_t[:], ndim=1] xdata, np.ndarray[FLOAT_t[:], ndim=1] params):
+    cdef np.ndarray[FLOAT_t[:], ndim=1] amps
+    cdef np.ndarray[FLOAT_t[:], ndim=1] mus
+    cdef np.ndarray[FLOAT_t[:], ndim=1] sigmasl
+    cdef np.ndarray[FLOAT_t[:], ndim=1] sigmasr
     amps, mus, sigmasl, sigmasr = params[::4], params[1::4], params[2::4], params[3::4]
-    cdef np.ndarray[FLOAT_t, ndim=1] data = np.zeros(len(xdata))
+    cdef np.ndarray[FLOAT_t[:], ndim=1] data = np.zeros(len(xdata))
     for amp, mu, sigma1, sigma2 in zip(amps, mus, sigmasl, sigmasr):
         data += bigauss(xdata, amp, mu, sigma1, sigma2)
     return data
 
-cpdef float bigauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata):
+cpdef float bigauss_func(np.ndarray[FLOAT_t[:], ndim=1] guess, np.ndarray[FLOAT_t[:], ndim=1] xdata, np.ndarray[FLOAT_t[:], ndim=1] ydata):
     if any([np.isnan(i) for i in guess]):
         return np.inf
-    cdef np.ndarray[FLOAT_t, ndim=1] data = bigauss_ndim(xdata, guess)
+    cdef np.ndarray[FLOAT_t[:], ndim=1] data = bigauss_ndim(xdata, guess)
     # absolute deviation as our distance metric. Empirically found to give better results than
     # residual sum of squares for this data.
     cdef float residual = sum((ydata-data)**2)
@@ -137,13 +141,13 @@ cpdef float bigauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, 
     #     residual += res
     return residual
 
-cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata,
+cpdef np.ndarray[FLOAT_t[:]] fixedMeanFit(np.ndarray[FLOAT_t[:], ndim=1] xdata, np.ndarray[FLOAT_t[:], ndim=1] ydata,
                                        int peak_index=1, debug=False):
     cdef float rel_peak = ydata[peak_index]
     cdef float peak_loc = xdata[peak_index]
     cdef int peak_left, peak_right
     cdef float peak_min, peak_max, average, variance
-    cdef np.ndarray[FLOAT_t, ndim=1] bnds
+    cdef np.ndarray[FLOAT_t[:], ndim=1] bnds
 
     ydata /= ydata.max()
     peak_left, peak_right = findPeak(convolve(ydata, kaiser(10, 14), mode='same'), peak_index)
@@ -179,7 +183,7 @@ cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.nda
             variance = 0.05
     if variance > xdata[peak_index]-peak_min or variance > peak_max-xdata[peak_index]:
         variance = xdata[peak_index]-peak_min
-    cdef np.ndarray[FLOAT_t] guess = np.array([rel_peak, peak_loc, variance, variance])
+    cdef np.ndarray[FLOAT_t[:]] guess = np.array([rel_peak, peak_loc, variance, variance])
     args = (xdata, ydata)
     base_opts = {'maxiter': 1000, 'ftol': 1e-20}
     routines = [('SLSQP', base_opts), ('TNC', base_opts), ('L-BFGS-B', base_opts)]
@@ -200,7 +204,7 @@ cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.nda
         results.append(optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, tol=1e-20))
     # cdef int n = len(xdata)
     cdef float lowest = -1
-    cdef np.ndarray[FLOAT_t] best
+    cdef np.ndarray[FLOAT_t[:]] best
     best = results[0].x
 
     for i in results:
@@ -212,14 +216,14 @@ cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.nda
     # best.bic = bic
     return best
 
-cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata,
+cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t[:], ndim=1] xdata, np.ndarray[FLOAT_t[:], ndim=1] ydata,
                                        int peak_index=1, debug=False):
     cdef float rel_peak, mval
     cdef float peak_loc = xdata[peak_index]
     cdef int peak_left, peak_right
-    cdef np.ndarray[FLOAT_t, ndim=1] conv_y
+    cdef np.ndarray[FLOAT_t[:], ndim=1] conv_y
     cdef float peak_min, peak_max, average, variance
-    cdef np.ndarray[FLOAT_t, ndim=1] bnds
+    cdef np.ndarray[FLOAT_t[:], ndim=1] bnds
 
     mval = ydata.max()
     conv_y = gaussian_filter1d(convolve(ydata, kaiser(10, 14), mode='same'), 3, mode='constant')
@@ -264,7 +268,7 @@ cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t,
         variance = xdata[peak_index]-peak_min
     if variance < min_spacing:
         variance = min_spacing
-    cdef np.ndarray[FLOAT_t] guess = np.array([rel_peak, peak_loc, variance, variance])
+    cdef np.ndarray[FLOAT_t[:]] guess = np.array([rel_peak, peak_loc, variance, variance])
     args = (xdata, ydata)
     base_opts = {'maxiter': 1000}
     routines = [('SLSQP', base_opts), ('TNC', base_opts), ('L-BFGS-B', base_opts)]
@@ -288,7 +292,7 @@ cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t,
         results.append(optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, jac=bigauss_jac))
     # cdef int n = len(xdata)
     cdef float lowest = -1
-    cdef np.ndarray[FLOAT_t] best
+    cdef np.ndarray[FLOAT_t[:]] best
     if debug:
         print('fitting results', results)
     best_fit = results[0]
@@ -304,7 +308,7 @@ cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t,
     # best.bic = bic
     return best_fit.x, best_fit.fun
 
-cpdef basin_stepper(np.ndarray[FLOAT_t, ndim=1] args):
+cpdef basin_stepper(np.ndarray[FLOAT_t[:], ndim=1] args):
     args[::1] += 0.1
     args[::2] += 0.1
     args[::3] += 0.05
@@ -312,7 +316,7 @@ cpdef basin_stepper(np.ndarray[FLOAT_t, ndim=1] args):
     return args
 
 @cython.boundscheck(False)
-cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata_original,
+cpdef tuple findAllPeaks(np.ndarray[FLOAT_t[:], ndim=1] xdata, np.ndarray[FLOAT_t[:], ndim=1] ydata_original,
                          float min_dist=0, filter=False, bigauss_fit=False, rt_peak=0.0, mrm=False,
                          int max_peaks=4, debug=False, peak_width_start=2, snr=0, amplitude_filter=0,
                          peak_width_end=4):
@@ -323,7 +327,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
     cdef dict peaks_found, final_peaks, peak_info
     cdef int peak_width, last_peak, next_peak, left, right, i, v, minima_index, left_stop, right_stop, right_stop_index
     cdef float peak_min, peak_max, rel_peak, average, variance, best_rss, rt_peak_val, minima_value
-    cdef np.ndarray[FLOAT_t, ndim=1] peak_values, peak_indices, ydata, ydata_peaks, best_fit
+    cdef np.ndarray[FLOAT_t[:], ndim=1] peak_values, peak_indices, ydata, ydata_peaks, best_fit
 
     amplitude_filter /= ydata_original.max()
     ydata = ydata_original/ydata_original.max()
@@ -595,7 +599,7 @@ cpdef tuple findAllPeaks(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, 
 
     return best_fit, best_rss
 
-cdef tuple findPeak(np.ndarray[FLOAT_t, ndim=1] y, int srt):
+cdef tuple findPeak(np.ndarray[FLOAT_t[:], ndim=1] y, int srt):
     # check our SNR, if it's low, lessen our window
     cdef int left_offset = 1
     cdef int right_offset = 2
@@ -603,7 +607,7 @@ cdef tuple findPeak(np.ndarray[FLOAT_t, ndim=1] y, int srt):
     cdef int rsrt = srt+right_offset if srt+right_offset < len(y) else len(y)
     cdef float peak = y[srt]
     cdef int left = 0
-    cdef np.ndarray[FLOAT_t] grad
+    cdef np.ndarray[FLOAT_t[:]] grad
     cdef int slope_shifts
     cdef float val
     cdef str ishift
@@ -687,7 +691,7 @@ cdef inline int within_tolerance(list array, float tolerance):
             return 1
     return 0
 
-def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, pos, ppm=None,
+def findMicro(np.ndarray[FLOAT_t[:], ndim=1] xdata, np.ndarray[FLOAT_t[:], ndim=1] ydata, pos, ppm=None,
               start_mz=None, calc_start_mz=None, isotope=0, spacing=0, quant_method='integrate', fragment_scan=False,
                centroid=False):
     """
@@ -699,9 +703,9 @@ def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] yda
     tolerance = ppm
     cdef float offset, int_val, peak_mean
     offset = spacing*isotope
-    cdef np.ndarray[FLOAT_t, ndim=1] df_empty_index = xdata[ydata==0]
+    cdef np.ndarray[FLOAT_t[:], ndim=1] df_empty_index = xdata[ydata==0]
     cdef int right, left
-    cdef np.ndarray[FLOAT_t, ndim=1] new_x, new_y, lr
+    cdef np.ndarray[FLOAT_t[:], ndim=1] new_x, new_y, lr
     if start_mz is None:
         start_mz = xdata[pos]
     fit = True
@@ -752,10 +756,10 @@ def findMicro(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] yda
     ret_dict = {'int': int_val if fit or fragment_scan == True else 0, 'int2': int_val, 'bounds': (left, right), 'params': peak, 'error': error}
     return ret_dict
 
-def find_nearest(np.ndarray[FLOAT_t, ndim=1] array, value):
+def find_nearest(np.ndarray[FLOAT_t[:], ndim=1] array, value):
     return array[find_nearest_index(array, value)]
 
-def find_nearest_index(np.ndarray[FLOAT_t, ndim=1] array, value):
+def find_nearest_index(np.ndarray[FLOAT_t[:], ndim=1] array, value):
     idx = np.searchsorted(array, value, side="left")
     if idx == 0:
         return 0
@@ -766,7 +770,7 @@ def find_nearest_index(np.ndarray[FLOAT_t, ndim=1] array, value):
     else:
         return idx
 
-def find_nearest_indices(np.ndarray[FLOAT_t, ndim=1] array, value):
+def find_nearest_indices(np.ndarray[FLOAT_t[:], ndim=1] array, value):
     indices = np.searchsorted(array, value, side="left")
     out = []
     for search_index, idx in enumerate(indices):
@@ -781,7 +785,7 @@ def find_nearest_indices(np.ndarray[FLOAT_t, ndim=1] array, value):
             out.append(idx)
     return out
 
-cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, measured_mz=None, theo_mz=None, max_mz=None, precursor_ppm=5, isotope_ppm=2.5, isotope_ppms=None, charge=2, debug=False,
+cpdef dict findEnvelope(np.ndarray[FLOAT_t[:], ndim=1] xdata, np.ndarray[FLOAT_t[:], ndim=1] ydata, measured_mz=None, theo_mz=None, max_mz=None, precursor_ppm=5, isotope_ppm=2.5, isotope_ppms=None, charge=2, debug=False,
                  isotope_offset=0, isotopologue_limit=-1, theo_dist=None, label=None, skip_isotopes=None, last_precursor=None, quant_method='integrate', reporter_mode=False, fragment_scan=False,
                  centroid=False, contaminant_search=True):
     # returns the envelope of isotopic peaks as well as micro envelopes  of each individual cluster
@@ -797,7 +801,7 @@ cpdef dict findEnvelope(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, n
     env_dict, micro_dict, ppm_dict = OrderedDict(),OrderedDict(),OrderedDict()
     empty_dict = {'envelope': env_dict, 'micro_envelopes': micro_dict, 'ppms': ppm_dict}
 
-    cdef np.ndarray[FLOAT_t] non_empty = xdata[ydata>0]
+    cdef np.ndarray[FLOAT_t[:]] non_empty = xdata[ydata>0]
     if len(non_empty) == 0:
         if debug:
             print('data is empty')
