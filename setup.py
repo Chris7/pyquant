@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import os
 from distutils.core import setup
 from setuptools import find_packages
@@ -7,13 +9,13 @@ try:
     CYTHON=True
 except ImportError:
     CYTHON=False
-    print 'CYTHON UNAVAILABLE'
+    print('CYTHON UNAVAILABLE')
 try:
     import numpy
     NUMPY = True
 except ImportError:
     NUMPY = False
-    print 'NUMPY NOT INSTALLED'
+    print('NUMPY NOT INSTALLED')
 
 # allow setup.py to be run from any path
 os.chdir(os.path.normpath(os.path.join(os.path.abspath(__file__), os.pardir)))
