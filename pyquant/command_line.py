@@ -184,11 +184,11 @@ class Worker(Process):
     def get_calibrated_mass(self, mass):
         return mass/(1-self.spline(mass)/1e6) if self.spline else mass
 
-    def low_snr(self, combined_data, delta, thresh=0.3):
-        data = combined_data.sum(axis='index')
-        last_point = data.iloc[:3].mean() if delta == -1 else data.iloc[-3:].mean()
+    def low_snr(self, scan_intensities, thresh=0.3):
+        std = np.std(scan_intensities)
+        last_point = np.mean(scan_intensities[-3:])
         # check the SNR of the last points, if its bad, get out
-        return (last_point/data.std()) < thresh
+        return (last_point/std) < thresh
 
     def replaceOutliers(self, common_peaks, combined_data, debug=False):
         x = []
@@ -447,6 +447,7 @@ class Worker(Process):
                 mass = mass if mrm_info is None else mrm_info[mrm_label]
             last_peak_height = {i: defaultdict(int) for i in precursors.keys()}
             low_int_isotopes = defaultdict(int)
+            all_data_intensity = {-1: [], 1: []}
             while True:
                 map_to_search = self.quant_mrm_map[mass] if self.mrm else self.quant_msn_map
                 if current_scan is None:
@@ -460,6 +461,7 @@ class Worker(Process):
                         # we've exhausted the scans we are supposed to quantify
                         break
                 found = set([])
+                current_scan_intensity = 0
                 if current_scan is not None:
                     if current_scan in scans_to_skip:
                         continue
@@ -536,6 +538,7 @@ class Worker(Process):
                                     if current_scan == initial_scan or last_peak_height[precursor_label][isotope] == 0:
                                         last_peak_height[precursor_label][isotope] = peak_intensity
                                     selected[measured_precursor+isotope*spacing] = peak_intensity
+                                    current_scan_intensity += peak_intensity
                                     vals['isotope'] = isotope
                                     isotope_labels[measured_precursor+isotope*spacing] = {'label': precursor_label, 'isotope_index': isotope}
                                     key = (df.name, measured_precursor+isotope*spacing)
@@ -562,7 +565,8 @@ class Worker(Process):
                                         if i[0] == df.name:
                                             del isotopes_chosen[i]
                         del df
-                if not found or (np.abs(ms_index) > 7 and self.low_snr(combined_data, delta, thresh=self.parser_args.snr_cutoff)):
+                all_data_intensity[delta].append(current_scan_intensity)
+                if not found or (np.abs(ms_index) > 7 and self.low_snr(all_data_intensity[delta], thresh=self.parser_args.xic_snr)):
                     not_found += 1
                     if current_scan is None or (not_found >= 2 and not self.parser_args.msn_all_scans):
                         not_found = 0
