@@ -184,14 +184,11 @@ class Worker(Process):
     def get_calibrated_mass(self, mass):
         return mass/(1-self.spline(mass)/1e6) if self.spline else mass
 
-    def flat_slope(self, combined_data, delta):
-        return False
-        data = combined_data.sum(axis='index').iloc[:10] if delta == -1 else combined_data.sum(axis='index').iloc[-10:]
-        data /= combined_data.max().max()
-        # remove the bottom values
-        data = data[data>(data[data>data.quantile(0.5)].mean()*0.25)]
-        slope, intercept, r_value, p_value, std_err = linregress(xrange(len(data)),data)
-        return np.abs(slope) < 0.2 if self.mono else np.abs(slope) < 0.1
+    def low_snr(self, combined_data, delta, thresh=0.3):
+        data = combined_data.sum(axis='index')
+        last_point = data.iloc[:3].mean() if delta == -1 else data.iloc[-3:].mean()
+        # check the SNR of the last points, if its bad, get out
+        return (last_point/data.std()) < thresh
 
     def replaceOutliers(self, common_peaks, combined_data, debug=False):
         x = []
@@ -565,8 +562,7 @@ class Worker(Process):
                                         if i[0] == df.name:
                                             del isotopes_chosen[i]
                         del df
-
-                if not found or (np.abs(ms_index) > 7 and self.flat_slope(combined_data, delta)):
+                if not found or (np.abs(ms_index) > 7 and self.low_snr(combined_data, delta, thresh=self.parser_args.snr_cutoff)):
                     not_found += 1
                     if current_scan is None or (not_found >= 2 and not self.parser_args.msn_all_scans):
                         not_found = 0
