@@ -362,6 +362,16 @@ class Worker(Process):
             if self.debug:
                 sys.stderr.write('thread {4} on ms {0} {1} {2} {3}\n'.format(ms1, rt, precursor, scan_info, id(self)))
 
+            result_dict = {'peptide': target_scan.get('mod_peptide', peptide),
+                           'scan': scanId, 'ms1': ms1, 'charge': charge,
+                           'modifications': target_scan.get('modifications'), 'rt': rt,
+                           'accession': target_scan.get('accession')}
+
+            if float(charge) == 0:
+                # We cannot proceed with a zero charge
+                self.results.put(result_dict)
+                return
+
             precursors = defaultdict(dict)
             silac_dict = {'data': None, 'df': pd.DataFrame(), 'precursor': 'NA',
                           'isotopes': {}, 'peaks': OrderedDict(), 'intensity': 'NA'}
@@ -426,10 +436,6 @@ class Worker(Process):
             highest_precursor_mz += 5
 
             finished_isotopes = {i: set([]) for i in precursors.keys()}
-            result_dict = {'peptide': target_scan.get('mod_peptide', peptide),
-                           'scan': scanId, 'ms1': ms1, 'charge': charge,
-                           'modifications': target_scan.get('modifications'), 'rt': rt,
-                           'accession': target_scan.get('accession')}
             ms_index = 0
             delta = -1
             theo_dist = peaks.calculate_theoretical_distribution(peptide.upper()) if peptide else None
