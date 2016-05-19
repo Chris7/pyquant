@@ -30,7 +30,7 @@ class EColiTest(mixins.FileMixins, unittest.TestCase):
         r_std = np.std(pyquant.loc[pyquant['Class'] == 'R', pq_sel])
         k_std = np.std(pyquant.loc[pyquant['Class'] == 'K', pq_sel])
         self.assertLess(r_std, self.r_std)
-        self.assertLess(k_std, self.k_std)#0.57652450556674684
+        self.assertLess(k_std, self.k_std)
         label = 'Heavy'
         pq_sel = '{}/Light'.format(label)
         pyquant[pq_sel] = np.log2(pyquant[pq_sel]+0.000001)
