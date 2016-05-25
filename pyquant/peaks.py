@@ -521,7 +521,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
             rel_peak = ydata_peaks[peak_index]
             # bounds for fitting the peak mean
             peak_left = xdata[peak_index - 1]
-            peak_right = xdata[peak_index + 1]
+            peak_right = xdata[peak_index + 1] if peak_index+1 < len(xdata) else len(xdata)
             # find the points around it to estimate the std of the peak
             if minima_array.size:
                 left = np.searchsorted(minima_array, peak_index) - 1
