@@ -506,8 +506,10 @@ cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_hess(np.ndarray[FLOAT_t, ndim=1] param
     return Hp
 
 cpdef np.ndarray[FLOAT_t, ndim=1] gauss_hess(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
+    cdef np.ndarray[FLOAT_t, ndim=1] common
+    cdef np.ndarray[FLOAT_t, ndim=2] H
     H = np.zeros((params.shape[0], params.shape[0]))
-    common = -gauss_ndim(x, params) + y
+    common = -1*gauss_ndim(x, params) + y
     for i in xrange(params.shape[0]):
         if i%3 == 0:
             amp = params[i]
@@ -520,15 +522,23 @@ cpdef np.ndarray[FLOAT_t, ndim=1] gauss_hess(np.ndarray[FLOAT_t, ndim=1] params,
                 # the diagonal in general refers to the hessian with partial
                 # derivatives against itself (so a 3x3 or 4x4 area)
                 diagonal = i == j+2
-                H[i-2, j] = sum(2 * np.exp((-(-mu+x)**2)/(sigma**2)) if diagonal else 2 * np.exp((-(-mu+x)**2)/(2*sigma**2)) * np.exp((-(-hess_mu+x)**2)/(2*hess_sigma**2)))
-                H[i-2, j+1] = sum(-2*amp*(mu-x)/(sigma**2) * np.exp((-(-mu+x)**2)/(sigma**2)) + 2*(mu-x)/(sigma**2)*common*np.exp(-((-mu+x)**2)/(2*sigma**2)) if diagonal else -2*hess_amp/(hess_sigma**2)*(hess_mu-x)*np.exp(-((-mu+x)**2)/(2*sigma**2))*np.exp(-((-hess_mu+x)**2)/(2*hess_sigma**2)))
-                H[i-2, j+2] = sum(2*amp*(-mu+x)**2/(sigma**3)*np.exp(-(-mu+x)**2/(sigma**2)) - 2*((-mu+x)**2)/(sigma**3)*common*np.exp(-((-mu+x)**2)/(2*sigma**2)) if diagonal else 2*hess_amp*(-hess_mu+x)**2/(hess_sigma**3) * np.exp(-((-mu+x)**2)/(2*sigma**2)) * np.exp(-((-hess_mu+x)**2)/(2*hess_sigma**2)))
-                H[i-1, j] = sum(-2*amp*(mu-x)/(sigma**2)*np.exp(-((-mu+x)**2)/(sigma**2)) + 2*(mu-x)/(sigma**2)*common*np.exp(-((-mu+x)**2)/(2*sigma**2)) if diagonal else -2*amp*(mu-x)/(sigma**2)*np.exp(-((-mu+x)**2)/(2*sigma**2)) * np.exp(-((-hess_mu+x)**2)/(2*hess_sigma**2)))#2*amp*(mu-x)/(2*sigma**2)*np.exp(-((-mu+x)**2)/(2*sigma**2)) * 2*hess_amp*(hess_mu-x)/(2*hess_sigma**2)*np.exp(-((-hess_mu+x)**2)/(2*hess_sigma**2)))
-                H[i-1, j+1] = sum(((amp**2)/(2*sigma**4)*(2*mu-2*x)**2)*np.exp(-((-mu+x)**2)/(sigma**2)) + 2*amp/(sigma**2)*np.exp(-((-mu+x)**2)/(2*sigma**2))*common - amp*((2*mu-2*x)**2)/(2*sigma**4)*np.exp(-((-mu+x)**2)/(2*sigma**2))*common if diagonal else 2*amp*(mu-x)/(2*sigma**2)*np.exp(-((-mu+x)**2)/(2*sigma**2)) * 2*hess_amp*(hess_mu-x)/(hess_sigma**2)*np.exp(-((-hess_mu+x)**2)/(2*hess_sigma**2)))
-                H[i-1, j+2] = sum(-2*(amp**2)/(sigma**5)*(mu-x)*((-mu+x)**2)*np.exp(-((-mu+x)**2)/(sigma**2)) - 2*amp*2*(mu-x)/(sigma**3)*np.exp(-((-mu+x)**2)/(2*sigma**2))*common + 2*amp*(mu-x)/(sigma**5)*((-mu+x)**2)*np.exp(-((-mu+x)**2)/(2*sigma**2))*common if diagonal else -hess_amp/(hess_sigma**3)*((-hess_mu+x)**2)*np.exp(-((-hess_mu+x)**2)/(2*hess_sigma**2)) * 2*amp*(mu-x)/(sigma**2)*np.exp(-((-mu+x)**2)/(2*sigma**2)))
-                H[i, j] = sum(2*amp*((-mu+x)**2)/(sigma**3)*np.exp(-((-mu+x)**2)/(sigma**2)) - 2*((-mu+x)**2)/(sigma**3)*np.exp(-((-mu+x)**2)/(2*sigma**2))*common if diagonal else 2*amp*((-mu+x)**2)/(sigma**3)*np.exp(-((-mu+x)**2)/(2*sigma**2)) * np.exp(-((-hess_mu+x)**2)/(2*hess_sigma**2)))
-                H[i, j+1] = sum(-(amp**2)*((-mu+x)**2)*2*(mu-x)*np.exp(-((-mu+x)**2)/(sigma**5)) - 2*amp*2*(mu-x)/(sigma**3)*np.exp(-((-mu+x)**2)/(2*sigma**2))*common + amp*((-mu+x)**2)*2*(mu-x)/(sigma**5)*np.exp(-((-mu+x)**2)/(2*sigma**2))*common if diagonal else -2*hess_amp*(hess_mu-x)/(hess_sigma**2)*np.exp(-((-hess_mu+x)**2)/(2*hess_sigma**2)) * amp*(-mu+x)**2/(sigma**3)*np.exp(-((-mu+x)**2)/(2*sigma**2)))
-                H[i, j+2] = sum(2*(amp**2)*((-mu+x)**4)/(sigma**6)*np.exp(-((-mu+x)**2)/(sigma**2)) + 6*amp*((-mu+x)**2)/(sigma**4)*np.exp(-((-mu+x)**2)/(2*sigma**2))*common - 2*amp*((-mu+x)**4)/(sigma**6)*np.exp(-((-mu+x)**2)/(2*sigma**2))*common if diagonal else 2*amp*((-mu+x)**2)/(sigma**3)*np.exp(-((-mu+x)**2)/(2*sigma**2)) * hess_amp*((-hess_mu+x)**2)/(hess_sigma**3)*np.exp(-((-hess_mu+x)**2)/(2*hess_sigma**2)))
+                # aa
+                H[i-2, j] = sum(2 * np.exp((-(-mu+x)**2)/(sigma**2))) if diagonal else sum(2 * np.exp((-(-mu+x)**2)/(2*sigma**2)) * np.exp((-(-hess_mu+x)**2)/(2*hess_sigma**2)))
+                # au
+                H[i-2, j+1] = sum(-2*amp*(mu-x)/(sigma**2) * np.exp((-(-mu+x)**2)/(sigma**2)) + 2*(mu-x)/(sigma**2)*common*np.exp(-((-mu+x)**2)/(2*sigma**2))) if diagonal else sum(-2*hess_amp/(hess_sigma**2)*(hess_mu-x)*np.exp(-((-mu+x)**2)/(2*sigma**2))*np.exp(-((-hess_mu+x)**2)/(2*hess_sigma**2)))
+                # as
+                H[i-2, j+2] = sum(2*amp*(-mu+x)**2/(sigma**3)*np.exp(-(-mu+x)**2/(sigma**2)) - 2*((-mu+x)**2)/(sigma**3)*common*np.exp(-((-mu+x)**2)/(2*sigma**2))) if diagonal else sum(2*hess_amp*(-hess_mu+x)**2/(hess_sigma**3) * np.exp(-((-mu+x)**2)/(2*sigma**2)) * np.exp(-((-hess_mu+x)**2)/(2*hess_sigma**2)))
+                # ua
+                H[i-1, j] = sum(-2*amp*(mu-x)/(sigma**2)*np.exp(-((-mu+x)**2)/(sigma**2)) + 2*(mu-x)/(sigma**2)*common*np.exp(-((-mu+x)**2)/(2*sigma**2))) if diagonal else sum(-2*amp*(mu-x)/(sigma**2)*np.exp(-((-mu+x)**2)/(2*sigma**2)) * np.exp(-((-hess_mu+x)**2)/(2*hess_sigma**2)))#2*amp*(mu-x)/(2*sigma**2)*np.exp(-((-mu+x)**2)/(2*sigma**2)) * 2*hess_amp*(hess_mu-x)/(2*hess_sigma**2)*np.exp(-((-hess_mu+x)**2)/(2*hess_sigma**2)))
+                H[i-1, j+1] = sum(2*amp*(amp*(mu - x)**2*np.exp(-(mu - x)**2/sigma**2)/sigma**2 + common*np.exp(-(mu - x)**2/(2*sigma**2)) - (mu - x)**2*common*np.exp(-(mu - x)**2/(2*sigma**2))/sigma**2)/sigma**2) if diagonal else sum(2*amp*(mu-x)/(2*sigma**2)*np.exp(-((-mu+x)**2)/(2*sigma**2)) * 2*hess_amp*(hess_mu-x)/(hess_sigma**2)*np.exp(-((-hess_mu+x)**2)/(2*hess_sigma**2)))
+                # us
+                H[i-1, j+2] = sum(-2*(amp**2)/(sigma**5)*(mu-x)*((-mu+x)**2)*np.exp(-((-mu+x)**2)/(sigma**2)) - 2*amp*2*(mu-x)/(sigma**3)*np.exp(-((-mu+x)**2)/(2*sigma**2))*common + 2*amp*(mu-x)/(sigma**5)*((-mu+x)**2)*np.exp(-((-mu+x)**2)/(2*sigma**2))*common) if diagonal else sum(-hess_amp/(hess_sigma**3)*((-hess_mu+x)**2)*np.exp(-((-hess_mu+x)**2)/(2*hess_sigma**2)) * 2*amp*(mu-x)/(sigma**2)*np.exp(-((-mu+x)**2)/(2*sigma**2)))
+                # sa
+                H[i, j] = sum(2*amp*((-mu+x)**2)/(sigma**3)*np.exp(-((-mu+x)**2)/(sigma**2)) - 2*((-mu+x)**2)/(sigma**3)*np.exp(-((-mu+x)**2)/(2*sigma**2))*common) if diagonal else sum(2*amp*((-mu+x)**2)/(sigma**3)*np.exp(-((-mu+x)**2)/(2*sigma**2)) * np.exp(-((-hess_mu+x)**2)/(2*hess_sigma**2)))
+                # su
+                H[i, j+1] = sum(2*amp*(mu - x)*(-amp*(mu - x)**2*np.exp(-(mu - x)**2/sigma**2)/sigma**2 - 2*common*np.exp(-(mu - x)**2/(2*sigma**2)) + (mu - x)**2*common*np.exp(-(mu - x)**2/(2*sigma**2))/sigma**2)/sigma**3) if diagonal else sum(-2*hess_amp*(hess_mu-x)/(hess_sigma**2)*np.exp(-((-hess_mu+x)**2)/(2*hess_sigma**2)) * amp*(-mu+x)**2/(sigma**3)*np.exp(-((-mu+x)**2)/(2*sigma**2)))
+                # ss
+                H[i, j+2] = sum(2*(amp**2)*((-mu+x)**4)/(sigma**6)*np.exp(-((-mu+x)**2)/(sigma**2)) + 6*amp*((-mu+x)**2)/(sigma**4)*np.exp(-((-mu+x)**2)/(2*sigma**2))*common - 2*amp*((-mu+x)**4)/(sigma**6)*np.exp(-((-mu+x)**2)/(2*sigma**2))*common) if diagonal else sum(2*amp*((-mu+x)**2)/(sigma**3)*np.exp(-((-mu+x)**2)/(2*sigma**2)) * hess_amp*((-hess_mu+x)**2)/(hess_sigma**3)*np.exp(-((-hess_mu+x)**2)/(2*hess_sigma**2)))
     return H
 
 # cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_hess(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):

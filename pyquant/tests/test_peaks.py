@@ -1,6 +1,10 @@
 __author__ = 'chris'
 import unittest
+from random import randint, random
+
 import numpy as np
+from sympy import symbols, diff, exp
+
 from .utils import timer
 from .. import peaks
 
@@ -77,9 +81,63 @@ class FittingTests(unittest.TestCase):
 
         two_bigauss_jac = peaks.bigauss_jac(self.two_bigauss_params, self.x, self.two_bigauss)
         self.assertEqual(two_bigauss_jac.tolist(), np.zeros_like(self.two_bigauss_params).tolist())
+        y, x, a, u, s1, a2, u2, s2, a3, u3, s3 = symbols('y x a u s1 a2 u2 s2 a3 u3 s3')
+        three_gauss = (y - (a * exp(-(u - x) ** 2 / (2 * s1 ** 2)) + a2 * exp(-(u2 - x) ** 2 / (2 * s2 ** 2)) + a3 * exp(-(u3 - x) ** 2 / (2 * s3 ** 2)))) ** 2
+        deriv_store = {}
+        for i in xrange(2):
+            subs = [
+                ('a', random()),
+                ('u', randint(1,10)),
+                ('s1', random()),
+                ('a2', random()),
+                ('u2', randint(12, 20)),
+                ('s2', random()),
+                ('a3', random()),
+                ('u3', randint(22, 30)),
+                ('s3', random()),
+            ]
+            params = np.array([i[1] for i in subs], dtype=float)
+            noisy_params = params + 2*np.random.rand(params.shape[0])
+            gauss_x = np.linspace(-10, 40, 100)
+            gauss_y = peaks.gauss_ndim(gauss_x, noisy_params)
+            jacobian = peaks.gauss_jac(params, gauss_x, gauss_y)
+            for var_index, var in enumerate([a,u,s1,a2,u2,s2,a3,u3,s3]):
+                deriv = deriv_store.setdefault(var, diff(three_gauss, var))
+                pq_jac = jacobian[var_index]
+                sympy_jacobian = sum([deriv.subs(dict(subs, **{'x': xi, 'y': yi})) for xi, yi in zip(gauss_x, gauss_y)])
+                np.testing.assert_allclose(pq_jac, np.array(sympy_jacobian, dtype=float),
+                                           err_msg='d{} - pq: {}, sympy: {}'.format(var, pq_jac,
+                                                                                       sympy_jacobian), atol=1e-4)
 
     def test_hessians(self):
-        pass
+        y, x, a, u, s1, a2, u2, s2, a3, u3, s3 = symbols('y x a u s1 a2 u2 s2 a3 u3 s3')
+        three_gauss = (y - (
+        a * exp(-(u - x) ** 2 / (2 * s1 ** 2)) + a2 * exp(-(u2 - x) ** 2 / (2 * s2 ** 2)) + a3 * exp(
+            -(u3 - x) ** 2 / (2 * s3 ** 2)))) ** 2
+        hess_store = {}
+        for i in xrange(2):
+            subs = [
+                ('a', random()+0.5),
+                ('u', random()*10),
+                ('s1', random()*3+2),
+                ('a2', random()+0.5),
+                ('u2', random()*10+10),
+                ('s2', random()*3+2),
+                ('a3', random()+0.5),
+                ('u3', random()*10+20),
+                ('s3', random()*3+2),
+            ]
+            params = np.array([i[1] for i in subs], dtype=float)
+            noisy_params = params + 2 * np.random.rand(params.shape[0])
+            gauss_x = np.linspace(-10, 40, 100)
+            gauss_y = peaks.gauss_ndim(gauss_x, noisy_params)
+            hessian = peaks.gauss_hess(params, gauss_x, gauss_y)
+            for var_index, var in enumerate([a, u, s1, a2, u2, s2, a3, u3, s3]):
+                for var_index2, var2 in enumerate([a, u, s1, a2, u2, s2, a3, u3, s3]):
+                    deriv = hess_store.setdefault((var, var2), diff(three_gauss, var, var2))
+                    sympy_hessian = sum([deriv.subs(dict(subs, **{'x': xi, 'y': yi})) for xi, yi in zip(gauss_x, gauss_y)])
+                    pq_hess = hessian[var_index, var_index2]
+                    np.testing.assert_allclose(pq_hess, np.array(sympy_hessian, dtype=float), err_msg='d{}d{} - pq: {}, sympy: {}'.format(var, var2, pq_hess, sympy_hessian), atol=1e-4)
 
 
 if __name__ == '__main__':

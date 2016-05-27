@@ -8,3 +8,4 @@ patsy
 nose
 coveralls
 tox
+sympy
