@@ -21,6 +21,7 @@ ETNS = {1: {'C': .0110, 'H': 0.00015, 'N': 0.0037, 'O': 0.00038, 'S': 0.0075},
 
 _epsilon = np.sqrt(np.finfo(float).eps)
 
+
 def calculate_theoretical_distribution(peptide):
     def dio_solve(n, l=None, index=0, out=None):
         if l is None:
@@ -618,14 +619,17 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
         opts = {'maxiter': 1000}
         fit_func = bigauss_func if bigauss_fit else gauss_func
         routines = ['SLSQP', 'TNC', 'L-BFGS-B']
+        # Newton-CG is significantly slower than SLSQP by orders of magnitude
+        # if not bigauss_fit:
+        #     routines.insert(0, 'newton-cg')
         routine = routines.pop(0)
         if len(bnds) == 0:
             bnds = deepcopy(initial_bounds)
         jacobian = bigauss_jac if bigauss_fit else gauss_jac
         if debug:
             print('guess and bnds', guess, bnds)
-        hessian = bigauss_hess if bigauss_fit else gauss_hess
-        results = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=jacobian)]
+        hessian = None if bigauss_fit else gauss_hess
+        results = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=jacobian, hess=hessian)]
         while not results[-1].success and routines:
             routine = routines.pop(0)
             results.append(

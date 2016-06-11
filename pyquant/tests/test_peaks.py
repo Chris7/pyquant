@@ -3,7 +3,7 @@ import unittest
 from random import randint, random
 
 import numpy as np
-from sympy import symbols, diff, exp
+from sympy import symbols, diff, exp, Piecewise
 
 from .utils import timer
 from .. import peaks
@@ -37,7 +37,7 @@ class GaussianTests(unittest.TestCase):
     @timer
     def test_peak_fitting(self):
         # first, a simple case
-        params, residual = peaks.findAllPeaks(self.x, self.one_gauss)
+        params, residual = peaks.findAllPeaks(self.x, self.one_gauss,)
         np.testing.assert_allclose(params, self.one_gauss_params, atol=self.std/2)
         params, residual = peaks.findAllPeaks(self.x, self.two_gauss)
         # print(self.two_gauss, ',',peaks.gauss_ndim(self.x, params))
@@ -45,7 +45,7 @@ class GaussianTests(unittest.TestCase):
         failures = 0
         for i in range(10):
             self.noisy_two_gauss = self.two_gauss + np.random.normal(0, 0.05, size=len(self.two_gauss))
-            params, residual = peaks.findAllPeaks(self.x, self.noisy_two_gauss, rt_peak=-1, filter=True, max_peaks=30, debug=False, bigauss_fit=True)
+            params, residual = peaks.findAllPeaks(self.x, self.noisy_two_gauss, rt_peak=-1, filter=True, max_peaks=30, bigauss_fit=True)
             # we compare just the means here because the amplitude and variance can change too much due to the noise for reliable testing, but manual
             # inspect reveals the fits to be accurate
             try:
@@ -81,8 +81,10 @@ class FittingTests(unittest.TestCase):
 
         two_bigauss_jac = peaks.bigauss_jac(self.two_bigauss_params, self.x, self.two_bigauss)
         self.assertEqual(two_bigauss_jac.tolist(), np.zeros_like(self.two_bigauss_params).tolist())
-        y, x, a, u, s1, a2, u2, s2, a3, u3, s3 = symbols('y x a u s1 a2 u2 s2 a3 u3 s3')
+        y, x, a, u, s1, s1_2, a2, u2, s2, s2_2, a3, u3, s3, s3_2 = symbols('y x a u s1 s1_2 a2 u2 s2 s2_2 a3 u3 s3 s3_2')
         three_gauss = (y - (a * exp(-(u - x) ** 2 / (2 * s1 ** 2)) + a2 * exp(-(u2 - x) ** 2 / (2 * s2 ** 2)) + a3 * exp(-(u3 - x) ** 2 / (2 * s3 ** 2)))) ** 2
+        three_gauss2 = (y - (a * exp(-(u - x) ** 2 / (2 * s1_2 ** 2)) + a2 * exp(-(u2 - x) ** 2 / (2 * s2_2 ** 2)) + a3 * exp(-(u3 - x) ** 2 / (2 * s3_2 ** 2)))) ** 2
+        bigauss = Piecewise((three_gauss, x<u))
         deriv_store = {}
         for i in xrange(2):
             subs = [
