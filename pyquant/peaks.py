@@ -703,7 +703,7 @@ def findMicro(xdata, ydata, pos, ppm=None, start_mz=None, calc_start_mz=None, is
     """
     We want to find the boundaries of our isotopic clusters. Basically we search until our gradient
     changes, this assumes it's roughly gaussian and there is little interference
-"""
+    """
     # find the edges within our tolerance
     tolerance = ppm
     offset = spacing * isotope
