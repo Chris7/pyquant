@@ -30,9 +30,7 @@ try:
 except ImportError:
     pass
 
-from datetime import datetime, timedelta
 from scipy import integrate
-from scipy.stats import linregress
 from scipy.interpolate import UnivariateSpline
 from scipy.ndimage.filters import gaussian_filter1d
 
