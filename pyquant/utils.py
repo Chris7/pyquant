@@ -48,3 +48,44 @@ def looper(selected=None, df=None, theo=None, index=0, out=None):
         vals = (vals/vals.max()).fillna(0)
         residual = ((theo-vals)**2).sum()
         yield (residual, copy.deepcopy(out))
+
+
+def find_prior_scan(msn_map, current_scan, ms_level=None):
+    prior_msn_scans = {}
+    for scan_msn, scan_id in msn_map:
+        if scan_id == current_scan:
+            return prior_msn_scans.get(ms_level if ms_level is not None else scan_msn, None)
+        prior_msn_scans[scan_msn] = scan_id
+    return None
+
+
+def find_next_scan(msn_map, current_scan, ms_level=None):
+    scan_found = False
+    for scan_msn, scan_id in msn_map:
+        if scan_found:
+            if ms_level is None:
+                return scan_id
+            elif scan_msn == ms_level:
+                return scan_id
+        if not scan_found and scan_id == current_scan:
+            scan_found = True
+    return None
+
+
+def find_scan(msn_map, current_scan):
+    for scan_msn, scan_id in msn_map:
+        if scan_id == current_scan:
+            return scan_id
+    return None
+
+
+def get_scans_under_peaks(rt_scan_map, found_peaks):
+    scans = {}
+    for peak_isotope, isotope_peak_data in six.iteritems(found_peaks):
+        scans[peak_isotope] = {}
+        for xic_peak_index, xic_peak_params in six.iteritems(isotope_peak_data):
+            mean, stdl, stdr = xic_peak_params['mean'], xic_peak_params['std'], xic_peak_params['std2']
+            left, right = mean - 2 * stdl, mean + 2 * stdr
+            scans[peak_isotope][xic_peak_index] = set(
+                rt_scan_map[(rt_scan_map.index >= left) & (rt_scan_map.index <= right)].values)
+    return scans
