@@ -33,7 +33,7 @@ from pythomics.proteomics import config
 
 from .reader import Reader
 from .worker import Worker
-from .utils import find_prior_scan
+from .utils import find_prior_scan, get_scans_under_peaks
 from . import peaks
 
 
