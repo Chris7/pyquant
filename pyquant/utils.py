@@ -1,4 +1,5 @@
 import copy
+import six
 
 import pandas as pd
 
