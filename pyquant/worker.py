@@ -626,7 +626,8 @@ class Worker(Process):
             res, residual = peaks.findAllPeaks(merged_x, fitting_y, filter=False, bigauss_fit=True,
                                                rt_peak=start_rt, max_peaks=self.max_peaks, debug=self.debug,
                                                snr=self.parser_args.snr_filter,
-                                               amplitude_filter=self.parser_args.intensity_filter)
+                                               amplitude_filter=self.parser_args.intensity_filter,
+                                               baseline_correction=self.parser_args.remove_baseline)
             rt_peak = peaks.bigauss_ndim(np.array([rt]), res)[0]
             # we don't do this routine for cases where there are > 5
             found_rt = (not self.rt_guide and self.parser_args.msn_all_scans) or sum(
@@ -658,7 +659,7 @@ class Worker(Process):
                 print('cannot find rt for', peptide, rt_peak)
                 print(merged_x, fitting_y, res, sum(fitting_y > 0))
               # destroy our peaks, keep searching
-              res[::4] = res[::4] * fitting_y.max()
+              # res[::4] = res[::4] * fitting_y.max()
               fitting_y -= peaks.bigauss_ndim(merged_x, res)
               fitting_y[fitting_y < 0] = 0
             rt_attempts += 1
@@ -721,16 +722,18 @@ class Worker(Process):
                 # fit, residual = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=sub_peak_index, debug=self.debug)
                 if self.debug:
                   print('fitting XIC for', quant_label, index)
+                print('fitting XIC for', xdata.tolist(), ydata.tolist())
                 fit, residual = peaks.findAllPeaks(xdata, ydata, bigauss_fit=True, filter=self.filter_peaks,
                                                    max_peaks=self.max_peaks,
                                                    rt_peak=nearest_positive_peak, debug=self.debug, peak_width_start=1,
                                                    snr=self.parser_args.snr_filter,
                                                    amplitude_filter=self.parser_args.intensity_filter,
-                                                   peak_width_end=self.parser_args.min_peak_separation)
+                                                   peak_width_end=self.parser_args.min_peak_separation,
+                                                   baseline_correction=self.parser_args.remove_baseline)
                 if fit is None:
                   continue
                 rt_means = fit[1::4]
-                rt_amps = fit[::4] * ydata.max()
+                rt_amps = fit[::4]# * ydata.max()
                 rt_std = fit[2::4]
                 rt_std2 = fit[3::4]
                 xic_peaks = []

@@ -405,7 +405,8 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
 
 
 def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=False, rt_peak=0.0, mrm=False,
-                 max_peaks=4, debug=False, peak_width_start=2, snr=0, amplitude_filter=0, peak_width_end=4):
+                 max_peaks=4, debug=False, peak_width_start=2, snr=0, amplitude_filter=0, peak_width_end=4,
+                 baseline_correction=False, rescale=True):
 
     amplitude_filter /= ydata_original.max()
     ydata = ydata_original / ydata_original.max()
@@ -500,6 +501,8 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
     initial_bounds = [(0, 1.01), (xdata[0], xdata[-1]), (min_spacing, peak_range)]
     if bigauss_fit:
         initial_bounds.extend([(min_spacing, peak_range)])
+    if baseline_correction:
+        initial_bounds.extend([(None, None), (None, None)])
         # print(final_peaks)
     lowest_bic = 9999.
     if debug:
@@ -570,6 +573,8 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
                 bnds.extend([(rel_peak, 1.01), (peak_left, peak_right), (min_spacing, peak_range)])
                 if bigauss_fit:
                     bnds.extend([(min_spacing, peak_range)])
+                if baseline_correction:
+                    bnds.extend([(None, None), (None, None)])
                 peak_values = ydata[left:right]
                 peak_indices = xdata[left:right]
             else:
@@ -578,6 +583,8 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
                 bnds.extend([(rel_peak, 1.01), (peak_left, peak_right), (min_spacing, peak_range)])
                 if bigauss_fit:
                     bnds.extend([(min_spacing, peak_range)])
+                if baseline_correction:
+                    bnds.extend([(None, None), (None, None)])
                 peak_values = ydata[left:right]
                 peak_indices = xdata[left:right]
 
@@ -606,6 +613,8 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
                     guess.extend([rel_peak, average, variance, variance])
                 else:
                     guess.extend([rel_peak, average, variance])
+                if baseline_correction:
+                    guess.extend([0.25, 0.2])
         if not guess:
             average = np.average(xdata, weights=ydata)
             variance = np.sqrt(np.average((xdata - average) ** 2, weights=ydata))
@@ -614,10 +623,16 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
             guess = [max(ydata), average, variance]
             if bigauss_fit:
                 guess.extend([variance])
+            if baseline_correction:
+                guess.extend([0.25, 0.2])
 
         args = (xdata, ydata)
         opts = {'maxiter': 1000}
-        fit_func = bigauss_func if bigauss_fit else gauss_func
+        if baseline_correction:
+            fit_func = bigauss_bl_func if bigauss_fit else gauss_bl_func
+        else:
+            fit_func = bigauss_func if bigauss_fit else gauss_func
+
         routines = ['SLSQP', 'TNC', 'L-BFGS-B']
         # Newton-CG is significantly slower than SLSQP by orders of magnitude
         # if not bigauss_fit:
@@ -625,10 +640,13 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
         routine = routines.pop(0)
         if len(bnds) == 0:
             bnds = deepcopy(initial_bounds)
-        jacobian = bigauss_jac if bigauss_fit else gauss_jac
+        if baseline_correction:
+            jacobian = None
+        else:
+            jacobian = bigauss_jac if bigauss_fit else gauss_jac
         if debug:
             print('guess and bnds', guess, bnds)
-        hessian = None if bigauss_fit else gauss_hess
+        hessian = None# if bigauss_fit else gauss_hess
         results = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=jacobian, hess=hessian)]
         while not results[-1].success and routines:
             routine = routines.pop(0)
@@ -650,6 +668,8 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
         res.bic = bic
 
         step_size = 4 if bigauss_fit else 3
+        if baseline_correction:
+            step_size += 2
         for index, value in enumerate(res.x[2::step_size]):
             if value < min_spacing:
                 res.x[2 + index * step_size] = min_spacing
@@ -660,7 +680,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
         # does this data contain our rt peak?
         res._contains_rt = False
         if rt_peak != 0:
-            for i in xrange(1, res.x.size, 4 if bigauss_fit else 3):
+            for i in xrange(1, res.x.size, step_size):
                 mean = res.x[i]
                 lstd = res.x[i + 1]
                 if bigauss_fit:
@@ -695,6 +715,14 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
             lowest_bic = bic
         if debug:
             sys.stderr.write('{} - best: {}'.format(res, best_fit))
+
+    if rescale:
+        best_fit[::step_size] *= ydata_original.max()
+        if baseline_correction:
+            if bigauss_fit:
+                best_fit[5::step_size] *= ydata_original.max()
+            else:
+                best_fit[4::step_size] *= ydata_original.max()
 
     return best_fit, best_rss
 
@@ -752,7 +780,7 @@ def findMicro(xdata, ydata, pos, ppm=None, start_mz=None, calc_start_mz=None, is
                 fit = False
 
         peak = np.array(sorted_peaks[0][0])
-        peak[0] *= new_y.max()
+        # peak[0] *= new_y.max()
 
         int_val = gauss_ndim(new_x, peak).sum()
         if not fit:

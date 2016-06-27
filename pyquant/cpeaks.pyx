@@ -24,6 +24,19 @@ cdef np.ndarray[FLOAT_t, ndim=1] gauss(np.ndarray[FLOAT_t, ndim=1] x, float amp,
     cdef np.ndarray[FLOAT_t, ndim=1] y = amp*np.exp(-(x - mu)**2/(2*std**2))
     return y
 
+cdef np.ndarray[FLOAT_t, ndim=1] adjust_baseline(np.ndarray[FLOAT_t, ndim=1] x, float slope, float intercept, float left, float right):
+    cdef np.ndarray[FLOAT_t, ndim=1] baseline = slope*x+intercept
+    # adjust y's baseline for area w/in the curve
+    # baseline[x<=left] = 0
+    # baseline[x>=right] = 0
+    return baseline
+
+cdef np.ndarray[FLOAT_t, ndim=1] gauss_bl(np.ndarray[FLOAT_t, ndim=1] x, float amp, float mu, float std, float slope, float intercept):
+    cdef np.ndarray[FLOAT_t, ndim=1] y = amp*np.exp(-(x - mu)**2/(2*std**2))
+    cdef np.ndarray[FLOAT_t, ndim=1] baseline = adjust_baseline(x, slope, intercept, mu-std*2, mu+std*2)
+    y += baseline
+    return y
+
 cpdef np.ndarray[FLOAT_t, ndim=1] gauss_ndim(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] params):
     cdef np.ndarray[FLOAT_t, ndim=1] amps
     cdef np.ndarray[FLOAT_t, ndim=1] mus
@@ -34,11 +47,40 @@ cpdef np.ndarray[FLOAT_t, ndim=1] gauss_ndim(np.ndarray[FLOAT_t, ndim=1] xdata, 
         data += gauss(xdata, amp, mu, sigma)
     return data
 
+cpdef np.ndarray[FLOAT_t, ndim=1] gauss_bl_ndim(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] params):
+    cdef np.ndarray[FLOAT_t, ndim=1] amps
+    cdef np.ndarray[FLOAT_t, ndim=1] mus
+    cdef np.ndarray[FLOAT_t, ndim=1] sigmas
+    cdef np.ndarray[FLOAT_t, ndim=1] slopes
+    cdef np.ndarray[FLOAT_t, ndim=1] intercepts
+    amps, mus, sigmas, slopes, intercepts = params[::5], params[1::5], params[2::5], params[3::5], params[4::5]
+    cdef np.ndarray[FLOAT_t, ndim=1] data = np.zeros(len(xdata))
+    for amp, mu, sigma, slope, intercept in zip(amps, mus, sigmas, slopes, intercepts):
+        data += gauss_bl(xdata, amp, mu, sigma, slope, intercept)
+    return data
+
 cpdef float gauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata):
     cdef np.ndarray[FLOAT_t, ndim=1] data = gauss_ndim(xdata, guess)
     # absolute deviation as our distance metric. Empirically found to give better results than
     # residual sum of squares for this data.
     cdef float residual = sum((ydata-data)**2)
+    return residual
+
+cpdef float gauss_bl_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata):
+    # absolute deviation as our distance metric. Empirically found to give better results than
+    # residual sum of squares for this data.
+    cdef float residual = 0
+    cdef np.ndarray[FLOAT_t, ndim=1] amps
+    cdef np.ndarray[FLOAT_t, ndim=1] mus
+    cdef np.ndarray[FLOAT_t, ndim=1] sigmas
+    cdef np.ndarray[FLOAT_t, ndim=1] slopes
+    cdef np.ndarray[FLOAT_t, ndim=1] intercepts
+    amps, mus, sigmas, slopes, intercepts = guess[::5], guess[1::5], guess[2::5], guess[3::5], guess[4::5]
+    cdef np.ndarray[FLOAT_t, ndim=1] data = np.zeros(len(xdata))
+    for amp, mu, sigma, slope, intercept in zip(amps, mus, sigmas, slopes, intercepts):
+        data = gauss_bl(xdata, amp, mu, sigma, slope, intercept)
+        mask = np.where((mu-sigma*3<=xdata) & (xdata<=mu+sigma*3))
+        residual += sum((ydata[mask]-data[mask])**2)
     return residual
 
 cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_jac_old(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
@@ -155,6 +197,20 @@ cdef np.ndarray[FLOAT_t, ndim=1] bigauss(np.ndarray[FLOAT_t, ndim=1] x, float am
     cdef np.ndarray[FLOAT_t, ndim=1] y = np.concatenate([left, right], axis=0)
     return y
 
+cdef np.ndarray[FLOAT_t, ndim=1] bigauss_bl(np.ndarray[FLOAT_t, ndim=1] x, float amp, float mu, float stdl, float stdr, float slope, float intercept):
+    cdef float sigma1 = stdl
+    cdef float sigma2 = stdr
+    cdef np.ndarray[FLOAT_t, ndim=1] lx = x[x<=mu]
+    cdef np.ndarray[FLOAT_t, ndim=1] left = amp*np.exp(-(lx-mu)**2/(2*sigma1**2))
+    cdef np.ndarray[FLOAT_t, ndim=1] rx = x[x>mu]
+    cdef np.ndarray[FLOAT_t, ndim=1] right = amp*np.exp(-(rx-mu)**2/(2*sigma2**2))
+    cdef np.ndarray[FLOAT_t, ndim=1] y = np.concatenate([left, right], axis=0)
+
+    # adjust y's baseline for area w/in the curve
+    cdef np.ndarray[FLOAT_t, ndim=1] baseline = adjust_baseline(x, slope, intercept, mu-sigma1*2, mu+sigma2*2)
+    y += baseline
+    return y
+
 cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_ndim(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] params):
     cdef np.ndarray[FLOAT_t, ndim=1] amps
     cdef np.ndarray[FLOAT_t, ndim=1] mus
@@ -166,10 +222,30 @@ cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_ndim(np.ndarray[FLOAT_t, ndim=1] xdata
         data += bigauss(xdata, amp, mu, sigma1, sigma2)
     return data
 
+cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_bl_ndim(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] params):
+    cdef np.ndarray[FLOAT_t, ndim=1] amps
+    cdef np.ndarray[FLOAT_t, ndim=1] mus
+    cdef np.ndarray[FLOAT_t, ndim=1] sigmasl
+    cdef np.ndarray[FLOAT_t, ndim=1] sigmasr
+    cdef np.ndarray[FLOAT_t, ndim=1] bl_slopes
+    cdef np.ndarray[FLOAT_t, ndim=1] bl_intercepts
+    amps, mus, sigmasl, sigmasr, bl_slopes, bl_intercepts = params[::6], params[1::6], params[2::6], params[3::6], params[4::6], params[5::6]
+    cdef np.ndarray[FLOAT_t, ndim=1] data = np.zeros(len(xdata))
+    for amp, mu, sigma1, sigma2, bl_slope, bl_intercept in zip(amps, mus, sigmasl, sigmasr, bl_slopes, bl_intercepts):
+        data += bigauss_bl(xdata, amp, mu, sigma1, sigma2, bl_slope, bl_intercept)
+    return data
+
 cpdef float bigauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata):
     if any([np.isnan(i) for i in guess]):
         return np.inf
     cdef np.ndarray[FLOAT_t, ndim=1] data = bigauss_ndim(xdata, guess)
+    cdef float residual = sum((ydata-data)**2)
+    return residual
+
+cpdef float bigauss_bl_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata):
+    if any([np.isnan(i) for i in guess]):
+        return np.inf
+    cdef np.ndarray[FLOAT_t, ndim=1] data = bigauss_bl_ndim(xdata, guess)
     cdef float residual = sum((ydata-data)**2)
     return residual
 
