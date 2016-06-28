@@ -570,7 +570,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
                     right = next_peak
                 if right < peak_index:
                     right = next_peak
-                bnds.extend([(rel_peak, 1.01), (peak_left, peak_right), (min_spacing, peak_range)])
+                bnds.extend([(rel_peak, 1.01), (xdata[left], xdata[right]) if baseline_correction else (peak_left, peak_right), (min_spacing, peak_range)])
                 if bigauss_fit:
                     bnds.extend([(min_spacing, peak_range)])
                 if baseline_correction:
@@ -614,7 +614,8 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
                 else:
                     guess.extend([rel_peak, average, variance])
                 if baseline_correction:
-                    guess.extend([0.25, 0.2])
+                    slope = (ydata[right]-ydata[left])/(xdata[right]-xdata[left])
+                    guess.extend([slope, (ydata[right]-ydata[left])/2])
         if not guess:
             average = np.average(xdata, weights=ydata)
             variance = np.sqrt(np.average((xdata - average) ** 2, weights=ydata))
@@ -624,19 +625,16 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
             if bigauss_fit:
                 guess.extend([variance])
             if baseline_correction:
-                guess.extend([0.25, 0.2])
+                slope = (ydata[right] - ydata[left]) / (xdata[right] - xdata[left])
+                guess.extend([slope, (ydata[right]-ydata[left])/2])
 
-        args = (xdata, ydata)
+        args = (xdata, ydata, baseline_correction)
         opts = {'maxiter': 1000}
-        if baseline_correction:
-            fit_func = bigauss_bl_func if bigauss_fit else gauss_bl_func
-        else:
-            fit_func = bigauss_func if bigauss_fit else gauss_func
+        fit_func = bigauss_func if bigauss_fit else gauss_func
 
         routines = ['SLSQP', 'TNC', 'L-BFGS-B']
-        # Newton-CG is significantly slower than SLSQP by orders of magnitude
-        # if not bigauss_fit:
-        #     routines.insert(0, 'newton-cg')
+        if baseline_correction:
+            routines = ['nelder-mead'] #0.05
         routine = routines.pop(0)
         if len(bnds) == 0:
             bnds = deepcopy(initial_bounds)
@@ -720,8 +718,10 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
         best_fit[::step_size] *= ydata_original.max()
         if baseline_correction:
             if bigauss_fit:
+                best_fit[4::step_size] *= ydata_original.max()
                 best_fit[5::step_size] *= ydata_original.max()
             else:
+                best_fit[3::step_size] *= ydata_original.max()
                 best_fit[4::step_size] *= ydata_original.max()
 
     return best_fit, best_rss
