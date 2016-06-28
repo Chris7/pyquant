@@ -146,9 +146,9 @@ cpdef np.ndarray[FLOAT_t, ndim=1] gauss_jac(np.ndarray[FLOAT_t, ndim=1] params, 
             jac[i] += sum(-2*amp*(-mu + x)**2*common*amp_term/sigma**3)
     return jac
 
-cdef np.ndarray[FLOAT_t, ndim=1] bigauss(np.ndarray[FLOAT_t, ndim=1] x, float amp, float mu, float stdl, float stdr):
-    cdef float sigma1 = stdl
-    cdef float sigma2 = stdr
+cdef np.ndarray[FLOAT_t, ndim=1] bigauss(np.ndarray[FLOAT_t, ndim=1] x, FLOAT_t amp, FLOAT_t mu, FLOAT_t stdl, FLOAT_t stdr):
+    cdef FLOAT_t sigma1 = stdl
+    cdef FLOAT_t sigma2 = stdr
     cdef np.ndarray[FLOAT_t, ndim=1] lx = x[x<=mu]
     cdef np.ndarray[FLOAT_t, ndim=1] left = amp*np.exp(-(lx-mu)**2/(2*sigma1**2))
     cdef np.ndarray[FLOAT_t, ndim=1] rx = x[x>mu]
@@ -175,7 +175,7 @@ cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_bl_ndim(np.ndarray[FLOAT_t, ndim=1] xd
     cdef np.ndarray[FLOAT_t, ndim=1] slopes
     cdef np.ndarray[FLOAT_t, ndim=1] intercepts
     cdef np.ndarray[long, ndim=1] sort_order
-    cdef float amp, mu, sigma1, sigma2
+    cdef FLOAT_t amp, mu, sigma1, sigma2
     cdef np.ndarray[FLOAT_t, ndim=1] data = np.zeros(len(xdata))
 
     amps, mus, sigmasl, sigmasr, slopes, intercepts = params[::6], params[1::6], params[2::6], params[3::6], params[4::6], params[5::6]
@@ -188,11 +188,11 @@ cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_bl_ndim(np.ndarray[FLOAT_t, ndim=1] xd
     return data
 
 
-cpdef float bigauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, int baseline_correction):
+cpdef FLOAT_t bigauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, int baseline_correction):
     if any([np.isnan(i) for i in guess]):
         return np.inf
     cdef np.ndarray[FLOAT_t, ndim=1] data = bigauss_bl_ndim(xdata, guess) if baseline_correction else bigauss_ndim(xdata, guess)
-    cdef float residual = sum((ydata-data)**2)
+    cdef FLOAT_t residual = sum((ydata-data)**2)
     return residual
 
 cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata,
