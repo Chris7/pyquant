@@ -7,6 +7,7 @@ import os
 import subprocess
 
 from .mixins import FileMixins
+from .utils import timer
 from . import config
 
 
@@ -73,6 +74,7 @@ class EColiManualTest(FileMixins, TestCase):
         self.output = os.path.join(self.out_dir, 'pqtest_manual')
         self.output_stats = os.path.join(self.out_dir, 'pqtest_stats')
 
+    @timer
     def test_pyquant_manual(self):
         com = [self.executable, '--search-file', self.search_file, '--scan-file', self.mzml, '--html', '-p', str(config.CORES), '-o', self.output]
         peptides, scans = zip(*map(lambda x: x.split(' '),peps_scans))
