@@ -20,38 +20,33 @@ cdef int within_bounds(np.ndarray[FLOAT_t, ndim=1] res, np.ndarray[FLOAT_t, ndim
             return 0
     return 1
 
-cdef float find_intercept(m1, b1, m2, b2):
-    return (b2-b1)/(m1-m2)
-
-cdef np.ndarray[FLOAT_t, ndim=1] gauss(np.ndarray[FLOAT_t, ndim=1] x, float amp, float mu, float std):
+cpdef np.ndarray[FLOAT_t, ndim=1] gauss(np.ndarray[FLOAT_t, ndim=1] x, FLOAT_t amp, FLOAT_t mu, FLOAT_t std):
     cdef np.ndarray[FLOAT_t, ndim=1] y = amp*np.exp(-(x - mu)**2/(2*std**2))
     return y
 
-cdef np.ndarray[FLOAT_t, ndim=1] adjust_baseline(np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] slopes, np.ndarray[FLOAT_t, ndim=1] intercepts, int index):
-    cdef float slope = slopes[index]
-    cdef float intercept = intercepts[index]
-    cdef int left, right
+cpdef np.ndarray[FLOAT_t, ndim=1] adjust_baseline(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] mus, FLOAT_t slope, FLOAT_t intercept, long index):#np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] mus, float slope, float intercept, int index):
     cdef np.ndarray[FLOAT_t, ndim=1] y
+    cdef long left, right
 
-    if index == len(slopes)-1:
+    if index == len(mus)-1:
         right = -1
     else:
-        right = find_nearest_index(x, find_intercept(slope, intercept, slopes[index+1], intercepts[index+1]))
+        right = np.searchsorted(xdata, (mus[index+1]+mus[index])/2, side='right')
     if index == 0:
         left = 0
     else:
-        left = find_nearest_index(x, find_intercept(slope, intercept, slopes[index-1], intercepts[index-1]))
-    y = slope*x+intercept
+        left = np.searchsorted(xdata, (mus[index-1]+mus[index])/2, side='left')
+    y = slope*xdata+intercept
     y[:left] = 0
     if right != -1:
-        y[right+1:] = 0
+        y[right:] = 0
     return y
 
 cpdef np.ndarray[FLOAT_t, ndim=1] gauss_ndim(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] params):
     cdef np.ndarray[FLOAT_t, ndim=1] amps
     cdef np.ndarray[FLOAT_t, ndim=1] mus
     cdef np.ndarray[FLOAT_t, ndim=1] sigmas
-    cdef float amp, mu, sigma
+    cdef FLOAT_t amp, mu, sigma
     cdef np.ndarray[FLOAT_t, ndim=1] data = np.zeros(len(xdata))
 
     amps, mus, sigmas = params[::3], params[1::3], params[2::3]
@@ -66,7 +61,7 @@ cpdef np.ndarray[FLOAT_t, ndim=1] gauss_bl_ndim(np.ndarray[FLOAT_t, ndim=1] xdat
     cdef np.ndarray[FLOAT_t, ndim=1] slopes
     cdef np.ndarray[FLOAT_t, ndim=1] intercepts
     cdef np.ndarray[long, ndim=1] sort_order
-    cdef float amp, mu, sigma
+    cdef FLOAT_t amp, mu, sigma
     cdef np.ndarray[FLOAT_t, ndim=1] data = np.zeros(len(xdata))
 
     amps, mus, sigmas, slopes, intercepts = params[::5], params[1::5], params[2::5], params[3::5], params[4::5]
@@ -75,53 +70,15 @@ cpdef np.ndarray[FLOAT_t, ndim=1] gauss_bl_ndim(np.ndarray[FLOAT_t, ndim=1] xdat
     for index in sort_order:
         amp, mu, sigma = amps[index], mus[index], sigmas[index]
         data += gauss(xdata, amp, mu, sigma)
-        data += adjust_baseline(xdata, slopes, intercepts, index)
+        data += adjust_baseline(xdata, mus, slopes[index], intercepts[index], index)
     return data
 
-cpdef float gauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, int baseline_correction):
+cpdef FLOAT_t gauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, int baseline_correction):
     cdef np.ndarray[FLOAT_t, ndim=1] data = gauss_bl_ndim(xdata, guess) if baseline_correction else gauss_ndim(xdata, guess)
     # absolute deviation as our distance metric. Empirically found to give better results than
     # residual sum of squares for this data.
-    cdef float residual = sum((ydata-data)**2)
+    cdef FLOAT_t residual = sum((ydata-data)**2)
     return residual
-
-cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_jac_old(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
-    cdef np.ndarray[FLOAT_t, ndim=1] jac
-    cdef np.ndarray[FLOAT_t, ndim=1] lx, ly, rx, ry
-    cdef float amp, mu, stdl, stdr, sigma1, sigma2
-    cdef int i
-    jac = np.zeros_like(params)
-    for i in xrange(params.shape[0]):
-        if i%4 == 0:
-            amp = params[i]
-        elif i%4 == 1:
-            mu = params[i]
-        elif i%4 == 2:
-            stdl = params[i]
-        elif i%4 == 3:
-            stdr = params[i]
-            sigma1 = stdl
-            sigma2 = stdr
-            lx = x[x<=mu]
-            ly = y[x<=mu]
-            rx = x[x>mu]
-            ry = y[x>mu]
-            exp_term = np.exp(-((lx-mu)**2)/(2*sigma1**2))
-            amp_exp_term = amp*exp_term
-            prefix = 2*amp_exp_term
-            # jac[i-3] += sum(prefix*(amp-ly*exp_term))
-            jac[i-3] += sum(-2*exp_term*(ly-amp_exp_term))
-            jac[i-2] += sum((-2*amp*(lx-mu)*exp_term*(ly-amp_exp_term))/(sigma1**2))
-            jac[i-1] += sum((-2*amp*((lx-mu)**2)*exp_term*(ly-amp_exp_term))/(sigma1**3))
-            exp_term = np.exp(-((rx-mu)**2)/(2*sigma2**2))
-            amp_exp_term = amp*exp_term
-            prefix = 2*amp_exp_term
-            # There is NO right side contribution to the jacobian of the amplitude because rx is defined as
-            # x>mu, therefore anything by the right side of the bigaussian function does not change the amplitude
-            jac[i-3] += sum(-2*exp_term*(ry-amp_exp_term))
-            jac[i-2] += sum((-2*amp*(rx-mu)*exp_term*(ry-amp_exp_term))/sigma2**2)
-            jac[i] += sum((-2*amp*((rx-mu)**2)*exp_term*(ry-amp_exp_term))/(sigma2**3))
-    return jac
 
 cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y, baseline_correction):
     cdef np.ndarray[FLOAT_t, ndim=1] jac, common, amp_term, left_common, right_common
@@ -227,7 +184,7 @@ cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_bl_ndim(np.ndarray[FLOAT_t, ndim=1] xd
     for index in sort_order:
         amp, mu, sigma1, sigma2 = amps[index], mus[index], sigmasl[index], sigmasr[index]
         data += bigauss(xdata, amp, mu, sigma1, sigma2)
-        data += adjust_baseline(xdata, slopes, intercepts, index)
+        data += adjust_baseline(xdata, mus, slopes[index], intercepts[index], index)
     return data
 
 

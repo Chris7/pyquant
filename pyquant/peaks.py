@@ -409,7 +409,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
                  baseline_correction=False, rescale=True):
 
     amplitude_filter /= ydata_original.max()
-    ydata = ydata_original / ydata_original.max()
+    ydata = ydata_original / (1 if baseline_correction else ydata_original.max())
 
     ydata_peaks = np.copy(ydata)
     if filter:
@@ -525,7 +525,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
             rel_peak = ydata_peaks[peak_index]
             # bounds for fitting the peak mean
             peak_left = xdata[peak_index - 1]
-            peak_right = xdata[peak_index + 1] if peak_index+1 < len(xdata) else len(xdata)
+            peak_right = xdata[peak_index + 1] if peak_index+1 < len(xdata) else xdata[-1]
             # find the points around it to estimate the std of the peak
             if minima_array.size:
                 left = np.searchsorted(minima_array, peak_index) - 1
@@ -625,16 +625,16 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
             if bigauss_fit:
                 guess.extend([variance])
             if baseline_correction:
-                slope = (ydata[right] - ydata[left]) / (xdata[right] - xdata[left])
-                guess.extend([slope, (ydata[right]-ydata[left])/2])
+                slope = (ydata[-1] - ydata[0]) / (xdata[-1] - xdata[0])
+                guess.extend([slope, (ydata[-1]-ydata[0])/2])
 
         args = (xdata, ydata, baseline_correction)
-        opts = {'maxiter': 1000}
+        opts = {'maxiter': 10000, 'maxfev': 10000}
         fit_func = bigauss_func if bigauss_fit else gauss_func
 
         routines = ['SLSQP', 'TNC', 'L-BFGS-B']
         if baseline_correction:
-            routines = ['nelder-mead'] #0.05
+            routines = ['l-bfgs-b'] #0.05
         routine = routines.pop(0)
         if len(bnds) == 0:
             bnds = deepcopy(initial_bounds)
@@ -645,6 +645,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
         if debug:
             print('guess and bnds', guess, bnds)
         hessian = None# if bigauss_fit else gauss_hess
+        # print('params', fit_func, guess, args, routine, bnds, opts, jacobian, hessian)
         results = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=jacobian, hess=hessian)]
         while not results[-1].success and routines:
             routine = routines.pop(0)
