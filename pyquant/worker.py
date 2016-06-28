@@ -722,7 +722,6 @@ class Worker(Process):
                 # fit, residual = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=sub_peak_index, debug=self.debug)
                 if self.debug:
                   print('fitting XIC for', quant_label, index)
-                print('fitting XIC for', xdata.tolist(), ydata.tolist())
                 fit, residual = peaks.findAllPeaks(xdata, ydata, bigauss_fit=True, filter=self.filter_peaks,
                                                    max_peaks=self.max_peaks,
                                                    rt_peak=nearest_positive_peak, debug=self.debug, peak_width_start=1,
