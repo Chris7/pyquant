@@ -628,7 +628,9 @@ class Worker(Process):
                                                rt_peak=start_rt, max_peaks=self.max_peaks, debug=self.debug,
                                                snr=self.parser_args.snr_filter,
                                                amplitude_filter=self.parser_args.intensity_filter,
-                                               baseline_correction=self.parser_args.remove_baseline)
+                                               baseline_correction=self.parser_args.remove_baseline,
+                                               zscore=self.parser_args.zscore_filter,
+                                               local_filter_size=self.parser_args.filter_width)
             rt_peak = peaks.bigauss_ndim(np.array([rt]), res)[0]
             # we don't do this routine for cases where there are > 5
             found_rt = (not self.rt_guide and self.parser_args.msn_all_scans) or sum(
@@ -730,7 +732,9 @@ class Worker(Process):
                                                    snr=self.parser_args.snr_filter,
                                                    amplitude_filter=self.parser_args.intensity_filter,
                                                    peak_width_end=self.parser_args.min_peak_separation,
-                                                   baseline_correction=self.parser_args.remove_baseline)
+                                                   baseline_correction=self.parser_args.remove_baseline,
+                                                   zscore=self.parser_args.zscore_filter,
+                                                   local_filter_size=self.parser_args.filter_width)
                 if fit is None:
                   continue
                 rt_amps = fit[::self.bigauss_stepsize]# * ydata.max()
