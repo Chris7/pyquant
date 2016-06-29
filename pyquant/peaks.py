@@ -445,13 +445,13 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 new_peaks = []
                 lost_peaks = {}
                 for row_peak in row_peaks:
-                    selection = select_window(xdata, row_peak, local_filter_size)
+                    selection = select_window(ydata_peaks, row_peak, local_filter_size)
                     local_std = np.std(selection)
                     local_snr = ydata_peaks[row_peak] / local_std
                     local_zscore = (ydata_peaks[row_peak] - np.median(selection)) / local_std
-                    add = (snr == 0 or local_snr > snr) or \
+                    add_peak = (snr == 0 or local_snr > snr) and \
                           (zscore == 0 or  local_zscore >= zscore)
-                    if add:
+                    if add_peak:
                         new_peaks.append(row_peak)
                     elif debug:
                         lost_peaks[row_peak] = {'snr': local_snr, 'zs': local_zscore}
@@ -700,7 +700,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         k = len(res.x)
         # this is actually incorrect, but works better...
         # bic = n*np.log(res.fun/n)+k+np.log(n)
-        if bigauss_fit and not baseline_correction:
+        if bigauss_fit:
             bic = 2 * k + 2 * np.log(res.fun / n)
         else:
             bic = res.fun
