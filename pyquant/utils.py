@@ -90,3 +90,13 @@ def get_scans_under_peaks(rt_scan_map, found_peaks):
             scans[peak_isotope][xic_peak_index] = set(
                 rt_scan_map[(rt_scan_map.index >= left) & (rt_scan_map.index <= right)].values)
     return scans
+
+
+def select_window(x, index, size):
+    left = index - size
+    right = index + size
+    if left < 0:
+        left = 0
+    if right >= len(x) - 1:
+        right = -1
+    return x[left:] if right == -1 else x[left:right+1]

@@ -83,6 +83,7 @@ class Worker(Process):
     self.rt_guide = not self.parser_args.no_rt_guide
     self.filter_peaks = not self.parser_args.disable_peak_filtering
     self.report_ratios = not self.parser_args.no_ratios
+    self.bigauss_stepsize = 6 if self.parser_args.remove_baseline else 4
 
   def get_calibrated_mass(self, mass):
     return mass / (1 - self.spline(mass) / 1e6) if self.spline else mass
@@ -626,18 +627,22 @@ class Worker(Process):
             res, residual = peaks.findAllPeaks(merged_x, fitting_y, filter=False, bigauss_fit=True,
                                                rt_peak=start_rt, max_peaks=self.max_peaks, debug=self.debug,
                                                snr=self.parser_args.snr_filter,
-                                               amplitude_filter=self.parser_args.intensity_filter)
+                                               amplitude_filter=self.parser_args.intensity_filter,
+                                               baseline_correction=self.parser_args.remove_baseline,
+                                               zscore=self.parser_args.zscore_filter,
+                                               local_filter_size=self.parser_args.filter_width)
             rt_peak = peaks.bigauss_ndim(np.array([rt]), res)[0]
             # we don't do this routine for cases where there are > 5
             found_rt = (not self.rt_guide and self.parser_args.msn_all_scans) or sum(
               fitting_y > 0) <= 5 or rt_peak > 0.05
             if not found_rt and rt_peak < 0.05:
               # get the closest peak
-              nearest_peak = sorted([(i, np.abs(rt - i)) for i in res[1::4]], key=operator.itemgetter(1))[0][0]
+              nearest_peak = sorted([(i, np.abs(rt - i)) for i in res[1::self.bigauss_stepsize]], key=operator.itemgetter(1))[0][0]
               # this is tailored to massa spectrometry elution profiles at the moment, and only evaluates for situtations where the rt and peak
               # are no further than a minute apart.
               if np.abs(nearest_peak - rt) < 1:
-                rt_index, peak_index = peaks.find_nearest_indices(merged_x, [rt, nearest_peak])
+                rt_index = peaks.find_nearest_index(merged_x, rt)
+                peak_index = peaks.find_nearest_index(merged_x, nearest_peak)
                 if rt_index < 0:
                   rt_index = 0
                 if peak_index == -1:
@@ -658,7 +663,7 @@ class Worker(Process):
                 print('cannot find rt for', peptide, rt_peak)
                 print(merged_x, fitting_y, res, sum(fitting_y > 0))
               # destroy our peaks, keep searching
-              res[::4] = res[::4] * fitting_y.max()
+              # res[::4] = res[::4] * fitting_y.max()
               fitting_y -= peaks.bigauss_ndim(merged_x, res)
               fitting_y[fitting_y < 0] = 0
             rt_attempts += 1
@@ -667,10 +672,10 @@ class Worker(Process):
           elif self.debug:
             print('peak used for sub-fitting', res)
           if found_rt:
-            rt_means = res[1::4]
-            rt_amps = res[::4]
-            rt_std = res[2::4]
-            rt_std2 = res[3::4]
+            rt_means = res[1::self.bigauss_stepsize]
+            rt_amps = res[::self.bigauss_stepsize]
+            rt_std = res[2::self.bigauss_stepsize]
+            rt_std2 = res[3::self.bigauss_stepsize]
             m_std = np.std(merged_y)
             m_mean = np.mean(merged_y)
             valid_peaks = [
@@ -721,18 +726,22 @@ class Worker(Process):
                 # fit, residual = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=sub_peak_index, debug=self.debug)
                 if self.debug:
                   print('fitting XIC for', quant_label, index)
+                  print('raw data is', xdata.tolist(), ydata.tolist())
                 fit, residual = peaks.findAllPeaks(xdata, ydata, bigauss_fit=True, filter=self.filter_peaks,
                                                    max_peaks=self.max_peaks,
                                                    rt_peak=nearest_positive_peak, debug=self.debug, peak_width_start=1,
                                                    snr=self.parser_args.snr_filter,
                                                    amplitude_filter=self.parser_args.intensity_filter,
-                                                   peak_width_end=self.parser_args.min_peak_separation)
+                                                   peak_width_end=self.parser_args.min_peak_separation,
+                                                   baseline_correction=self.parser_args.remove_baseline,
+                                                   zscore=self.parser_args.zscore_filter,
+                                                   local_filter_size=self.parser_args.filter_width)
                 if fit is None:
                   continue
-                rt_means = fit[1::4]
-                rt_amps = fit[::4] * ydata.max()
-                rt_std = fit[2::4]
-                rt_std2 = fit[3::4]
+                rt_amps = fit[::self.bigauss_stepsize]# * ydata.max()
+                rt_means = fit[1::self.bigauss_stepsize]
+                rt_std = fit[2::self.bigauss_stepsize]
+                rt_std2 = fit[3::self.bigauss_stepsize]
                 xic_peaks = []
                 positive_y = ydata[ydata > 0]
                 if len(positive_y) > 5:

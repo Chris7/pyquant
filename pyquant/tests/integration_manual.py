@@ -1,14 +1,14 @@
 __author__ = 'chris'
-from unittest import TestCase
+import unittest
 import pandas as pd
 import multiprocessing
 import numpy as np
 import os
 import subprocess
 
-from .mixins import FileMixins
-from .utils import timer
-from . import config
+from pyquant.tests.mixins import FileMixins
+from pyquant.tests.utils import timer
+from pyquant.tests import config
 
 
 peps_scans = (
@@ -68,7 +68,7 @@ peps_scans = (
 )
 
 
-class EColiManualTest(FileMixins, TestCase):
+class EColiManualTest(FileMixins, unittest.TestCase):
     def setUp(self):
         super(EColiManualTest, self).setUp()
         self.output = os.path.join(self.out_dir, 'pqtest_manual')
@@ -92,3 +92,7 @@ class EColiManualTest(FileMixins, TestCase):
         label = 'Heavy'
         pq_sel = '{}/Light'.format(label)
         pyquant[pq_sel] = np.log2(pyquant[pq_sel]+0.000001)
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -4,6 +4,7 @@ from copy import deepcopy
 cimport numpy as np
 cimport cython
 ctypedef np.float_t FLOAT_t
+ctypedef np.int64_t INT_t
 from scipy import optimize, integrate, stats
 from scipy.interpolate import interp1d
 from scipy.ndimage.filters import gaussian_filter1d
@@ -20,66 +21,67 @@ cdef int within_bounds(np.ndarray[FLOAT_t, ndim=1] res, np.ndarray[FLOAT_t, ndim
             return 0
     return 1
 
-cdef np.ndarray[FLOAT_t, ndim=1] gauss(np.ndarray[FLOAT_t, ndim=1] x, float amp, float mu, float std):
+cpdef np.ndarray[FLOAT_t, ndim=1] gauss(np.ndarray[FLOAT_t, ndim=1] x, FLOAT_t amp, FLOAT_t mu, FLOAT_t std):
     cdef np.ndarray[FLOAT_t, ndim=1] y = amp*np.exp(-(x - mu)**2/(2*std**2))
+    return y
+
+cpdef np.ndarray[FLOAT_t, ndim=1] adjust_baseline(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] mus, FLOAT_t slope, FLOAT_t intercept, INT_t index):#np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] mus, float slope, float intercept, int index):
+    cdef np.ndarray[FLOAT_t, ndim=1] y
+    cdef INT_t left, right
+
+    if index == len(mus)-1:
+        right = -1
+    else:
+        right = np.searchsorted(xdata, (mus[index+1]+mus[index])/2, side='right')
+    if index == 0:
+        left = 0
+    else:
+        left = np.searchsorted(xdata, (mus[index-1]+mus[index])/2, side='left')
+    y = slope*xdata+intercept
+    y[:left] = 0
+    if right != -1:
+        y[right:] = 0
     return y
 
 cpdef np.ndarray[FLOAT_t, ndim=1] gauss_ndim(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] params):
     cdef np.ndarray[FLOAT_t, ndim=1] amps
     cdef np.ndarray[FLOAT_t, ndim=1] mus
     cdef np.ndarray[FLOAT_t, ndim=1] sigmas
-    amps, mus, sigmas = params[::3], params[1::3], params[2::3]
+    cdef FLOAT_t amp, mu, sigma
     cdef np.ndarray[FLOAT_t, ndim=1] data = np.zeros(len(xdata))
+
+    amps, mus, sigmas = params[::3], params[1::3], params[2::3]
     for amp, mu, sigma in zip(amps, mus, sigmas):
         data += gauss(xdata, amp, mu, sigma)
     return data
 
-cpdef float gauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata):
-    cdef np.ndarray[FLOAT_t, ndim=1] data = gauss_ndim(xdata, guess)
+cpdef np.ndarray[FLOAT_t, ndim=1] gauss_bl_ndim(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] params):
+    cdef np.ndarray[FLOAT_t, ndim=1] amps
+    cdef np.ndarray[FLOAT_t, ndim=1] mus
+    cdef np.ndarray[FLOAT_t, ndim=1] sigmas
+    cdef np.ndarray[FLOAT_t, ndim=1] slopes
+    cdef np.ndarray[FLOAT_t, ndim=1] intercepts
+    cdef np.ndarray[INT_t, ndim=1] sort_order
+    cdef FLOAT_t amp, mu, sigma
+    cdef np.ndarray[FLOAT_t, ndim=1] data = np.zeros(len(xdata))
+
+    amps, mus, sigmas, slopes, intercepts = params[::5], params[1::5], params[2::5], params[3::5], params[4::5]
+    sort_order = np.argsort(mus)
+
+    for index in sort_order:
+        amp, mu, sigma = amps[index], mus[index], sigmas[index]
+        data += gauss(xdata, amp, mu, sigma)
+        data += adjust_baseline(xdata, mus, slopes[index], intercepts[index], index)
+    return data
+
+cpdef FLOAT_t gauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, int baseline_correction):
+    cdef np.ndarray[FLOAT_t, ndim=1] data = gauss_bl_ndim(xdata, guess) if baseline_correction else gauss_ndim(xdata, guess)
     # absolute deviation as our distance metric. Empirically found to give better results than
     # residual sum of squares for this data.
-    cdef float residual = sum((ydata-data)**2)
+    cdef FLOAT_t residual = sum((ydata-data)**2)
     return residual
 
-cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_jac_old(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
-    cdef np.ndarray[FLOAT_t, ndim=1] jac
-    cdef np.ndarray[FLOAT_t, ndim=1] lx, ly, rx, ry
-    cdef float amp, mu, stdl, stdr, sigma1, sigma2
-    cdef int i
-    jac = np.zeros_like(params)
-    for i in xrange(params.shape[0]):
-        if i%4 == 0:
-            amp = params[i]
-        elif i%4 == 1:
-            mu = params[i]
-        elif i%4 == 2:
-            stdl = params[i]
-        elif i%4 == 3:
-            stdr = params[i]
-            sigma1 = stdl
-            sigma2 = stdr
-            lx = x[x<=mu]
-            ly = y[x<=mu]
-            rx = x[x>mu]
-            ry = y[x>mu]
-            exp_term = np.exp(-((lx-mu)**2)/(2*sigma1**2))
-            amp_exp_term = amp*exp_term
-            prefix = 2*amp_exp_term
-            # jac[i-3] += sum(prefix*(amp-ly*exp_term))
-            jac[i-3] += sum(-2*exp_term*(ly-amp_exp_term))
-            jac[i-2] += sum((-2*amp*(lx-mu)*exp_term*(ly-amp_exp_term))/(sigma1**2))
-            jac[i-1] += sum((-2*amp*((lx-mu)**2)*exp_term*(ly-amp_exp_term))/(sigma1**3))
-            exp_term = np.exp(-((rx-mu)**2)/(2*sigma2**2))
-            amp_exp_term = amp*exp_term
-            prefix = 2*amp_exp_term
-            # There is NO right side contribution to the jacobian of the amplitude because rx is defined as
-            # x>mu, therefore anything by the right side of the bigaussian function does not change the amplitude
-            jac[i-3] += sum(-2*exp_term*(ry-amp_exp_term))
-            jac[i-2] += sum((-2*amp*(rx-mu)*exp_term*(ry-amp_exp_term))/sigma2**2)
-            jac[i] += sum((-2*amp*((rx-mu)**2)*exp_term*(ry-amp_exp_term))/(sigma2**3))
-    return jac
-
-cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
+cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y, baseline_correction):
     cdef np.ndarray[FLOAT_t, ndim=1] jac, common, amp_term, left_common, right_common
     cdef np.ndarray[FLOAT_t, ndim=1] lx, ly, rx, ry
     cdef float amp, mu, sigma1, sigma2
@@ -127,7 +129,7 @@ cpdef np.ndarray[FLOAT_t, ndim=1] gauss_jac_old(np.ndarray[FLOAT_t, ndim=1] para
             jac[i] += sum(-2*amp*((x-mu)**2)*exp_term*(y-amp_exp_term)/(sigma**3))
     return jac
 
-cpdef np.ndarray[FLOAT_t, ndim=1] gauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
+cpdef np.ndarray[FLOAT_t, ndim=1] gauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y, baseline_correction):
     cdef np.ndarray[FLOAT_t, ndim=1] jac, common, amp_term
     cdef float amp, mu, sigma
     jac = np.zeros_like(params)
@@ -145,9 +147,9 @@ cpdef np.ndarray[FLOAT_t, ndim=1] gauss_jac(np.ndarray[FLOAT_t, ndim=1] params, 
             jac[i] += sum(-2*amp*(-mu + x)**2*common*amp_term/sigma**3)
     return jac
 
-cdef np.ndarray[FLOAT_t, ndim=1] bigauss(np.ndarray[FLOAT_t, ndim=1] x, float amp, float mu, float stdl, float stdr):
-    cdef float sigma1 = stdl
-    cdef float sigma2 = stdr
+cdef np.ndarray[FLOAT_t, ndim=1] bigauss(np.ndarray[FLOAT_t, ndim=1] x, FLOAT_t amp, FLOAT_t mu, FLOAT_t stdl, FLOAT_t stdr):
+    cdef FLOAT_t sigma1 = stdl
+    cdef FLOAT_t sigma2 = stdr
     cdef np.ndarray[FLOAT_t, ndim=1] lx = x[x<=mu]
     cdef np.ndarray[FLOAT_t, ndim=1] left = amp*np.exp(-(lx-mu)**2/(2*sigma1**2))
     cdef np.ndarray[FLOAT_t, ndim=1] rx = x[x>mu]
@@ -166,11 +168,32 @@ cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_ndim(np.ndarray[FLOAT_t, ndim=1] xdata
         data += bigauss(xdata, amp, mu, sigma1, sigma2)
     return data
 
-cpdef float bigauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata):
+cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_bl_ndim(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] params):
+    cdef np.ndarray[FLOAT_t, ndim=1] amps
+    cdef np.ndarray[FLOAT_t, ndim=1] mus
+    cdef np.ndarray[FLOAT_t, ndim=1] sigmasl
+    cdef np.ndarray[FLOAT_t, ndim=1] sigmasr
+    cdef np.ndarray[FLOAT_t, ndim=1] slopes
+    cdef np.ndarray[FLOAT_t, ndim=1] intercepts
+    cdef np.ndarray[INT_t, ndim=1] sort_order
+    cdef FLOAT_t amp, mu, sigma1, sigma2
+    cdef np.ndarray[FLOAT_t, ndim=1] data = np.zeros(len(xdata))
+
+    amps, mus, sigmasl, sigmasr, slopes, intercepts = params[::6], params[1::6], params[2::6], params[3::6], params[4::6], params[5::6]
+    sort_order = np.argsort(mus)
+
+    for index in sort_order:
+        amp, mu, sigma1, sigma2 = amps[index], mus[index], sigmasl[index], sigmasr[index]
+        data += bigauss(xdata, amp, mu, sigma1, sigma2)
+        data += adjust_baseline(xdata, mus, slopes[index], intercepts[index], index)
+    return data
+
+
+cpdef FLOAT_t bigauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, int baseline_correction):
     if any([np.isnan(i) for i in guess]):
         return np.inf
-    cdef np.ndarray[FLOAT_t, ndim=1] data = bigauss_ndim(xdata, guess)
-    cdef float residual = sum((ydata-data)**2)
+    cdef np.ndarray[FLOAT_t, ndim=1] data = bigauss_bl_ndim(xdata, guess) if baseline_correction else bigauss_ndim(xdata, guess)
+    cdef FLOAT_t residual = sum((ydata-data)**2)
     return residual
 
 cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata,
@@ -423,15 +446,15 @@ cdef tuple findPeak(np.ndarray[FLOAT_t, ndim=1] y, int srt):
             peak = highest_val
     return left, right
 
-cpdef float get_ppm(float theoretical, float observed):
+cpdef FLOAT_t get_ppm(FLOAT_t theoretical, FLOAT_t observed):
     return np.fabs(theoretical-observed)/theoretical
 
 
-def find_nearest(np.ndarray[FLOAT_t, ndim=1] array, value):
+cpdef FLOAT_t find_nearest(np.ndarray[FLOAT_t, ndim=1] array, FLOAT_t value):
     return array[find_nearest_index(array, value)]
 
-def find_nearest_index(np.ndarray[FLOAT_t, ndim=1] array, value):
-    idx = np.searchsorted(array, value, side="left")
+cpdef INT_t find_nearest_index(np.ndarray[FLOAT_t, ndim=1] array, value):
+    cdef idx = np.searchsorted(array, value, side="left")
     if idx == 0:
         return 0
     elif idx == len(array):
@@ -441,19 +464,22 @@ def find_nearest_index(np.ndarray[FLOAT_t, ndim=1] array, value):
     else:
         return idx
 
-def find_nearest_indices(np.ndarray[FLOAT_t, ndim=1] array, value):
-    indices = np.searchsorted(array, value, side="left")
-    out = []
+cpdef np.ndarray[INT_t, ndim=1] find_nearest_indices(np.ndarray[FLOAT_t, ndim=1] array, np.ndarray[FLOAT_t, ndim=1] value):
+    cdef np.ndarray[INT_t, ndim=1] out = np.zeros(len(value), dtype=np.int64)
+    cdef np.ndarray[INT_t, ndim=1] indices = np.searchsorted(array, value, side="left")
+    cdef INT_t search_index, idx
+    cdef FLOAT_t search_value
+
     for search_index, idx in enumerate(indices):
         search_value = value[search_index]
         if idx == 0:
-            out.append(0)
+            out[search_index] = 0
         elif idx == len(array):
-            out.append(-1)
+            out[search_index] = -1
         elif np.fabs(search_value - array[idx-1]) < np.fabs(search_value - array[idx]):
-            out.append(idx-1)
+            out[search_index] = idx-1
         else:
-            out.append(idx)
+            out[search_index] = idx
     return out
 
 cpdef np.ndarray[FLOAT_t, ndim=1] gauss_hess(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):
