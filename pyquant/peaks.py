@@ -439,8 +439,12 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
         if debug:
             sys.stderr.write('{}'.format(row_peaks))
         if snr != 0:
+            if debug:
+                sys.stderr.write('{} peaks lost to SNR'.format(sum(ydata_peaks[row_peaks] / ydata_peaks_std < snr)))
             row_peaks = row_peaks[ydata_peaks[row_peaks] / ydata_peaks_std >= snr]
         if amplitude_filter != 0:
+            if debug:
+                sys.stderr.write('{} peaks lost to amp filter'.format(sum(ydata_peaks[row_peaks] < amplitude_filter)))
             row_peaks = row_peaks[ydata_peaks[row_peaks] >= amplitude_filter]
         # Max peaks is to avoid spending a significant amount of time fitting bad data. It can lead to problems
         # if the user is searching the entire ms spectra because of the number of peaks possible to find
@@ -629,7 +633,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
                 guess.extend([slope, (ydata[-1]-ydata[0])/2])
 
         args = (xdata, ydata, baseline_correction)
-        opts = {'maxiter': 10000, 'maxfev': 10000}
+        opts = {'maxiter': 1000}
         fit_func = bigauss_func if bigauss_fit else gauss_func
 
         routines = ['SLSQP', 'TNC', 'L-BFGS-B']
@@ -660,7 +664,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
         k = len(res.x)
         # this is actually incorrect, but works better...
         # bic = n*np.log(res.fun/n)+k+np.log(n)
-        if bigauss_fit:
+        if bigauss_fit and not baseline_correction:
             bic = 2 * k + 2 * np.log(res.fun / n)
         else:
             bic = res.fun
@@ -715,7 +719,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
         if debug:
             sys.stderr.write('{} - best: {}'.format(res, best_fit))
 
-    if rescale:
+    if rescale and not baseline_correction:
         best_fit[::step_size] *= ydata_original.max()
         if baseline_correction:
             if bigauss_fit:
