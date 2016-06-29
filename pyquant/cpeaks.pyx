@@ -445,15 +445,15 @@ cdef tuple findPeak(np.ndarray[FLOAT_t, ndim=1] y, int srt):
             peak = highest_val
     return left, right
 
-cpdef float get_ppm(float theoretical, float observed):
+cpdef FLOAT_t get_ppm(float theoretical, FLOAT_t observed):
     return np.fabs(theoretical-observed)/theoretical
 
 
-def find_nearest(np.ndarray[FLOAT_t, ndim=1] array, value):
+cpdef FLOAT_t find_nearest(np.ndarray[FLOAT_t, ndim=1] array, FLOAT_t value):
     return array[find_nearest_index(array, value)]
 
 cpdef long find_nearest_index(np.ndarray[FLOAT_t, ndim=1] array, value):
-    idx = np.searchsorted(array, value, side="left")
+    cdef idx = np.searchsorted(array, value, side="left")
     if idx == 0:
         return 0
     elif idx == len(array):
@@ -463,19 +463,22 @@ cpdef long find_nearest_index(np.ndarray[FLOAT_t, ndim=1] array, value):
     else:
         return idx
 
-cpdef np.ndarray[long, ndim=1] find_nearest_indices(np.ndarray[FLOAT_t, ndim=1] array, value):
-    indices = np.searchsorted(array, value, side="left")
-    out = []
+cpdef np.ndarray[long, ndim=1] find_nearest_indices(np.ndarray[FLOAT_t, ndim=1] array, np.ndarray[FLOAT_t, ndim=1] value):
+    cdef np.ndarray[long, ndim=1] out = np.zeros(len(value))
+    cdef np.ndarray[long, ndim=1] indices = np.searchsorted(array, value, side="left")
+    cdef long search_index, idx
+    cdef FLOAT_t search_value
+
     for search_index, idx in enumerate(indices):
         search_value = value[search_index]
         if idx == 0:
-            out.append(0)
+            out[search_index] = 0
         elif idx == len(array):
-            out.append(-1)
+            out[search_index] = -1
         elif np.fabs(search_value - array[idx-1]) < np.fabs(search_value - array[idx]):
-            out.append(idx-1)
+            out[search_index] = idx-1
         else:
-            out.append(idx)
+            out[search_index] = idx
     return out
 
 cpdef np.ndarray[FLOAT_t, ndim=1] gauss_hess(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y):

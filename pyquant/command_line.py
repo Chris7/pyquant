@@ -617,7 +617,7 @@ def run_pyquant():
                 ions_found = []
                 added = set([])
                 for ion_set in ions:
-                    for ion_index, (ion, nearest_mz_index) in enumerate(zip(ion_set, peaks.find_nearest_indices(scan_mzs, ion_set))):
+                    for ion_index, (ion, nearest_mz_index) in enumerate(zip(ion_set, peaks.find_nearest_indices(scan_mzs, np.array(ion_set, dtype=np.float)))):
                         nearest_mz = scan_mzs[nearest_mz_index]
                         found_ions = []
                         if peaks.get_ppm(ion, nearest_mz) < ion_tolerance:

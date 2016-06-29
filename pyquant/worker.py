@@ -641,7 +641,8 @@ class Worker(Process):
               # this is tailored to massa spectrometry elution profiles at the moment, and only evaluates for situtations where the rt and peak
               # are no further than a minute apart.
               if np.abs(nearest_peak - rt) < 1:
-                rt_index, peak_index = peaks.find_nearest_indices(merged_x, [rt, nearest_peak])
+                rt_index = peaks.find_nearest_index(merged_x, rt)
+                peak_index = peaks.find_nearest_index(merged_x, nearest_peak)
                 if rt_index < 0:
                   rt_index = 0
                 if peak_index == -1:
