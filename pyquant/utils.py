@@ -99,4 +99,4 @@ def select_window(x, index, size):
         left = 0
     if right >= len(x) - 1:
         right = -1
-    return x[left:right]
+    return x[left:] if right == -1 else x[left:right+1]
