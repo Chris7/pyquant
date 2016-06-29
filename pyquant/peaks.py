@@ -619,7 +619,8 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
                     guess.extend([rel_peak, average, variance])
                 if baseline_correction:
                     slope = (ydata[right]-ydata[left])/(xdata[right]-xdata[left])
-                    guess.extend([slope, (ydata[right]-ydata[left])/2])
+                    intercept = ((ydata[right]-slope*xdata[right])+(ydata[left]-slope*xdata[left]))/2
+                    guess.extend([slope, intercept])
         if not guess:
             average = np.average(xdata, weights=ydata)
             variance = np.sqrt(np.average((xdata - average) ** 2, weights=ydata))
@@ -630,7 +631,8 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, filter=False, bigauss_fit=Fa
                 guess.extend([variance])
             if baseline_correction:
                 slope = (ydata[-1] - ydata[0]) / (xdata[-1] - xdata[0])
-                guess.extend([slope, (ydata[-1]-ydata[0])/2])
+                intercept = ((ydata[-1] - slope * xdata[-1]) + (ydata[0] - slope * xdata[0])) / 2
+                guess.extend([slope, intercept])
 
         args = (xdata, ydata, baseline_correction)
         opts = {'maxiter': 1000}
