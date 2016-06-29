@@ -4,6 +4,7 @@ from copy import deepcopy
 cimport numpy as np
 cimport cython
 ctypedef np.float_t FLOAT_t
+ctypedef np.int64_t INT_t
 from scipy import optimize, integrate, stats
 from scipy.interpolate import interp1d
 from scipy.ndimage.filters import gaussian_filter1d
@@ -24,9 +25,9 @@ cpdef np.ndarray[FLOAT_t, ndim=1] gauss(np.ndarray[FLOAT_t, ndim=1] x, FLOAT_t a
     cdef np.ndarray[FLOAT_t, ndim=1] y = amp*np.exp(-(x - mu)**2/(2*std**2))
     return y
 
-cpdef np.ndarray[FLOAT_t, ndim=1] adjust_baseline(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] mus, FLOAT_t slope, FLOAT_t intercept, long index):#np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] mus, float slope, float intercept, int index):
+cpdef np.ndarray[FLOAT_t, ndim=1] adjust_baseline(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] mus, FLOAT_t slope, FLOAT_t intercept, INT_t index):#np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] mus, float slope, float intercept, int index):
     cdef np.ndarray[FLOAT_t, ndim=1] y
-    cdef long left, right
+    cdef INT_t left, right
 
     if index == len(mus)-1:
         right = -1
@@ -60,7 +61,7 @@ cpdef np.ndarray[FLOAT_t, ndim=1] gauss_bl_ndim(np.ndarray[FLOAT_t, ndim=1] xdat
     cdef np.ndarray[FLOAT_t, ndim=1] sigmas
     cdef np.ndarray[FLOAT_t, ndim=1] slopes
     cdef np.ndarray[FLOAT_t, ndim=1] intercepts
-    cdef np.ndarray[long, ndim=1] sort_order
+    cdef np.ndarray[INT_t, ndim=1] sort_order
     cdef FLOAT_t amp, mu, sigma
     cdef np.ndarray[FLOAT_t, ndim=1] data = np.zeros(len(xdata))
 
@@ -174,7 +175,7 @@ cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_bl_ndim(np.ndarray[FLOAT_t, ndim=1] xd
     cdef np.ndarray[FLOAT_t, ndim=1] sigmasr
     cdef np.ndarray[FLOAT_t, ndim=1] slopes
     cdef np.ndarray[FLOAT_t, ndim=1] intercepts
-    cdef np.ndarray[long, ndim=1] sort_order
+    cdef np.ndarray[INT_t, ndim=1] sort_order
     cdef FLOAT_t amp, mu, sigma1, sigma2
     cdef np.ndarray[FLOAT_t, ndim=1] data = np.zeros(len(xdata))
 
@@ -445,14 +446,14 @@ cdef tuple findPeak(np.ndarray[FLOAT_t, ndim=1] y, int srt):
             peak = highest_val
     return left, right
 
-cpdef FLOAT_t get_ppm(float theoretical, FLOAT_t observed):
+cpdef FLOAT_t get_ppm(FLOAT_t theoretical, FLOAT_t observed):
     return np.fabs(theoretical-observed)/theoretical
 
 
 cpdef FLOAT_t find_nearest(np.ndarray[FLOAT_t, ndim=1] array, FLOAT_t value):
     return array[find_nearest_index(array, value)]
 
-cpdef long find_nearest_index(np.ndarray[FLOAT_t, ndim=1] array, value):
+cpdef INT_t find_nearest_index(np.ndarray[FLOAT_t, ndim=1] array, value):
     cdef idx = np.searchsorted(array, value, side="left")
     if idx == 0:
         return 0
@@ -463,10 +464,10 @@ cpdef long find_nearest_index(np.ndarray[FLOAT_t, ndim=1] array, value):
     else:
         return idx
 
-cpdef np.ndarray[long, ndim=1] find_nearest_indices(np.ndarray[FLOAT_t, ndim=1] array, np.ndarray[FLOAT_t, ndim=1] value):
-    cdef np.ndarray[long, ndim=1] out = np.zeros(len(value))
-    cdef np.ndarray[long, ndim=1] indices = np.searchsorted(array, value, side="left")
-    cdef long search_index, idx
+cpdef np.ndarray[INT_t, ndim=1] find_nearest_indices(np.ndarray[FLOAT_t, ndim=1] array, np.ndarray[FLOAT_t, ndim=1] value):
+    cdef np.ndarray[INT_t, ndim=1] out = np.zeros(len(value), dtype=np.int64)
+    cdef np.ndarray[INT_t, ndim=1] indices = np.searchsorted(array, value, side="left")
+    cdef INT_t search_index, idx
     cdef FLOAT_t search_value
 
     for search_index, idx in enumerate(indices):

@@ -71,15 +71,15 @@ class FittingTests(unittest.TestCase):
         self.two_bigauss = peaks.bigauss_ndim(self.x, self.two_bigauss_params)
 
     def test_jacobians(self):
-        one_gauss_jac = peaks.gauss_jac(self.one_gauss_params, self.x, self.one_gauss)
+        one_gauss_jac = peaks.gauss_jac(self.one_gauss_params, self.x, self.one_gauss, False)
         self.assertEqual(one_gauss_jac.tolist(), np.zeros_like(self.one_gauss_params).tolist())
 
-        two_gauss_jac = peaks.gauss_jac(self.two_gauss_params, self.x, self.two_gauss)
+        two_gauss_jac = peaks.gauss_jac(self.two_gauss_params, self.x, self.two_gauss, False)
         self.assertEqual(two_gauss_jac.tolist(), np.zeros_like(self.two_gauss_params).tolist())
-        one_bigauss_jac = peaks.bigauss_jac(self.one_bigauss_params, self.x, self.one_bigauss)
+        one_bigauss_jac = peaks.bigauss_jac(self.one_bigauss_params, self.x, self.one_bigauss, False)
         self.assertEqual(one_bigauss_jac.tolist(), np.zeros_like(self.one_bigauss_params).tolist())
 
-        two_bigauss_jac = peaks.bigauss_jac(self.two_bigauss_params, self.x, self.two_bigauss)
+        two_bigauss_jac = peaks.bigauss_jac(self.two_bigauss_params, self.x, self.two_bigauss, False)
         self.assertEqual(two_bigauss_jac.tolist(), np.zeros_like(self.two_bigauss_params).tolist())
         y, x, a, u, s1, s1_2, a2, u2, s2, s2_2, a3, u3, s3, s3_2 = symbols('y x a u s1 s1_2 a2 u2 s2 s2_2 a3 u3 s3 s3_2')
         three_gauss = (y - (a * exp(-(u - x) ** 2 / (2 * s1 ** 2)) + a2 * exp(-(u2 - x) ** 2 / (2 * s2 ** 2)) + a3 * exp(-(u3 - x) ** 2 / (2 * s3 ** 2)))) ** 2
@@ -102,7 +102,7 @@ class FittingTests(unittest.TestCase):
             noisy_params = params + 2*np.random.rand(params.shape[0])
             gauss_x = np.linspace(-10, 40, 100)
             gauss_y = peaks.gauss_ndim(gauss_x, noisy_params)
-            jacobian = peaks.gauss_jac(params, gauss_x, gauss_y)
+            jacobian = peaks.gauss_jac(params, gauss_x, gauss_y, False)
             for var_index, var in enumerate([a,u,s1,a2,u2,s2,a3,u3,s3]):
                 deriv = deriv_store.setdefault(var, diff(three_gauss, var))
                 pq_jac = jacobian[var_index]

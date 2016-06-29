@@ -1,16 +1,16 @@
 import os
 import subprocess
-from unittest import TestCase
+import unittest
 
 import pandas as pd
 import numpy as np
 
 import tempfile
 
-from .mixins import FileMixins
-from . import config
+from pyquant.tests.mixins import FileMixins
+from pyquant.tests import config
 
-class TestTargeted(FileMixins, TestCase):
+class TestTargeted(FileMixins, unittest.TestCase):
     def setUp(self):
         super(TestTargeted, self).setUp()
         self.output = os.path.join(self.out_dir, 'targeted')
@@ -29,3 +29,7 @@ class TestTargeted(FileMixins, TestCase):
         pyquant[pq_sel] = np.log2(pyquant[pq_sel]+0.000001)
         r10_med = pyquant[pq_sel].median()
         self.assertNotAlmostEqual(r10_med, -2.0, places=2)
+
+
+if __name__ == '__main__':
+    unittest.main()
