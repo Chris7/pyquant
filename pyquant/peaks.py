@@ -1,4 +1,4 @@
-import os
+from operator import itemgetter
 from collections import Counter
 from scipy.misc import comb
 import pandas as pd
@@ -837,3 +837,57 @@ def within_tolerance(arr, tolerance):
         if i[1] < tolerance:
             return 1
     return 0
+
+def targeted_search(merged_x, merged_y, x_value, attempts=4, stepsize=3, peak_finding_kwargs=None):
+    rt_attempts = 0
+    fitting_y = np.copy(merged_y)
+    peak_finding_kwargs = peak_finding_kwargs or {}
+    debug = peak_finding_kwargs.get('debug')
+    while rt_attempts < 4 and not found_rt:
+        if debug:
+            print('MERGED PEAK FINDING')
+        res, residual = findAllPeaks(
+            merged_x,
+            fitting_y,
+            filter=False,
+            bigauss_fit=True,
+            rt_peak=x_value,
+            **peak_finding_kwargs
+        )
+        rt_peak = bigauss_ndim(np.array([x_value]), res)[0]
+        # we don't do this routine for cases where there are > 5
+        found_rt = sum(fitting_y > 0) <= 5 or rt_peak > 0.05
+        if not found_rt and rt_peak < 0.05:
+            # get the closest peak
+            nearest_peak = \
+            sorted([(i, np.abs(x_value - i)) for i in res[1::stepsize]], key=itemgetter(1))[0][0]
+            # this is tailored to massa spectrometry elution profiles at the moment, and only evaluates for situtations where the rt and peak
+            # are no further than a minute apart.
+            if np.abs(nearest_peak - x_value) < 1:
+                rt_index = find_nearest_index(merged_x, x_value)
+                peak_index = find_nearest_index(merged_x, nearest_peak)
+                if rt_index < 0:
+                    rt_index = 0
+                if peak_index == -1:
+                    peak_index = len(fitting_y)
+                if rt_index != peak_index:
+                    grad_len = np.abs(peak_index - rt_index)
+                    if grad_len < 4:
+                        found_rt = True
+                    else:
+                        gradient = (np.gradient(fitting_y[rt_index:peak_index]) > 0) if rt_index < peak_index else (
+                            np.gradient(fitting_y[peak_index:rt_index]) < 0)
+                        if sum(gradient) >= grad_len - 1:
+                            found_rt = True
+                else:
+                    found_rt = True
+        if not found_rt:
+            if debug:
+                print('cannot find rt for', x_value)
+                print(merged_x, fitting_y, res, sum(fitting_y > 0))
+
+            fitting_y -= bigauss_ndim(merged_x, res)
+            fitting_y[fitting_y < 0] = 0
+        rt_attempts += 1
+
+    return (res, residual) if found_rt else (None, np.inf)

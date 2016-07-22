@@ -85,6 +85,19 @@ class Worker(Process):
     self.report_ratios = not self.parser_args.no_ratios
     self.bigauss_stepsize = 6 if self.parser_args.remove_baseline else 4
 
+    # This is a convenience object to pass to the findAllPeaks function since it is called quite a few times
+
+    self.peak_finding_kwargs = {
+      'max_peaks': self.max_peaks,
+      'debug': self.debug,
+      'snr': self.parser_args.snr_filter,
+      'amplitude_filter': self.parser_args.intensity_filter,
+      'peak_width_end': self.parser_args.min_peak_separation,
+      'baseline_correction': self.parser_args.remove_baseline,
+      'zscore': self.parser_args.zscore_filter,
+      'local_filter_size': self.parser_args.filter_width,
+    }
+
   def get_calibrated_mass(self, mass):
     return mass / (1 - self.spline(mass) / 1e6) if self.spline else mass
 
@@ -611,66 +624,35 @@ class Worker(Process):
               y = label_df['amplitude'].values.tolist()
               isotope_base['data']['columns'].append(
                 ['{} {}'.format(title, group)] + [y[x.index(i)] if i in x else 0 for i in all_x])
+
         if not self.reporter_mode:
           combined_peaks = defaultdict(dict)
 
-          merged_data = combined_data.sum(axis=0)
-          rt_attempts = 0
+          # If we are searching for a particular RT, we look for it in the data and remove other larger peaks
+          # until we find it. To help with cases where we are fitting multiple datasets for the same XIC, we
+          # combine the data to increase the SNR in case some XICs of a given ion are weak
+
           found_rt = False
-          merged_x = merged_data.index.astype(float).values
-          merged_y = merged_data.values.astype(float)
-          fitting_y = np.copy(merged_y)
-          mval = merged_y.max()
-          while rt_attempts < 4 and not found_rt:
-            if self.debug:
-              print('MERGED PEAK FINDING')
-            res, residual = peaks.findAllPeaks(merged_x, fitting_y, filter=False, bigauss_fit=True,
-                                               rt_peak=start_rt, max_peaks=self.max_peaks, debug=self.debug,
-                                               snr=self.parser_args.snr_filter,
-                                               amplitude_filter=self.parser_args.intensity_filter,
-                                               baseline_correction=self.parser_args.remove_baseline,
-                                               zscore=self.parser_args.zscore_filter,
-                                               local_filter_size=self.parser_args.filter_width)
-            rt_peak = peaks.bigauss_ndim(np.array([rt]), res)[0]
-            # we don't do this routine for cases where there are > 5
-            found_rt = (not self.rt_guide and self.parser_args.msn_all_scans) or sum(
-              fitting_y > 0) <= 5 or rt_peak > 0.05
-            if not found_rt and rt_peak < 0.05:
-              # get the closest peak
-              nearest_peak = sorted([(i, np.abs(rt - i)) for i in res[1::self.bigauss_stepsize]], key=operator.itemgetter(1))[0][0]
-              # this is tailored to massa spectrometry elution profiles at the moment, and only evaluates for situtations where the rt and peak
-              # are no further than a minute apart.
-              if np.abs(nearest_peak - rt) < 1:
-                rt_index = peaks.find_nearest_index(merged_x, rt)
-                peak_index = peaks.find_nearest_index(merged_x, nearest_peak)
-                if rt_index < 0:
-                  rt_index = 0
-                if peak_index == -1:
-                  peak_index = len(fitting_y)
-                if rt_index != peak_index:
-                  grad_len = np.abs(peak_index - rt_index)
-                  if grad_len < 4:
-                    found_rt = True
-                  else:
-                    gradient = (np.gradient(fitting_y[rt_index:peak_index]) > 0) if rt_index < peak_index else (
-                    np.gradient(fitting_y[peak_index:rt_index]) < 0)
-                    if sum(gradient) >= grad_len - 1:
-                      found_rt = True
-                else:
-                  found_rt = True
-            if not found_rt:
-              if self.debug:
-                print('cannot find rt for', peptide, rt_peak)
-                print(merged_x, fitting_y, res, sum(fitting_y > 0))
-              # destroy our peaks, keep searching
-              # res[::4] = res[::4] * fitting_y.max()
-              fitting_y -= peaks.bigauss_ndim(merged_x, res)
-              fitting_y[fitting_y < 0] = 0
-            rt_attempts += 1
-          if not found_rt and self.debug:
-            print(peptide, 'is dead', rt_attempts, found_rt)
-          elif self.debug:
-            print('peak used for sub-fitting', res)
+          if self.rt_guide and not self.parser_args.msn_all_scans:
+            merged_data = combined_data.sum(axis=0)
+            merged_x = merged_data.index.astype(float).values
+            merged_y = merged_data.values.astype(float)
+            res, residual = peaks.targeted_search(
+              merged_x,
+              merged_y,
+              start_rt,
+              attempts=4,
+              stepsize=self.bigauss_stepsize,
+              peak_finding_kwargs=self.peak_finding_kwargs
+            )
+            if res:
+              found_rt = True
+
+            if not found_rt and self.debug:
+              print(peptide, 'is dead', found_rt)
+            elif self.debug:
+              print('peak used for sub-fitting', res)
+
           if found_rt:
             rt_means = res[1::self.bigauss_stepsize]
             rt_amps = res[::self.bigauss_stepsize]
@@ -679,150 +661,144 @@ class Worker(Process):
             m_std = np.std(merged_y)
             m_mean = np.mean(merged_y)
             valid_peaks = [
-              {'mean': i, 'amp': j * mval, 'std': l, 'std2': k, 'total': merged_y.sum(), 'snr': m_mean / m_std,
+              {'mean': i, 'amp': j, 'std': l, 'std2': k, 'total': merged_y.sum(), 'snr': m_mean / m_std,
                'residual': residual}
               for i, j, l, k in zip(rt_means, rt_amps, rt_std, rt_std2)]
 
-            if self.rt_guide:
-              valid_peaks.sort(key=lambda x: np.abs(x['mean'] - start_rt))
+          if self.rt_guide and found_rt:
+            valid_peaks.sort(key=lambda x: np.abs(x['mean'] - start_rt))
 
-              peak_index = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean'])
-              peak_location = merged_x[peak_index]
+            peak_index = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean'])
+            peak_location = merged_x[peak_index]
+            if self.debug:
+              print('peak location is', peak_location)
+            merged_lb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean'] - valid_peaks[0]['std'] * 2)
+            merged_rb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean'] + valid_peaks[0]['std2'] * 2)
+            merged_rb = len(merged_x) if merged_rb == -1 else merged_rb + 1
+          else:
+            merged_lb = 0
+            merged_rb = len(merged_x)
+
+          for row_num, (index, values) in enumerate(combined_data.iterrows()):
+            quant_label = isotope_labels.loc[index, 'label']
+            xdata = values.index.values.astype(float)
+            ydata = values.fillna(0).values.astype(float)
+            if sum(ydata > 0) >= self.min_scans:
+              # this step is to add in a term on the border if possible
+              # otherwise, there are no penalties on the variance if it is
+              # at the border since the data does not exist. We only add for lower values to avoid
+              # including monster peaks we may be explicitly excluding above
+              fit_lb = merged_lb
+              fit_rb = merged_rb
+              while fit_rb + 1 < len(ydata) and ydata[fit_rb + 1] <= ydata[fit_rb - 1]:
+                fit_rb += 1
+              while fit_lb != 0 and ydata[fit_lb] >= ydata[fit_lb - 1]:
+                fit_lb -= 1
+              peak_x = np.copy(xdata[fit_lb:fit_rb])
+              peak_y = np.copy(ydata[fit_lb:fit_rb])
+              if peak_x.size <= 1 or sum(peak_y > 0) < self.min_scans:
+                continue
+              if self.rt_guide:
+                peak_positive_y = peak_y > 0
+                nearest_positive_peak = peaks.find_nearest(peak_x[peak_positive_y], peak_location)
+                sub_peak_location = peaks.find_nearest_index(peak_x, nearest_positive_peak)
+                sub_peak_index = sub_peak_location if peak_y[sub_peak_location] else np.argmax(peak_y)
+              else:
+                nearest_positive_peak = 0
+              # fit, residual = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=sub_peak_index, debug=self.debug)
               if self.debug:
-                print('peak location is', peak_location)
-              merged_lb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean'] - valid_peaks[0]['std'] * 2)
-              merged_rb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean'] + valid_peaks[0]['std2'] * 2)
-              merged_rb = len(merged_x) if merged_rb == -1 else merged_rb + 1
-            else:
-              merged_lb = 0
-              merged_rb = len(merged_x)
-
-            for row_num, (index, values) in enumerate(combined_data.iterrows()):
-              quant_label = isotope_labels.loc[index, 'label']
-              xdata = values.index.values.astype(float)
-              ydata = values.fillna(0).values.astype(float)
-              if sum(ydata > 0) >= self.min_scans:
-                # this step is to add in a term on the border if possible
-                # otherwise, there are no penalties on the variance if it is
-                # at the border since the data does not exist. We only add for lower values to avoid
-                # including monster peaks we may be explicitly excluding above
-                fit_lb = merged_lb
-                fit_rb = merged_rb
-                while fit_rb + 1 < len(ydata) and ydata[fit_rb + 1] <= ydata[fit_rb - 1]:
-                  fit_rb += 1
-                while fit_lb != 0 and ydata[fit_lb] >= ydata[fit_lb - 1]:
-                  fit_lb -= 1
-                peak_x = np.copy(xdata[fit_lb:fit_rb])
-                peak_y = np.copy(ydata[fit_lb:fit_rb])
-                if peak_x.size <= 1 or sum(peak_y > 0) < self.min_scans:
-                  continue
-                if self.rt_guide:
-                  peak_positive_y = peak_y > 0
-                  nearest_positive_peak = peaks.find_nearest(peak_x[peak_positive_y], peak_location)
-                  sub_peak_location = peaks.find_nearest_index(peak_x, nearest_positive_peak)
-                  sub_peak_index = sub_peak_location if peak_y[sub_peak_location] else np.argmax(peak_y)
+                print('fitting XIC for', quant_label, index)
+                print('raw data is', xdata.tolist(), ydata.tolist())
+              fit, residual = peaks.findAllPeaks(xdata, ydata, bigauss_fit=True, filter=self.filter_peaks,
+                                                 rt_peak=nearest_positive_peak, peak_width_start=1,
+                                                 **self.peak_finding_kwargs)
+              if fit is None:
+                continue
+              rt_amps = fit[::self.bigauss_stepsize]# * ydata.max()
+              rt_means = fit[1::self.bigauss_stepsize]
+              rt_std = fit[2::self.bigauss_stepsize]
+              rt_std2 = fit[3::self.bigauss_stepsize]
+              xic_peaks = []
+              positive_y = ydata[ydata > 0]
+              if len(positive_y) > 5:
+                positive_y = gaussian_filter1d(positive_y, 3, mode='constant')
+              for i, j, l, k in zip(rt_means, rt_amps, rt_std, rt_std2):
+                d = {'mean': i, 'amp': j, 'std': l, 'std2': k, 'total': values.sum(), 'residual': residual}
+                mean_index = peaks.find_nearest_index(xdata[ydata > 0], i)
+                window_size = 5 if len(positive_y) < 15 else len(positive_y) / 3
+                lb, rb = mean_index - window_size, mean_index + window_size + 1
+                if lb < 0:
+                  lb = 0
+                if rb > len(positive_y):
+                  rb = -1
+                data_window = positive_y[lb:rb]
+                try:
+                  background = np.percentile(data_window, 0.8)
+                except:
+                  background = np.percentile(ydata, 0.8)
+                mean = np.mean(data_window)
+                if background < mean:
+                  background = mean
+                d['sbr'] = np.mean(j / (np.array(
+                  sorted(data_window, reverse=True)[:5])))  # (j-np.mean(positive_y[lb:rb]))/np.std(positive_y[lb:rb])
+                d['snr'] = (j - background) / np.std(data_window)
+                xic_peaks.append(d)
+              # if we have a peaks containing our retention time, keep them and throw out ones not containing it
+              to_remove = []
+              to_keep = []
+              if self.rt_guide:
+                for i, v in enumerate(xic_peaks):
+                  mu = v['mean']
+                  s1 = v['std']
+                  s2 = v['std2']
+                  if mu - s1 * 2 < start_rt < mu + s2 * 2:
+                    # these peaks are considered true and will help with the machine learning
+                    if mu - s1 * 1.5 < start_rt < mu + s2 * 1.5:
+                      v['valid'] = True
+                      to_keep.append(i)
+                  elif peaks.find_nearest_index(merged_x, mu) - peak_location > 2:
+                    to_remove.append(i)
+              # kick out peaks not containing our RT
+              if self.rt_guide:
+                if not to_keep:
+                  # we have no peaks with our RT, there are contaminating peaks, remove all the noise but the closest to our RT
+                  if not self.mrm:
+                    # for i in to_remove:
+                    #     xic_peaks[i]['interpolate'] = True
+                    valid_peak = \
+                    sorted([(i, np.abs(i['mean'] - start_rt)) for i in xic_peaks], key=operator.itemgetter(1))[0][0]
+                    for i in reversed(xrange(len(xic_peaks))):
+                      if xic_peaks[i] == valid_peak:
+                        continue
+                      else:
+                        del xic_peaks[i]
+                        # valid_peak['interpolate'] = True
+                        # else:
+                        #     valid_peak = [j[0] for j in sorted([(i, i['amp']) for i in xic_peaks], key=operator.itemgetter(1), reverse=True)[:3]]
                 else:
-                  nearest_positive_peak = 0
-                # fit, residual = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=sub_peak_index, debug=self.debug)
-                if self.debug:
-                  print('fitting XIC for', quant_label, index)
-                  print('raw data is', xdata.tolist(), ydata.tolist())
-                fit, residual = peaks.findAllPeaks(xdata, ydata, bigauss_fit=True, filter=self.filter_peaks,
-                                                   max_peaks=self.max_peaks,
-                                                   rt_peak=nearest_positive_peak, debug=self.debug, peak_width_start=1,
-                                                   snr=self.parser_args.snr_filter,
-                                                   amplitude_filter=self.parser_args.intensity_filter,
-                                                   peak_width_end=self.parser_args.min_peak_separation,
-                                                   baseline_correction=self.parser_args.remove_baseline,
-                                                   zscore=self.parser_args.zscore_filter,
-                                                   local_filter_size=self.parser_args.filter_width)
-                if fit is None:
-                  continue
-                rt_amps = fit[::self.bigauss_stepsize]# * ydata.max()
-                rt_means = fit[1::self.bigauss_stepsize]
-                rt_std = fit[2::self.bigauss_stepsize]
-                rt_std2 = fit[3::self.bigauss_stepsize]
-                xic_peaks = []
-                positive_y = ydata[ydata > 0]
-                if len(positive_y) > 5:
-                  positive_y = gaussian_filter1d(positive_y, 3, mode='constant')
-                for i, j, l, k in zip(rt_means, rt_amps, rt_std, rt_std2):
-                  d = {'mean': i, 'amp': j, 'std': l, 'std2': k, 'total': values.sum(), 'residual': residual}
-                  mean_index = peaks.find_nearest_index(xdata[ydata > 0], i)
-                  window_size = 5 if len(positive_y) < 15 else len(positive_y) / 3
-                  lb, rb = mean_index - window_size, mean_index + window_size + 1
-                  if lb < 0:
-                    lb = 0
-                  if rb > len(positive_y):
-                    rb = -1
-                  data_window = positive_y[lb:rb]
-                  try:
-                    background = np.percentile(data_window, 0.8)
-                  except:
-                    background = np.percentile(ydata, 0.8)
-                  mean = np.mean(data_window)
-                  if background < mean:
-                    background = mean
-                  d['sbr'] = np.mean(j / (np.array(
-                    sorted(data_window, reverse=True)[:5])))  # (j-np.mean(positive_y[lb:rb]))/np.std(positive_y[lb:rb])
-                  d['snr'] = (j - background) / np.std(data_window)
-                  xic_peaks.append(d)
-                # if we have a peaks containing our retention time, keep them and throw out ones not containing it
-                to_remove = []
-                to_keep = []
-                if self.rt_guide:
-                  for i, v in enumerate(xic_peaks):
-                    mu = v['mean']
-                    s1 = v['std']
-                    s2 = v['std2']
-                    if mu - s1 * 2 < start_rt < mu + s2 * 2:
-                      # these peaks are considered true and will help with the machine learning
-                      if mu - s1 * 1.5 < start_rt < mu + s2 * 1.5:
-                        v['valid'] = True
-                        to_keep.append(i)
-                    elif peaks.find_nearest_index(merged_x, mu) - peak_location > 2:
-                      to_remove.append(i)
-                # kick out peaks not containing our RT
-                if self.rt_guide:
-                  if not to_keep:
-                    # we have no peaks with our RT, there are contaminating peaks, remove all the noise but the closest to our RT
-                    if not self.mrm:
-                      # for i in to_remove:
-                      #     xic_peaks[i]['interpolate'] = True
-                      valid_peak = \
-                      sorted([(i, np.abs(i['mean'] - start_rt)) for i in xic_peaks], key=operator.itemgetter(1))[0][0]
-                      for i in reversed(xrange(len(xic_peaks))):
-                        if xic_peaks[i] == valid_peak:
-                          continue
-                        else:
-                          del xic_peaks[i]
-                          # valid_peak['interpolate'] = True
-                          # else:
-                          #     valid_peak = [j[0] for j in sorted([(i, i['amp']) for i in xic_peaks], key=operator.itemgetter(1), reverse=True)[:3]]
-                  else:
-                    # if not to_remove:
-                    #     xic_peaks = [xic_peaks[i] for i in to_keep]
-                    # else:
-                    for i in reversed(to_remove):
-                      del xic_peaks[i]
-                if self.debug:
-                  print(quant_label, index)
-                  print(fit)
-                  print(to_remove, to_keep, xic_peaks)
-                combined_peaks[quant_label][index] = xic_peaks  # if valid_peak is None else [valid_peak]
+                  # if not to_remove:
+                  #     xic_peaks = [xic_peaks[i] for i in to_keep]
+                  # else:
+                  for i in reversed(to_remove):
+                    del xic_peaks[i]
+              if self.debug:
+                print(quant_label, index)
+                print(fit)
+                print(to_remove, to_keep, xic_peaks)
+              combined_peaks[quant_label][index] = xic_peaks  # if valid_peak is None else [valid_peak]
 
-              if self.html:
-                # ax = fig.add_subplot(subplot_rows, subplot_columns, fig_index)
-                if quant_label in rt_figure_mapper:
-                  rt_base = rt_figure_mapper[(quant_label, index)]
-                else:
-                  rt_base = {'data': {'x': 'x', 'columns': []}, 'grid': {
-                    'x': {'lines': [{'value': rt, 'text': 'Initial RT {0:0.4f}'.format(rt), 'position': 'middle'}]}},
-                             'subchart': {'show': True},
-                             'axis': {'x': {'label': 'Retention Time'}, 'y': {'label': 'Intensity'}}}
-                  rt_figure_mapper[(quant_label, index)] = rt_base
-                  rt_figure['data'].append(rt_base)
-                rt_base['data']['columns'].append(['{0} {1} raw'.format(quant_label, index)] + ydata.tolist())
+            if self.html:
+              # ax = fig.add_subplot(subplot_rows, subplot_columns, fig_index)
+              if quant_label in rt_figure_mapper:
+                rt_base = rt_figure_mapper[(quant_label, index)]
+              else:
+                rt_base = {'data': {'x': 'x', 'columns': []}, 'grid': {
+                  'x': {'lines': [{'value': rt, 'text': 'Initial RT {0:0.4f}'.format(rt), 'position': 'middle'}]}},
+                           'subchart': {'show': True},
+                           'axis': {'x': {'label': 'Retention Time'}, 'y': {'label': 'Intensity'}}}
+                rt_figure_mapper[(quant_label, index)] = rt_base
+                rt_figure['data'].append(rt_base)
+              rt_base['data']['columns'].append(['{0} {1} raw'.format(quant_label, index)] + ydata.tolist())
 
         peak_info = {i: {} for i in self.mrm_pair_info.columns} if self.mrm else {i: {} for i in precursors.keys()}
         if self.reporter_mode or combined_peaks:
