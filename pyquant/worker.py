@@ -656,7 +656,7 @@ class Worker(Process):
               if res:
                 print('peak used for sub-fitting', res)
               else:
-                print(peptide, 'is dead', found_rt)
+                print(peptide, 'is dead')
 
             if res:
               rt_means = res[1::self.bigauss_stepsize]
