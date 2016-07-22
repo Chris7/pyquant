@@ -431,20 +431,27 @@ class Worker(Process):
                 data[precursor_label]['precursor'] = uncalibrated_precursor
                 shift_max = shift_maxes.get(precursor_label) if self.overlapping_mz is False else None
                 is_fragmented_scan = (current_scan == initial_scan) and (precursor == measured_precursor)
-                envelope = peaks.findEnvelope(xdata, ydata, measured_mz=measured_precursor,
-                                              theo_mz=theoretical_precursor, max_mz=shift_max,
-                                              charge=charge, precursor_ppm=self.precursor_ppm,
-                                              isotope_ppm=self.isotope_ppm, reporter_mode=self.reporter_mode,
-                                              isotope_ppms=self.isotope_ppms if self.fitting_run else None,
-                                              quant_method=self.quant_method, debug=self.debug,
-                                              theo_dist=theo_dist if (
-                                              self.mono or precursor_label not in shift_maxes) else None,
-                                              label=precursor_label, skip_isotopes=finished_isotopes[precursor_label],
-                                              last_precursor=last_precursors[delta].get(precursor_label,
-                                                                                        measured_precursor),
-                                              isotopologue_limit=self.isotopologue_limit,
-                                              fragment_scan=is_fragmented_scan,
-                                              centroid=scan_params.get('centroid', False))
+                envelope = peaks.findEnvelope(
+                  xdata,
+                  ydata,
+                  measured_mz=measured_precursor,
+                  theo_mz=theoretical_precursor,
+                  max_mz=shift_max,
+                  charge=charge,
+                  precursor_ppm=self.precursor_ppm,
+                  isotope_ppm=self.isotope_ppm,
+                  reporter_mode=self.reporter_mode,
+                  isotope_ppms=self.isotope_ppms if self.fitting_run else None,
+                  quant_method=self.quant_method,
+                  debug=self.debug,
+                  theo_dist=theo_dist if (self.mono or precursor_label not in shift_maxes) else None,
+                  label=precursor_label,
+                  skip_isotopes=finished_isotopes[precursor_label],
+                  last_precursor=last_precursors[delta].get(precursor_label,measured_precursor),
+                  isotopologue_limit=self.isotopologue_limit,
+                  fragment_scan=is_fragmented_scan,
+                  centroid=scan_params.get('centroid', False)
+                )
                 if not envelope['envelope']:
                   if self.debug:
                     print('envelope empty', envelope, measured_precursor, initial_scan, current_scan, last_precursors)
