@@ -679,6 +679,9 @@ class Worker(Process):
               merged_lb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean'] - valid_peaks[0]['std'] * 2)
               merged_rb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean'] + valid_peaks[0]['std2'] * 2)
               merged_rb = len(merged_x) if merged_rb == -1 else merged_rb + 1
+            else:
+              merged_lb = 0
+              merged_rb = combined_data.shape[1]
 
           else:
             merged_lb = 0
