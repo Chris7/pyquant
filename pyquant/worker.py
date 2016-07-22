@@ -632,7 +632,6 @@ class Worker(Process):
           # until we find it. To help with cases where we are fitting multiple datasets for the same XIC, we
           # combine the data to increase the SNR in case some XICs of a given ion are weak
 
-          found_rt = False
           if self.rt_guide and not self.parser_args.msn_all_scans:
             merged_data = combined_data.sum(axis=0)
             merged_x = merged_data.index.astype(float).values
@@ -645,39 +644,38 @@ class Worker(Process):
               stepsize=self.bigauss_stepsize,
               peak_finding_kwargs=self.peak_finding_kwargs
             )
-            if res:
-              found_rt = True
 
-            if not found_rt and self.debug:
-              print(peptide, 'is dead', found_rt)
-            elif self.debug:
-              print('peak used for sub-fitting', res)
-
-          if found_rt:
-            rt_means = res[1::self.bigauss_stepsize]
-            rt_amps = res[::self.bigauss_stepsize]
-            rt_std = res[2::self.bigauss_stepsize]
-            rt_std2 = res[3::self.bigauss_stepsize]
-            m_std = np.std(merged_y)
-            m_mean = np.mean(merged_y)
-            valid_peaks = [
-              {'mean': i, 'amp': j, 'std': l, 'std2': k, 'total': merged_y.sum(), 'snr': m_mean / m_std,
-               'residual': residual}
-              for i, j, l, k in zip(rt_means, rt_amps, rt_std, rt_std2)]
-
-          if self.rt_guide and found_rt:
-            valid_peaks.sort(key=lambda x: np.abs(x['mean'] - start_rt))
-
-            peak_index = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean'])
-            peak_location = merged_x[peak_index]
             if self.debug:
-              print('peak location is', peak_location)
-            merged_lb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean'] - valid_peaks[0]['std'] * 2)
-            merged_rb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean'] + valid_peaks[0]['std2'] * 2)
-            merged_rb = len(merged_x) if merged_rb == -1 else merged_rb + 1
+              if res:
+                print('peak used for sub-fitting', res)
+              else:
+                print(peptide, 'is dead', found_rt)
+
+            if res:
+              rt_means = res[1::self.bigauss_stepsize]
+              rt_amps = res[::self.bigauss_stepsize]
+              rt_std = res[2::self.bigauss_stepsize]
+              rt_std2 = res[3::self.bigauss_stepsize]
+              m_std = np.std(merged_y)
+              m_mean = np.mean(merged_y)
+              valid_peaks = [
+                {'mean': i, 'amp': j, 'std': l, 'std2': k, 'total': merged_y.sum(), 'snr': m_mean / m_std,
+                 'residual': residual}
+                for i, j, l, k in zip(rt_means, rt_amps, rt_std, rt_std2)]
+
+              valid_peaks.sort(key=lambda x: np.abs(x['mean'] - start_rt))
+
+              peak_index = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean'])
+              peak_location = merged_x[peak_index]
+              if self.debug:
+                print('peak location is', peak_location)
+              merged_lb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean'] - valid_peaks[0]['std'] * 2)
+              merged_rb = peaks.find_nearest_index(merged_x, valid_peaks[0]['mean'] + valid_peaks[0]['std2'] * 2)
+              merged_rb = len(merged_x) if merged_rb == -1 else merged_rb + 1
+
           else:
             merged_lb = 0
-            merged_rb = len(merged_x)
+            merged_rb = combined_data.shape[1]
 
           for row_num, (index, values) in enumerate(combined_data.iterrows()):
             quant_label = isotope_labels.loc[index, 'label']
