@@ -34,11 +34,11 @@ from .utils import find_scan, find_prior_scan, find_next_scan
 
 class Worker(Process):
     def __init__(self, queue=None, results=None, precision=6, raw_name=None, mass_labels=None, isotope_ppms=None,
-                             debug=False, html=False, mono=False, precursor_ppm=5.0, isotope_ppm=2.5, quant_method='integrate',
-                             reader_in=None, reader_out=None, thread=None, fitting_run=False, msn_rt_map=None, reporter_mode=False,
-                             spline=None, isotopologue_limit=-1, labels_needed=1, overlapping_mz=False, min_resolution=0, min_scans=3,
-                             quant_msn_map=None, mrm=False, mrm_pair_info=None, peak_cutoff=0.05, ratio_cutoff=1, replicate=False,
-                             ref_label=None, max_peaks=4, parser_args=None):
+                 debug=False, html=False, mono=False, precursor_ppm=5.0, isotope_ppm=2.5, quant_method='integrate',
+                 reader_in=None, reader_out=None, thread=None, fitting_run=False, msn_rt_map=None, reporter_mode=False,
+                 spline=None, isotopologue_limit=-1, labels_needed=1, overlapping_mz=False, min_resolution=0, min_scans=3,
+                 quant_msn_map=None, mrm=False, mrm_pair_info=None, peak_cutoff=0.05, ratio_cutoff=1, replicate=False,
+                 ref_label=None, max_peaks=4, parser_args=None):
         super(Worker, self).__init__()
         self.precision = precision
         self.precursor_ppm = precursor_ppm
@@ -180,8 +180,7 @@ class Worker(Process):
             except IndexError:
                 x_mean, x_std1, x_std2 = np.median(data, axis=0)
             else:
-                x_inlier_indices = [i for i, v in enumerate(classes) if
-                                                        v in true_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('valid')]
+                x_inlier_indices = [i for i, v in enumerate(classes) if v in true_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('valid')]
                 x_inliers = set([keys[i][:2] for i in sorted(x_inlier_indices)])
                 x_outliers = [i for i, v in enumerate(classes) if keys[i][:2] not in x_inliers and (
                     v in false_pred or common_peaks[keys[i][0]][keys[i][1]][keys[i][2]].get('interpolate'))]
@@ -285,11 +284,15 @@ class Worker(Process):
             if self.debug:
                 sys.stderr.write('thread {4} on ms {0} {1} {2} {3}\n'.format(ms1, rt, precursor, scan_info, id(self)))
 
-            result_dict = {'peptide': target_scan.get('mod_peptide', peptide),
-                                         'scan': scanId, 'ms1': ms1, 'charge': charge,
-                                         'modifications': target_scan.get('modifications'), 'rt': rt,
-                                         'accession': target_scan.get('accession')}
-
+            result_dict = {
+              'peptide': target_scan.get('mod_peptide', peptide),
+              'scan': scanId,
+              'ms1': ms1,
+              'charge': charge,
+              'modifications': target_scan.get('modifications'),
+              'rt': rt,
+              'accession': target_scan.get('accession')
+            }
             if float(charge) == 0:
                 # We cannot proceed with a zero charge
                 self.results.put(result_dict)
@@ -400,8 +403,11 @@ class Worker(Process):
                     if current_scan in scans_to_skip:
                         continue
                     else:
-                        df, scan_params = self.getScan(current_scan, start=None if self.mrm else lowest_precursor_mz,
-                                                                                     end=None if self.mrm else highest_precursor_mz)
+                        df, scan_params = self.getScan(
+                          current_scan,
+                          start=None if self.mrm else lowest_precursor_mz,
+                          end=None if self.mrm else highest_precursor_mz
+                        )
                         # check if it's a low res scan, if so skip it
                         if self.min_resolution and df is not None:
                             scan_resolution = np.average(
@@ -459,9 +465,15 @@ class Worker(Process):
                                         print('envelope empty', envelope, measured_precursor, initial_scan, current_scan, last_precursors)
                                     if self.parser_args.msn_all_scans:
                                         selected[measured_precursor] = 0
-                                        isotope_labels[measured_precursor] = {'label': precursor_label, 'isotope_index': 0}
-                                        isotopes_chosen[(df.name, measured_precursor)] = {'label': precursor_label, 'isotope_index': 0,
-                                                                                                                                            'amplitude': 0}
+                                        isotope_labels[measured_precursor] = {
+                                          'label': precursor_label,
+                                          'isotope_index': 0,
+                                        }
+                                        isotopes_chosen[(df.name, measured_precursor)] = {
+                                          'label': precursor_label,
+                                          'isotope_index': 0,
+                                          'amplitude': 0,
+                                        }
                                     else:
                                         continue
 
@@ -494,8 +506,10 @@ class Worker(Process):
                                     selected[measured_precursor + isotope * spacing] = peak_intensity
                                     current_scan_intensity += peak_intensity
                                     vals['isotope'] = isotope
-                                    isotope_labels[measured_precursor + isotope * spacing] = {'label': precursor_label,
-                                                                                                                                                        'isotope_index': isotope}
+                                    isotope_labels[measured_precursor + isotope * spacing] = {
+                                      'label': precursor_label,
+                                      'isotope_index': isotope,
+                                    }
                                     key = (df.name, measured_precursor + isotope * spacing)
                                     added_keys.append(key)
                                     isotopes_chosen[key] = {'label': precursor_label, 'isotope_index': isotope,
@@ -523,8 +537,7 @@ class Worker(Process):
                                             del isotopes_chosen[i]
                         del df
                 all_data_intensity[delta].append(current_scan_intensity)
-                if not found or (
-                                        np.abs(ms_index) > 7 and self.low_snr(all_data_intensity[delta], thresh=self.parser_args.xic_snr)):
+                if not found or (np.abs(ms_index) > 7 and self.low_snr(all_data_intensity[delta], thresh=self.parser_args.xic_snr)):
                     not_found += 1
                     if current_scan is None or (not_found >= 2 and not self.parser_args.msn_all_scans):
                         not_found = 0
@@ -719,9 +732,15 @@ class Worker(Process):
                             if self.debug:
                                 print('fitting XIC for', quant_label, index)
                                 print('raw data is', xdata.tolist(), ydata.tolist())
-                            fit, residual = peaks.findAllPeaks(xdata, ydata, bigauss_fit=True, filter=self.filter_peaks,
-                                                                                                 rt_peak=nearest_positive_peak, peak_width_start=1,
-                                                                                                 **self.peak_finding_kwargs)
+                            fit, residual = peaks.findAllPeaks(
+                              xdata,
+                              ydata,
+                              bigauss_fit=True,
+                              filter=self.filter_peaks,
+                              rt_peak=nearest_positive_peak,
+                              peak_width_start=1,
+                              **self.peak_finding_kwargs
+                            )
                             if fit is None:
                                 continue
                             rt_amps = fit[::self.bigauss_stepsize]    # * ydata.max()
@@ -878,8 +897,7 @@ class Worker(Process):
                                     # int_args = (res.x[rt_index]*mval, res.x[rt_index+1], res.x[rt_index+2])
                                     left, right = xdata[0] - 4 * std, xdata[-1] + 4 * std2
                                     xr = np.linspace(left, right, 1000)
-                                    left_index, right_index = peaks.find_nearest_index(xdata, left), peaks.find_nearest_index(xdata,
-                                                                                                                                                                                                                        right) + 1
+                                    left_index, right_index = peaks.find_nearest_index(xdata, left), peaks.find_nearest_index(xdata, right) + 1
                                     if left_index < 0:
                                         left_index = 0
                                     if right_index >= len(xdata) or right_index <= 0:
