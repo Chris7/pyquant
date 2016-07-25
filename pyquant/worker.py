@@ -511,8 +511,11 @@ class Worker(Process):
                                     }
                                     key = (df.name, measured_precursor + isotope * spacing)
                                     added_keys.append(key)
-                                    isotopes_chosen[key] = {'label': precursor_label, 'isotope_index': isotope,
-                                                                                    'amplitude': peak_intensity}
+                                    isotopes_chosen[key] = {
+                                        'label': precursor_label,
+                                        'isotope_index': isotope,
+                                        'amplitude': peak_intensity,
+                                    }
                                 del envelope
                             selected = pd.Series(selected, name=df.name).to_frame()
                             if df.name in combined_data.columns:
@@ -572,7 +575,12 @@ class Worker(Process):
             if self.parser_args.merge_labels or combine_xics:
                 label_name = '_'.join(map(str, combined_data.index))
                 combined_data = combined_data.sum(axis=0).to_frame(name=label_name).T
-                isotope_labels = {label_name: {'isotope_index': 0, 'label': label_name}}
+                isotope_labels = {
+                    label_name: {
+                        'isotope_index': 0,
+                        'label': label_name,
+                    }
+                }
                 data[label_name] = {}
                 data[label_name]['calibrated_precursor'] = '_'.join(
                     map(str, (data[i].get('calibrated_precursor') for i in sorted(data.keys()) if i != label_name)))
@@ -751,7 +759,14 @@ class Worker(Process):
                             if len(positive_y) > 5:
                                 positive_y = gaussian_filter1d(positive_y, 3, mode='constant')
                             for i, j, l, k in zip(rt_means, rt_amps, rt_std, rt_std2):
-                                d = {'mean': i, 'amp': j, 'std': l, 'std2': k, 'total': values.sum(), 'residual': residual}
+                                d = {
+                                    'mean': i,
+                                    'amp': j,
+                                    'std': l,
+                                    'std2': k,
+                                    'total': values.sum(),
+                                    'residual': residual,
+                                }
                                 mean_index = peaks.find_nearest_index(xdata[ydata > 0], i)
                                 window_size = 5 if len(positive_y) < 15 else len(positive_y) / 3
                                 lb, rb = mean_index - window_size, mean_index + window_size + 1
@@ -820,10 +835,32 @@ class Worker(Process):
                             if quant_label in rt_figure_mapper:
                                 rt_base = rt_figure_mapper[(quant_label, index)]
                             else:
-                                rt_base = {'data': {'x': 'x', 'columns': []}, 'grid': {
-                                    'x': {'lines': [{'value': rt, 'text': 'Initial RT {0:0.4f}'.format(rt), 'position': 'middle'}]}},
-                                                     'subchart': {'show': True},
-                                                     'axis': {'x': {'label': 'Retention Time'}, 'y': {'label': 'Intensity'}}}
+                                rt_base = {
+                                    'data': {
+                                        'x': 'x',
+                                        'columns': []
+                                    },
+                                    'grid': {
+                                        'x': {
+                                            'lines': [{
+                                                'value': rt,
+                                                'text': 'Initial RT {0:0.4f}'.format(rt),
+                                                'position': 'middle'
+                                            }]
+                                        }
+                                    },
+                                    'subchart': {
+                                        'show': True
+                                    },
+                                    'axis': {
+                                        'x': {
+                                            'label': 'Retention Time'
+                                        },
+                                        'y': {
+                                            'label': 'Intensity'
+                                        }
+                                    }
+                                }
                                 rt_figure_mapper[(quant_label, index)] = rt_base
                                 rt_figure['data'].append(rt_base)
                             rt_base['data']['columns'].append(['{0} {1} raw'.format(quant_label, index)] + ydata.tolist())
@@ -875,8 +912,7 @@ class Worker(Process):
                                     snr = xic_peak['snr']
                                     sbr = xic_peak['sbr']
                                     residual = xic_peak['residual']
-                                    if False and len(xdata) >= 3 and (
-                                                            mean_diff > 2 or (np.abs(peak_loc - common_loc) > 2 and mean_diff > 2)):
+                                    if False and len(xdata) >= 3 and (mean_diff > 2 or (np.abs(peak_loc - common_loc) > 2 and mean_diff > 2)):
                                         # fixed mean fit
                                         if self.debug:
                                             print(quant_label, index)
@@ -902,9 +938,7 @@ class Worker(Process):
                                     if right_index >= len(xdata) or right_index <= 0:
                                         right_index = len(xdata)
                                     try:
-                                        int_val = integrate.simps(peaks.bigauss_ndim(xr, peak_params),
-                                                                                            x=xr) if self.quant_method == 'integrate' else ydata[
-                                            (xdata > left) & (xdata < right)].sum()
+                                        int_val = integrate.simps(peaks.bigauss_ndim(xr, peak_params), x=xr) if self.quant_method == 'integrate' else ydata[(xdata > left) & (xdata < right)].sum()
                                     except:
                                         if self.debug:
                                             print(traceback.format_exc())
@@ -930,10 +964,20 @@ class Worker(Process):
                                     cf_data = ydata[curve_indices]
                                     ss_tot = np.sum((cf_data - np.mean(cf_data)) ** 2)
                                     ss_res = np.sum((cf_data - peaks.bigauss_ndim(xdata[curve_indices], peak_params)) ** 2)
-                                    peak_info_dict = {'mean': mean, 'std': std, 'std2': std2, 'amp': amp,
-                                                                        'mean_diff': mean_diff, 'snr': snr, 'sbr': sbr, 'sdr': sdr,
-                                                                        'auc': int_val, 'peak_width': std + std2, 'coef_det': 1 - ss_res / ss_tot,
-                                                                        'label': quant_label}
+                                    peak_info_dict = {
+                                        'mean': mean,
+                                        'std': std,
+                                        'std2': std2,
+                                        'amp': amp,
+                                        'mean_diff': mean_diff,
+                                        'snr': snr,
+                                        'sbr': sbr,
+                                        'sdr': sdr,
+                                        'auc': int_val,
+                                        'peak_width': std + std2,
+                                        'coef_det': 1 - ss_res / ss_tot,
+                                        'label': quant_label,
+                                    }
                                     try:
                                         peak_info[quant_label][isotope_index][xic_peak_index] = peak_info_dict
                                     except KeyError:
@@ -953,9 +997,7 @@ class Worker(Process):
                                         for i, v in enumerate(rt_base['data']['columns']):
                                             if key in v[0]:
                                                 break
-                                        rt_base['data']['columns'].insert(i, [
-                                            '{0} {1} fit {2}'.format(quant_label, index, xic_peak_index)] + np.nan_to_num(
-                                            peaks.bigauss_ndim(xdata, peak_params)).tolist())
+                                        rt_base['data']['columns'].insert(i, ['{0} {1} fit {2}'.format(quant_label, index, xic_peak_index)] + np.nan_to_num(peaks.bigauss_ndim(xdata, peak_params)).tolist())
                         del combined_peaks
                 write_html = True if self.ratio_cutoff == 0 else False
 
@@ -1040,21 +1082,22 @@ class Worker(Process):
                 for peak_label, peak_data in six.iteritems(peak_info):
                     result_dict.update({
                         '{}_peaks'.format(peak_label): peak_data,
-                        '{}_isotopes'.format(peak_label): sum(
-                            (isotopes_chosen['label'] == peak_label) & (isotopes_chosen['amplitude'] > 0)),
+                        '{}_isotopes'.format(peak_label): sum((isotopes_chosen['label'] == peak_label) & (isotopes_chosen['amplitude'] > 0)),
                     })
             for silac_label, silac_data in six.iteritems(data):
                 precursor = silac_data['precursor']
                 calc_precursor = silac_data.get('calibrated_precursor', silac_data['precursor'])
                 result_dict.update({
-                    '{}_residual'.format(silac_label): np.mean(
-                        pd.Series(silac_data.get('residual', [])).replace([np.inf, -np.inf, np.nan], 0)),
+                    '{}_residual'.format(silac_label): np.mean(pd.Series(silac_data.get('residual', [])).replace([np.inf, -np.inf, np.nan], 0)),
                     '{}_precursor'.format(silac_label): precursor,
                     '{}_calibrated_precursor'.format(silac_label): calc_precursor,
                 })
             result_dict.update({
                 'ions_found': target_scan.get('ions_found'),
-                'html': {'xic': rt_figure, 'isotope': isotope_figure}
+                'html': {
+                    'xic': rt_figure,
+                    'isotope': isotope_figure,
+                }
             })
             self.results.put(result_dict)
             del result_dict
