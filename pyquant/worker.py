@@ -392,8 +392,7 @@ class Worker(Process):
                     if scans_to_quant:
                         current_scan = scans_to_quant.pop(0)
                     elif scans_to_quant is None:
-                        current_scan = find_prior_scan(map_to_search, current_scan) if delta == -1 else find_next_scan(
-                            map_to_search, current_scan)
+                        current_scan = find_prior_scan(map_to_search, current_scan) if delta == -1 else find_next_scan(map_to_search, current_scan)
                     else:
                         # we've exhausted the scans we are supposed to quantify
                         break
@@ -427,10 +426,16 @@ class Worker(Process):
                                 labels_found.add(precursor_label)
                                 for i, j in zip(xdata, ydata):
                                     selected[i] = j
-                                isotope_labels[df.name] = {'label': precursor_label, 'isotope_index': target_scan.get('product_ion', 0)}
-                                key = (df.name, i)
-                                isotopes_chosen[key] = {'label': precursor_label, 'isotope_index': target_scan.get('product_ion', 0),
-                                                                                'amplitude': j}
+                                isotope_labels[df.name] = {
+                                    'label': precursor_label,
+                                    'isotope_index': target_scan.get('product_ion', 0),
+                                }
+                                key = (df.name, xdata[-1])
+                                isotopes_chosen[key] = {
+                                    'label': precursor_label,
+                                    'isotope_index': target_scan.get('product_ion', 0),
+                                    'amplitude': ydata[-1],
+                                }
                             else:
                                 uncalibrated_precursor = precursor_info['uncalibrated_mz']
                                 measured_precursor = precursor_info['calibrated_mz']
