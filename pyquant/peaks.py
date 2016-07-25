@@ -843,6 +843,7 @@ def targeted_search(merged_x, merged_y, x_value, attempts=4, stepsize=3, peak_fi
     fitting_y = np.copy(merged_y)
     peak_finding_kwargs = peak_finding_kwargs or {}
     debug = peak_finding_kwargs.get('debug')
+    found_rt = False
     while rt_attempts < 4 and not found_rt:
         if debug:
             print('MERGED PEAK FINDING')
