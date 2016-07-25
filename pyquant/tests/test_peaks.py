@@ -5,8 +5,8 @@ from random import randint, random
 import numpy as np
 from sympy import symbols, diff, exp, Piecewise
 
-from .utils import timer
-from .. import peaks
+from pyquant.tests.utils import timer
+from pyquant import peaks
 
 def get_gauss_value(x, amp, mu, std):
     return amp*np.exp(-(x - mu)**2/(2*std**2))
@@ -140,6 +140,15 @@ class FittingTests(unittest.TestCase):
                     sympy_hessian = sum([deriv.subs(dict(subs, **{'x': xi, 'y': yi})) for xi, yi in zip(gauss_x, gauss_y)])
                     pq_hess = hessian[var_index, var_index2]
                     np.testing.assert_allclose(pq_hess, np.array(sympy_hessian, dtype=float), err_msg='d{}d{} - pq: {}, sympy: {}'.format(var, var2, pq_hess, sympy_hessian), atol=1e-4)
+
+    def test_targeted_search(self):
+        # We should not find anything where there are no peaks
+        res, residual = peaks.targeted_search(self.x, self.two_gauss, self.x[2])
+        self.assertIsNone(res)
+
+        # Should find the peak when we are in its area
+        res, residual = peaks.targeted_search(self.x, self.two_gauss, self.two_gauss_params[1])
+        self.assertIsNotNone(res)
 
 
 if __name__ == '__main__':
