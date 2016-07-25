@@ -487,8 +487,7 @@ class Worker(Process):
                                     if isotope in finished_isotopes[precursor_label]:
                                         continue
                                     peak_intensity = vals.get('int')
-                                    if peak_intensity == 0 or (self.peak_cutoff and peak_intensity < last_peak_height[precursor_label][
-                                        isotope] * self.peak_cutoff):
+                                    if peak_intensity == 0 or (self.peak_cutoff and peak_intensity < last_peak_height[precursor_label][isotope] * self.peak_cutoff):
                                         low_int_isotopes[(precursor_label, isotope)] += 1
                                         if not self.parser_args.msn_all_scans and low_int_isotopes[(precursor_label, isotope)] >= 2:
                                             if self.debug:
