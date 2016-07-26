@@ -76,9 +76,20 @@ def calculate_theoretical_distribution(peptide):
 
 
 def buildEnvelope(peaks_found=None, isotopes=None, gradient=False, rt_window=None, start_rt=None, silac_label=None):
+    """
+    Identify isotopologues of an analyte. Used primarily for Peptide based MS Assays
+
+    :param peaks_found:
+    :param isotopes:
+    :param gradient:
+    :param rt_window:
+    :param start_rt:
+    :param silac_label:
+    :return:
+    """
     isotope_index = {}
     df = pd.DataFrame(columns=rt_window if rt_window is not None else [])
-    for silac_isotope, isotope_data in peaks_found.iteritems():
+    for silac_isotope, isotope_data in six.iteritems(peaks_found):
         if isotopes and silac_isotope not in isotopes:
             continue
         temp_data = []

@@ -680,12 +680,12 @@ class Worker(Process):
                         )
 
                         if self.debug:
-                            if res:
+                            if res is not None:
                                 print('peak used for sub-fitting', res)
                             else:
                                 print(peptide, 'is dead')
 
-                        if res:
+                        if res is not None:
                             rt_means = res[1::self.bigauss_stepsize]
                             rt_amps = res[::self.bigauss_stepsize]
                             rt_std = res[2::self.bigauss_stepsize]
