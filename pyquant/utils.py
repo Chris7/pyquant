@@ -1,5 +1,7 @@
 import copy
 import six
+from itertools import combinations
+from operator import itemgetter
 
 import pandas as pd
 
@@ -100,3 +102,56 @@ def select_window(x, index, size):
     if right >= len(x) - 1:
         right = -1
     return x[left:] if right == -1 else x[left:right+1]
+
+
+def find_common_peak_mean(found_peaks):
+    # We want to find the peak that is common across multiple datasets. This is acheived by the following logic.
+    # Suppose we have 3 scans providing peaks. To find our reference, it is likely the peak that occurrs across
+    # all scans. A problem that we have to face is the x axis is guaranteed the same between scans, so we need to
+    # establish the overlap of the peak and the peak width. This can be imagined as so:
+    #
+    # Key: | represent peak bounds, x represents mean. WOO ASCII ART!
+    #
+    # Scan 1:
+    #                             |--x--|                |-x-----|             |-------------x---|
+    # Scan 2:
+    #                         |---x--|        |---x--|
+    #
+    # Scan 3:
+    #                                 |---x--|                         |----x-----|
+    #
+    # Thus, the left-most peak is likely the peak we are searching for, and we can select the peaks closest to the mean
+    # of these 3 scans as the real peak in our experimental data. Note: we select a single peak here, so avoid problems due
+    # to peaks with shoulders and bimodal behavior.
+    potential_peaks = {}
+    # A peak comparsion of A->B is the same as B->A, so we use combinations to do the minimal amount of work
+    # First, we remove a level of nesting to make this easier
+    new_peaks = {}
+    for peaks_label, peaks_info in six.iteritems(found_peaks):
+        for ion, peaks in six.iteritems(peaks_info):
+            new_peaks[(peaks_label, ion)] = peaks
+
+    for peaks1_key, peaks2_key in combinations(new_peaks.keys(), 2):
+        peaks1 = new_peaks[peaks1_key]
+        peaks2 = new_peaks[peaks2_key]
+        for peak_index1, peak1 in enumerate(peaks1):
+            area, mean = peak1.get('total'), peak1.get('mean')
+            left_bound, right_bound = mean-peak1.get('std1', 0)*2, mean+peak1.get('std2', peak1.get('std1', 0))*2
+            dict_key = (peaks1_key, peak_index1)
+            try:
+                potential_peaks[dict_key]['intensities'] += area
+            except KeyError:
+                potential_peaks[dict_key] = {'intensities': area, 'overlaps': set()}
+            for peak_index2, peak2 in enumerate(peaks2):
+                area2, mean2 = peak2.get('total'), peak2.get('mean')
+                left_bound2, right_bound2 = mean2 - peak2.get('std1', 0) * 2, mean2 + peak2.get('std2', peak2.get('std1', 0)) * 2
+                # This tests whether there is a overlap.
+                if (left_bound <= right_bound2) and (left_bound2 <= right_bound):
+                    potential_peaks[dict_key]['overlaps'].add(((peaks2_key, peak_index2), mean2))
+                    potential_peaks[dict_key]['intensities'] += area2
+    peak_overlaps = [(key, len(overlap_info['overlaps']), overlap_info['intensities']) for key, overlap_info in six.iteritems(potential_peaks)]
+    most_likely_peak = sorted(peak_overlaps, key=itemgetter(1, 2), reverse=True)[0]
+    means = [i[1] for i in potential_peaks[most_likely_peak[0]]['overlaps']]
+    # add in the mean of the initial peak
+    means.append(new_peaks[most_likely_peak[0][0]][most_likely_peak[0][1]].get('mean'))
+    return float(sum(means)) / len(means)

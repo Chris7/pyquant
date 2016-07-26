@@ -29,7 +29,7 @@ from scipy.ndimage.filters import gaussian_filter1d
 from pythomics.proteomics import config
 
 from . import peaks
-from .utils import find_scan, find_prior_scan, find_next_scan
+from .utils import find_scan, find_prior_scan, find_next_scan, find_common_peak_mean
 
 
 class Worker(Process):
@@ -277,8 +277,8 @@ class Worker(Process):
             precursor = target_scan['precursor']
             calibrated_precursor = self.get_calibrated_mass(precursor)
             theor_mass = target_scan.get('theor_mass', calibrated_precursor)
-            rt = target_scan[
-                'rt']    # this will be the RT of the target_scan, which is not always equal to the RT of the quant_scan
+            # this will be the RT of the target_scan, which is not always equal to the RT of the quant_scan
+            rt = target_scan['rt']
 
             peptide = target_scan.get('peptide')
             if self.debug:
@@ -879,7 +879,8 @@ class Worker(Process):
                             int_val = sum(values)
                             quant_vals[quant_label][isotope_index] = int_val
                     else:
-                        common_peak = self.replaceOutliers(combined_peaks, combined_data, debug=self.debug)
+                        # common_peak = self.replaceOutliers(combined_peaks, combined_data, debug=self.debug)
+                        common_peak = find_common_peak_mean(combined_peaks)
                         common_loc = peaks.find_nearest_index(xdata, common_peak)    # np.where(xdata==common_peak)[0][0]
                         for quant_label, quan_values in combined_peaks.items():
                             for index, values in quan_values.items():
