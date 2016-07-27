@@ -1,8 +1,10 @@
 import copy
 import six
+import warnings
 from itertools import combinations
 from operator import itemgetter
 
+import numpy as np
 import pandas as pd
 
 def merge_list(starting_list):
@@ -150,8 +152,18 @@ def find_common_peak_mean(found_peaks):
                     potential_peaks[dict_key]['overlaps'].add(((peaks2_key, peak_index2), mean2))
                     potential_peaks[dict_key]['intensities'] += area2
     peak_overlaps = [(key, len(overlap_info['overlaps']), overlap_info['intensities']) for key, overlap_info in six.iteritems(potential_peaks)]
-    most_likely_peak = sorted(peak_overlaps, key=itemgetter(1, 2), reverse=True)[0]
-    means = [i[1] for i in potential_peaks[most_likely_peak[0]]['overlaps']]
-    # add in the mean of the initial peak
-    means.append(new_peaks[most_likely_peak[0][0]][most_likely_peak[0][1]].get('mean'))
+    if not peak_overlaps and len(new_peaks) == 1:
+        # there is only 1 ion w/ peaks, just pick the biggest peak
+        means = [sorted(new_peaks.values()[0], key=itemgetter('total'), reverse=True)[0].get('mean')]
+    else:
+        most_likely_peak = sorted(peak_overlaps, key=itemgetter(1, 2), reverse=True)[0]
+        means = [i[1] for i in potential_peaks[most_likely_peak[0]]['overlaps']]
+        # add in the mean of the initial peak
+        means.append(new_peaks[most_likely_peak[0][0]][most_likely_peak[0][1]].get('mean'))
     return float(sum(means)) / len(means)
+
+
+def nanmean(arr):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        return np.nanmean(arr)

@@ -29,7 +29,7 @@ from scipy.ndimage.filters import gaussian_filter1d
 from pythomics.proteomics import config
 
 from . import peaks
-from .utils import find_scan, find_prior_scan, find_next_scan, find_common_peak_mean
+from .utils import find_scan, find_prior_scan, find_next_scan, find_common_peak_mean, nanmean
 
 
 class Worker(Process):
@@ -105,7 +105,7 @@ class Worker(Process):
 
     def low_snr(self, scan_intensities, thresh=0.3):
         std = np.std(scan_intensities)
-        last_point = np.mean(scan_intensities[-3:])
+        last_point = nanmean(scan_intensities[-3:])
         # check the SNR of the last points, if its bad, get out
         return (last_point / std) < thresh
 
@@ -691,7 +691,7 @@ class Worker(Process):
                             rt_std = res[2::self.bigauss_stepsize]
                             rt_std2 = res[3::self.bigauss_stepsize]
                             m_std = np.std(merged_y)
-                            m_mean = np.mean(merged_y)
+                            m_mean = nanmean(merged_y)
                             valid_peaks = [
                                 {'mean': i, 'amp': j, 'std': l, 'std2': k, 'total': merged_y.sum(), 'snr': m_mean / m_std,
                                  'residual': residual}
@@ -773,7 +773,7 @@ class Worker(Process):
                                     'residual': residual,
                                 }
                                 mean_index = peaks.find_nearest_index(xdata[ydata > 0], i)
-                                window_size = 5 if len(positive_y) < 15 else len(positive_y) / 3
+                                window_size = 5 if len(positive_y) < 15 else int(len(positive_y) / 3)
                                 lb, rb = mean_index - window_size, mean_index + window_size + 1
                                 if lb < 0:
                                     lb = 0
@@ -784,10 +784,10 @@ class Worker(Process):
                                     background = np.percentile(data_window, 0.8)
                                 except:
                                     background = np.percentile(ydata, 0.8)
-                                mean = np.mean(data_window)
+                                mean = nanmean(data_window)
                                 if background < mean:
                                     background = mean
-                                d['sbr'] = np.mean(j / (np.array(
+                                d['sbr'] = nanmean(j / (np.array(
                                     sorted(data_window, reverse=True)[:5])))    # (j-np.mean(positive_y[lb:rb]))/np.std(positive_y[lb:rb])
                                 d['snr'] = (j - background) / np.std(data_window)
                                 xic_peaks.append(d)
@@ -968,7 +968,7 @@ class Worker(Process):
                                     cleft, cright = mean - 2 * std, mean + 2 * std2
                                     curve_indices = (xdata >= cleft) & (xdata <= cright)
                                     cf_data = ydata[curve_indices]
-                                    ss_tot = np.sum((cf_data - np.mean(cf_data)) ** 2)
+                                    ss_tot = np.sum((cf_data - nanmean(cf_data)) ** 2)
                                     ss_res = np.sum((cf_data - peaks.bigauss_ndim(xdata[curve_indices], peak_params)) ** 2)
                                     peak_info_dict = {
                                         'mean': mean,
@@ -1068,9 +1068,9 @@ class Worker(Process):
                                         true_pred = (True, 1)
                                         classifier.fit(fit_data)
                                         # print peptide, ms1, np.mean([y[i] for i,v in enumerate(classifier.predict(fit_data)) if v in true_pred]), y
-                                        ratio = np.mean([y[i] for i, v in enumerate(classifier.predict(fit_data)) if v in true_pred])
+                                        ratio = nanmean([y[i] for i, v in enumerate(classifier.predict(fit_data)) if v in true_pred])
                                     else:
-                                        ratio = np.array(y).mean()
+                                        ratio = nanmean(np.array(y))
                                 else:
                                     common_isotopes = set(qv1.keys()).union(qv2.keys())
                                     quant1 = sum([qv1.get(i, 0) for i in common_isotopes])
@@ -1094,7 +1094,7 @@ class Worker(Process):
                 precursor = silac_data['precursor']
                 calc_precursor = silac_data.get('calibrated_precursor', silac_data['precursor'])
                 result_dict.update({
-                    '{}_residual'.format(silac_label): np.mean(pd.Series(silac_data.get('residual', [])).replace([np.inf, -np.inf, np.nan], 0)),
+                    '{}_residual'.format(silac_label): nanmean(pd.Series(silac_data.get('residual', [])).replace([np.inf, -np.inf, np.nan], 0)),
                     '{}_precursor'.format(silac_label): precursor,
                     '{}_calibrated_precursor'.format(silac_label): calc_precursor,
                 })
