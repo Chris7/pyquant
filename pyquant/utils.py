@@ -107,9 +107,9 @@ def select_window(x, index, size):
 
 
 def find_common_peak_mean(found_peaks):
-    # We want to find the peak that is common across multiple datasets. This is acheived by the following logic.
+    # We want to find the peak that is common across multiple scans. This is acheived by the following logic.
     # Suppose we have 3 scans providing peaks. To find our reference, it is likely the peak that occurrs across
-    # all scans. A problem that we have to face is the x axis is guaranteed the same between scans, so we need to
+    # all scans. A problem that we have to face is the x axis is not guaranteed the same between scans, so we need to
     # establish the overlap of the peak and the peak width. This can be imagined as so:
     #
     # Key: | represent peak bounds, x represents mean. WOO ASCII ART!
@@ -123,8 +123,7 @@ def find_common_peak_mean(found_peaks):
     #                                 |---x--|                         |----x-----|
     #
     # Thus, the left-most peak is likely the peak we are searching for, and we can select the peaks closest to the mean
-    # of these 3 scans as the real peak in our experimental data. Note: we select a single peak here, so avoid problems due
-    # to peaks with shoulders and bimodal behavior.
+    # of these 3 scans as the real peak in our experimental data.
     potential_peaks = {}
     # A peak comparsion of A->B is the same as B->A, so we use combinations to do the minimal amount of work
     # First, we remove a level of nesting to make this easier
