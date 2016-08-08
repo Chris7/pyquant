@@ -970,6 +970,7 @@ class Worker(Process):
                                     cf_data = ydata[curve_indices]
                                     ss_tot = np.sum((cf_data - nanmean(cf_data)) ** 2)
                                     ss_res = np.sum((cf_data - peaks.bigauss_ndim(xdata[curve_indices], peak_params)) ** 2)
+                                    coef_det = 1 - ss_res / ss_tot
                                     peak_info_dict = {
                                         'mean': mean,
                                         'std': std,
@@ -981,7 +982,7 @@ class Worker(Process):
                                         'sdr': sdr,
                                         'auc': int_val,
                                         'peak_width': std + std2,
-                                        'coef_det': 1 - ss_res / ss_tot,
+                                        'coef_det': coef_det,
                                         'label': quant_label,
                                     }
                                     try:
