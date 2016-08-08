@@ -6,19 +6,13 @@ import numpy as np
 from sympy import symbols, diff, exp, Piecewise
 
 from pyquant.tests.utils import timer
+from pyquant.tests.mixins import GaussianMixin
 from pyquant import peaks
 
 def get_gauss_value(x, amp, mu, std):
     return amp*np.exp(-(x - mu)**2/(2*std**2))
 
-class GaussianTests(unittest.TestCase):
-    def setUp(self):
-        self.amp, self.mu, self.std, self.mu2 = 1., 0., 1., 3.
-        self.one_gauss_params = np.array([self.amp, self.mu, self.std], dtype=np.float)
-        self.two_gauss_params = np.array([self.amp, self.mu, self.std, self.amp, self.mu2, self.std], dtype=np.float)
-        self.x = np.array(np.linspace(-5,5,101), dtype=np.float)
-        self.one_gauss = peaks.gauss_ndim(self.x, self.one_gauss_params)
-        self.two_gauss = peaks.gauss_ndim(self.x, self.two_gauss_params)
+class GaussianTests(GaussianMixin, unittest.TestCase):
 
 # def test_within_bounds():
 #     assert peaks.within_bounds(np.array([-1,1]), [(-1, 2), (-1,0)]) == 0
@@ -143,7 +137,7 @@ class FittingTests(unittest.TestCase):
 
     def test_targeted_search(self):
         # We should not find anything where there are no peaks
-        res, residual = peaks.targeted_search(self.x, self.two_gauss, self.x[2])
+        res, residual = peaks.targeted_search(self.x, self.two_gauss, self.x[2], peak_finding_kwargs={'max_peaks': 2})
         self.assertIsNone(res)
 
         # Should find the peak when we are in its area

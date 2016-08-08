@@ -1026,6 +1026,7 @@ def run_pyquant():
     df_data = []
     html_data = []
     peak_data = []
+
     for j in open(temp_file.name, 'r'):
         result = json.loads(j if isinstance(j, six.text_type) else j.decode('utf-8'))
         res_dict = result['res_dict']

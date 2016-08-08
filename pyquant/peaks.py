@@ -1,5 +1,5 @@
 from operator import itemgetter
-from collections import Counter
+from collections import defaultdict, Counter
 from scipy.misc import comb
 import pandas as pd
 import six
@@ -11,7 +11,7 @@ if True:#os.environ.get('PYQUANT_DEV', False) == 'True':
     except:
         pass
 from pyquant.cpeaks import *
-from .utils import select_window
+from .utils import select_window, divide_peaks
 
 if six.PY3:
     xrange = range
@@ -394,7 +394,13 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         # if row_peaks.size > 1:
         #     peak_width_end += 1
         peak_width += 1
-    # Now that we've found our peaks, we can obliterate part of ydata_peaks
+
+    # Next, for fitting multiple peaks, we want to divide up the space so we are not fitting peaks that
+    # have no chance of actually impacting one another.
+    chunks = divide_peaks(ydata_peaks)
+    chunks = np.hstack((chunks, -1))
+
+    # Now that we've found our peaks and breakpoints between peaks, we can obliterate part of ydata_peaks
     if snr != 0 and not local_filter_size:
         ydata_peaks[ydata_peaks / ydata_peaks_std < snr] = 0
     if zscore != 0 and not local_filter_size:
@@ -425,9 +431,11 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 if peak_width == peak_width_end - 1:
                     final_peaks[peak_width + 1] = peaks_found[peak_width + 1]
 
-    best_res = 0
 
     fit_accuracy = []
+    step_size = 4 if bigauss_fit else 3
+    if baseline_correction:
+        step_size += 2
     min_spacing = min(np.diff(xdata)) / 2
     peak_range = xdata[-1] - xdata[0]
     # initial bound setup
@@ -437,9 +445,10 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     if baseline_correction:
         initial_bounds.extend([(None, None), (None, None)])
         # print(final_peaks)
-    lowest_bic = np.inf
     if debug:
         sys.stderr.write('final peaks: {}\n'.format(final_peaks))
+
+    fitted_segments = defaultdict(list)
     for peak_width, peak_info in final_peaks.items():
         row_peaks = peak_info['peaks']
         if debug:
@@ -565,94 +574,129 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 intercept = ((ydata[-1] - slope * xdata[-1]) + (ydata[0] - slope * xdata[0])) / 2
                 guess.extend([slope, intercept])
 
-        args = (xdata, ydata, baseline_correction)
-        opts = {'maxiter': 1000}
-        fit_func = bigauss_func if bigauss_fit else gauss_func
 
-        routines = ['SLSQP', 'TNC', 'L-BFGS-B']
-        if method:
-            routines = [method]
-        # if baseline_correction:
-        #     routines = ['nelder-mead'] #0.05
-        routine = routines.pop(0)
-        if len(bnds) == 0:
-            bnds = deepcopy(initial_bounds)
-        if baseline_correction:
-            jacobian = None
-        else:
-            jacobian = bigauss_jac if bigauss_fit else gauss_jac
-        if debug:
-            print('guess and bnds', guess, bnds)
-        hessian = None# if bigauss_fit else gauss_hess
-        # print('params', fit_func, guess, args, routine, bnds, opts, jacobian, hessian)
-        results = [optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=jacobian, hess=hessian)]
-        while not results[-1].success and routines:
-            routine = routines.pop(0)
-            results.append(
-                optimize.minimize(fit_func, guess, args, method=routine, bounds=bnds, options=opts, jac=jacobian))
-            # print routine, res[-1]
-        if results[-1].success:
-            res = results[-1]
-        else:
-            res = sorted(results, key=attrgetter('fun'))[0]
-        n = len(xdata)
-        k = len(res.x)
-        # this is actually incorrect, but works better...
-        # bic = n*np.log(res.fun/n)+k+np.log(n)
-        if bigauss_fit:
-            bic = 2 * k + 2 * np.log(res.fun / n)
-        else:
-            bic = res.fun
-        res.bic = bic
+        # Now that we have estimated the parameters for fitting all the data, we divide it up into
+        # chunks and fit each segment. The choice to fit all parameters first is to prevent cases
+        # where a chunk is dividing two overlapping points and the variance estimate may be too low.
+        for chunk_index, right_break_point in enumerate(chunks):
+            left_break_point = chunks[chunk_index-1] if chunk_index != 0 else 0
+            # print(chunk_index, left_break_point, right_break_point, chunks)
+            segment_x = xdata[left_break_point:right_break_point]
+            segment_y = ydata[left_break_point:right_break_point]
 
-        step_size = 4 if bigauss_fit else 3
-        if baseline_correction:
-            step_size += 2
-        for index, value in enumerate(res.x[2::step_size]):
-            if value < min_spacing:
-                res.x[2 + index * step_size] = min_spacing
-        if bigauss_fit:
-            for index, value in enumerate(res.x[3::step_size]):
-                if value < min_spacing:
-                    res.x[3 + index * step_size] = min_spacing
-        # does this data contain our rt peak?
-        res._contains_rt = False
-        if rt_peak != 0:
-            for i in xrange(1, res.x.size, step_size):
-                mean = res.x[i]
-                lstd = res.x[i + 1]
-                if bigauss_fit:
-                    rstd = res.x[i + 2]
-                else:
-                    rstd = lstd
-                if mean - lstd * 2 < rt_peak < mean + rstd * 2:
-                    res._contains_rt = True
-
-        # TODO: Evaluate the F-test based method
-        # if best_res:
-        #     cmodel_ssq = best_res.fun
-        #     new_model_ssq = res.fun
-        #     df = len(xdata)-len(res.x)
-        #     f_ratio = (cmodel_ssq-new_model_ssq)/(new_model_ssq/df)
-        #     res.p = 1-stats.f.cdf(f_ratio, 1, df)
-        #     bic = res.p
-        #
-        # if not best_res or res.p < best_res.p:
-        #     best_res = res
-        #     best_fit = np.copy(res.x)
-        #     best_rss = res.fun
-
-        if bic < lowest_bic or (getattr(best_res, '_contains_rt', False) and res._contains_rt == True):
-            if debug:
-                sys.stderr.write('{} < {}'.format(bic, lowest_bic))
-            if res._contains_rt == False and best_res != 0 and best_res._contains_rt == True:
+            # select the guesses and bounds for this segment
+            segment_guess, segment_bounds = [], []
+            for guess_index, mean in enumerate(guess[1::step_size]):
+                if segment_x[0] < mean:
+                    if mean < segment_x[-1]:
+                        index_start = guess_index*step_size
+                        segment_guess += guess[index_start:index_start+step_size]
+                        segment_bounds += bnds[index_start:index_start+step_size]
+                    else:
+                        break
+            if not segment_guess:
                 continue
-            best_fit = np.copy(res.x)
-            best_res = res
-            best_rss = res.fun
-            lowest_bic = bic
-        if debug:
-            sys.stderr.write('{} - best: {}'.format(res, best_fit))
+
+            args = (segment_x, segment_y, baseline_correction)
+            opts = {'maxiter': 1000}
+            fit_func = bigauss_func if bigauss_fit else gauss_func
+
+            routines = ['SLSQP', 'TNC', 'L-BFGS-B']
+            if method:
+                routines = [method]
+            # if baseline_correction:
+            #     routines = ['nelder-mead'] #0.05
+            routine = routines.pop(0)
+            if len(bnds) == 0:
+                bnds = deepcopy(initial_bounds)
+            if baseline_correction:
+                jacobian = None
+            else:
+                jacobian = bigauss_jac if bigauss_fit else gauss_jac
+            if debug:
+                print('guess and bnds', segment_guess, segment_bounds)
+            hessian = None# if bigauss_fit else gauss_hess
+            # print('params', fit_func, guess, args, routine, bnds, opts, jacobian, hessian)
+            results = [optimize.minimize(fit_func, segment_guess, args, method=routine, bounds=segment_bounds, options=opts, jac=jacobian, hess=hessian)]
+            while not results[-1].success and routines:
+                routine = routines.pop(0)
+                results.append(
+                    optimize.minimize(fit_func, segment_guess, args, method=routine, bounds=segment_bounds, options=opts, jac=jacobian))
+                # print routine, res[-1]
+            if results[-1].success:
+                res = results[-1]
+            else:
+                res = sorted(results, key=attrgetter('fun'))[0]
+            n = len(xdata)
+            k = len(res.x)
+            # this is actually incorrect, but works better...
+            # bic = n*np.log(res.fun/n)+k+np.log(n)
+            if bigauss_fit:
+                bic = 2 * k + 2 * np.log(res.fun / n)
+            else:
+                bic = res.fun
+            res.bic = bic
+
+            for index, value in enumerate(res.x[2::step_size]):
+                if value < min_spacing:
+                    res.x[2 + index * step_size] = min_spacing
+            if bigauss_fit:
+                for index, value in enumerate(res.x[3::step_size]):
+                    if value < min_spacing:
+                        res.x[3 + index * step_size] = min_spacing
+            # does this data contain our rt peak?
+            res._contains_rt = False
+            if rt_peak != 0:
+                for i in xrange(1, res.x.size, step_size):
+                    mean = res.x[i]
+                    lstd = res.x[i + 1]
+                    if bigauss_fit:
+                        rstd = res.x[i + 2]
+                    else:
+                        rstd = lstd
+                    if mean - lstd * 2 < rt_peak < mean + rstd * 2:
+                        res._contains_rt = True
+
+            # TODO: Evaluate the F-test based method
+            # if best_res:
+            #     cmodel_ssq = best_res.fun
+            #     new_model_ssq = res.fun
+            #     df = len(xdata)-len(res.x)
+            #     f_ratio = (cmodel_ssq-new_model_ssq)/(new_model_ssq/df)
+            #     res.p = 1-stats.f.cdf(f_ratio, 1, df)
+            #     bic = res.p
+            #
+            # if not best_res or res.p < best_res.p:
+            #     best_res = res
+            #     best_fit = np.copy(res.x)
+            #     best_rss = res.fun
+
+            fitted_segments[chunk_index].append((bic, res))
+
+    # Figure out the best set of fits
+    best_fit = []
+    best_rss = 0
+    for break_point in sorted(fitted_segments.keys()):
+        fits = fitted_segments[break_point]
+        lowest_bic = np.inf
+        best_segment_res = 0
+        best_segment_rss = 0
+        for bic, res in fits:
+            if bic < lowest_bic or (getattr(best_segment_res, '_contains_rt', False) and res._contains_rt == True):
+                if debug:
+                    sys.stderr.write('{} < {}'.format(bic, lowest_bic))
+                if res._contains_rt == False and best_segment_res != 0 and best_segment_res._contains_rt == True:
+                    continue
+                best_segment_fit = np.copy(res.x)
+                best_segment_res = res
+                best_segment_rss = res.fun
+                lowest_bic = bic
+            if debug:
+                sys.stderr.write('{} - best: {}'.format(res, best_segment_fit))
+        best_fit += best_segment_fit.tolist()
+        best_rss += best_segment_rss
+
+    best_fit = np.array(best_fit)
 
     if rescale:# and not baseline_correction:
         best_fit[::step_size] *= ydata_original.max()

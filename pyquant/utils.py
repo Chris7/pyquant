@@ -166,3 +166,11 @@ def nanmean(arr):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
         return np.nanmean(arr)
+
+
+def divide_peaks(peaks):
+    # We divide up the list of peaks to reduce the number of dimensions each fitting routine is working on
+    # to improve convergence speeds
+    from scipy.signal import argrelmin
+    chunks = argrelmin(peaks, order=5)[0]
+    return chunks

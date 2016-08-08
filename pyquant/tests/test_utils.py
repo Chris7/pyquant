@@ -1,10 +1,10 @@
 __author__ = 'chris'
 import unittest
-import numpy as np
 
 from pyquant import utils
+from pyquant.tests.mixins import GaussianMixin
 
-class UtilsTests(unittest.TestCase):
+class UtilsTests(GaussianMixin, unittest.TestCase):
     def test_select_window(self):
         x = range(10)
         selection = utils.select_window(x, 0, 3)
@@ -15,6 +15,14 @@ class UtilsTests(unittest.TestCase):
         self.assertListEqual(selection, [5, 6, 7, 8, 9])
         selection = utils.select_window(x, 8, 20)
         self.assertListEqual(selection, x)
+
+    def test_divide_peaks(self):
+        chunks = utils.divide_peaks(self.one_gauss)
+        two_gauss_chunks = utils.divide_peaks(self.two_gauss)
+        self.assertEqual(len(chunks), 0)
+        self.assertEqual(len(two_gauss_chunks), 1)
+        self.assertEqual(two_gauss_chunks[0], 65)
+
 
 if __name__ == '__main__':
     unittest.main()
