@@ -16,7 +16,7 @@ import six
 if six.PY3:
     xrange = range
 
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from multiprocessing import Queue
 from six.moves.queue import Empty
 
@@ -34,7 +34,7 @@ from pythomics.proteomics import config
 
 from .reader import Reader
 from .worker import Worker
-from .utils import find_prior_scan, get_scans_under_peaks
+from .utils import find_prior_scan, get_scans_under_peaks, naninfmean, naninfsum
 from . import peaks
 
 
@@ -381,7 +381,8 @@ def run_pyquant():
             ('snr', 'SNR'),
             ('sbr', 'SBR'),
             ('sdr', 'Density'),
-            ('residual', 'R^2'),
+            ('coef_det', 'R^2'),
+            ('residual', 'Residual'),
         ])
     iterator = ['_'.join(map(str, sorted(labels)))] if args.merge_labels else labels
     for label in iterator:
@@ -398,18 +399,19 @@ def run_pyquant():
                 ('{}_isotopes'.format(label), '{}Isotopes Found'.format(label_key)),
             ])
         RESULT_ORDER.extend([
-            ('{}_intensity'.format(label), '{}Intensity'.format(label_key)),
+            ('{}_intensity'.format(label), '{}Intensity'.format(label_key), naninfsum),
         ])
         if args.peaks_n == 1:
             RESULT_ORDER.extend([
-                ('{}_peak_width'.format(label), '{}RT Width'.format(label_key)),
-                ('{}_mean_diff'.format(label), '{}Mean Offset'.format(label_key)),
+                ('{}_peak_width'.format(label), '{}RT Width'.format(label_key), naninfmean),
+                ('{}_mean_diff'.format(label), '{}Mean Offset'.format(label_key), naninfmean),
             ])
 
         if msn_for_quant == 1:
             RESULT_ORDER.extend([
-                ('{}_residual'.format(label), '{}Residual'.format(label_key)),
-                ('{}_snr'.format(label), '{}SNR'.format(label_key)),
+                ('{}_residual'.format(label), '{}Residual'.format(label_key), naninfsum),
+                ('{}_coef_det'.format(label), '{}R^2'.format(label_key), naninfmean),
+                ('{}_snr'.format(label), '{}SNR'.format(label_key), naninfmean),
             ])
         if not args.merge_labels and not args.no_ratios and label != '':
             for label2 in labels:
@@ -955,6 +957,8 @@ def run_pyquant():
                             export_mapping['{}_{}.mzML'.format(out_path, filename)] |= flattened_scans
                     if len(peaks_found) > most_peaks_found:
                         most_peaks_found = len(peaks_found)
+
+                    xic_peak_summary = OrderedDict()
                     for isotope_index, isotope_peaks in six.iteritems(peaks_found):
                         if args.export_mzml and args.export_mode == PER_ID:
                             export_mapping['{out}_{raw}_{ms1}_{precursor}.mzML'.format(**{
@@ -977,10 +981,21 @@ def run_pyquant():
                                 peak_report.append(list(map(str, (xic_peak_info.get(i[0], 'NA') for i in PEAK_REPORTING))))
                             else:
                                 # TODO: fix this terrible loop
-                                for i in RESULT_ORDER:
+                                for i, v in enumerate(RESULT_ORDER):
                                     for j in xic_peak_info:
-                                        if '{}_{}'.format(label_name, j) == i[0]:
-                                            res_dict[i[0]] = xic_peak_info[j]
+                                        if '{}_{}'.format(label_name, j) == v[0]:
+                                            try:
+                                                xic_peak_summary[i].append(xic_peak_info[j])
+                                            except KeyError:
+                                                xic_peak_summary[i] = [xic_peak_info[j]]
+
+                    if args.peaks_n == 1:
+                        for index, values in six.iteritems(xic_peak_summary):
+                            result_info = RESULT_ORDER[index]
+                            if callable(result_info[-1]):
+                                res_dict[result_info[0]] = result_info[-1](values)
+                            else:
+                                res_dict[result_info[0]] = values[0]
                 res_dict['filename'] = filename
                 # first entry of peak report is label, sort alphabetically
                 peak_report.sort(key=operator.itemgetter(0))

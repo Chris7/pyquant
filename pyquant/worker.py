@@ -968,8 +968,11 @@ class Worker(Process):
                                     cleft, cright = mean - 2 * std, mean + 2 * std2
                                     curve_indices = (xdata >= cleft) & (xdata <= cright)
                                     cf_data = ydata[curve_indices]
+                                    # Buffer cf_data with 0's to reflect that the data is nearly zero outside the fit
+                                    # and to prevent areas with 2 data points from having negative R^2
+                                    cf_data = np.hstack((0, cf_data, 0))
                                     ss_tot = np.sum((cf_data - nanmean(cf_data)) ** 2)
-                                    ss_res = np.sum((cf_data - peaks.bigauss_ndim(xdata[curve_indices], peak_params)) ** 2)
+                                    ss_res = np.sum((cf_data - np.hstack((0, peaks.bigauss_ndim(xdata[curve_indices], peak_params), 0))) ** 2)
                                     coef_det = 1 - ss_res / ss_tot
                                     peak_info_dict = {
                                         'mean': mean,
@@ -982,7 +985,8 @@ class Worker(Process):
                                         'sdr': sdr,
                                         'auc': int_val,
                                         'peak_width': std + std2,
-                                        'residual': coef_det,
+                                        'coef_det': coef_det,
+                                        'residual': residual,
                                         'label': quant_label,
                                     }
                                     try:

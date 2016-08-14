@@ -174,3 +174,15 @@ def divide_peaks(peaks):
     from scipy.signal import argrelmin
     chunks = argrelmin(peaks, order=5)[0]
     return chunks
+
+
+def inffilter(arr):
+    return filter(lambda x: x not in (np.inf, -np.inf), arr)
+
+
+def naninfmean(arr):
+    return np.nanmean(inffilter(arr))
+
+
+def naninfsum(arr):
+    return np.nansum(inffilter(arr))
