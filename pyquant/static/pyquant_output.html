@@ -482,7 +482,7 @@
                         }
                     });
                 };
-                var initDataViewer = function(){
+                function initButtons() {
                     $('td > button').on('click', function(event){
                         var $this = $(this);
                         var cell_info = dt.cell($(this).parent()).index();
@@ -545,6 +545,9 @@
                         $(this).parent().parent().addClass('selected');
                         $(this).addClass('current-plot');
                     });
+                }
+                var initDataViewer = function(){
+                    initButtons();
                     $.contextMenu({
                         selector: 'tr > th',
                         items: {
@@ -648,6 +651,7 @@
                         $('[data-toggle="tooltip"]').tooltip({
                             container: 'body'
                         });
+                        initButtons();
                         reload = false;
                     }
                 });
