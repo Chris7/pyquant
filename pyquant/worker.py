@@ -982,7 +982,7 @@ class Worker(Process):
                                         'sdr': sdr,
                                         'auc': int_val,
                                         'peak_width': std + std2,
-                                        'coef_det': coef_det,
+                                        'residual': coef_det,
                                         'label': quant_label,
                                     }
                                     try:

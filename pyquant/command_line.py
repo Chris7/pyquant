@@ -1,10 +1,10 @@
 from __future__ import division, unicode_literals, print_function
 import sys
+import json
 from string import Template
 import gzip
 import signal
 import base64
-import json
 import os
 import copy
 import operator
@@ -26,6 +26,7 @@ try:
 except ImportError:
     pass
 
+import simplejson
 from scipy.interpolate import UnivariateSpline
 
 from pythomics.proteomics.parsers import GuessIterator
@@ -380,7 +381,7 @@ def run_pyquant():
             ('snr', 'SNR'),
             ('sbr', 'SBR'),
             ('sdr', 'Density'),
-            ('coef_det', 'R^2'),
+            ('residual', 'R^2'),
         ])
     iterator = ['_'.join(map(str, sorted(labels)))] if args.merge_labels else labels
     for label in iterator:
@@ -408,6 +409,7 @@ def run_pyquant():
         if msn_for_quant == 1:
             RESULT_ORDER.extend([
                 ('{}_residual'.format(label), '{}Residual'.format(label_key)),
+                ('{}_snr'.format(label), '{}SNR'.format(label_key)),
             ])
         if not args.merge_labels and not args.no_ratios and label != '':
             for label2 in labels:
@@ -1107,13 +1109,12 @@ def run_pyquant():
 
                     cols = []
                     for i in (silac_label1, silac_label2):
-                        cols.extend(['{} {}'.format(i,j) for j in ['Intensity', 'Isotopes Found', 'Peak Area', 'SNR', 'Residual']])
+                        cols.extend(['{} {}'.format(i, j) for j in ['Intensity', 'Isotopes Found', 'SNR', 'Residual']])
 
                     fit_data = data.loc[:, cols]
 
                     # TODO: Fix this in hte model to be peak area
-                    fit_data.rename(columns={'{} Peak Area'.format(silac_label1): label1_pint, '{} Peak Area'.format(silac_label2): label2_pint}, inplace=True)
-                    fit_data.loc[:,(label2_int, label1_int, label2_pint, label1_pint)] = np.log2(fit_data.loc[:,(label2_int, label1_int, label2_pint, label1_pint)].astype(float))
+                    fit_data.loc[:, (label2_int, label1_int)] = np.log2(fit_data.loc[:, (label2_int, label1_int)].astype(float))
                     from sklearn import preprocessing
                     from patsy import dmatrix
                     fit_data = fit_data.replace([np.inf, -np.inf], np.nan)
@@ -1121,7 +1122,7 @@ def run_pyquant():
                     fit_data.dropna(inplace=True)
                     fit_data.loc[:] = preprocessing.scale(fit_data)
 
-                    formula = "{columns} + (Q('{silac_label1} Intensity')*Q('{silac_label1} Peak Intensity')*Q('{silac_label1} SNR'))**2+(Q('{silac_label2} SNR')*Q('{silac_label2} Intensity')*Q('{silac_label2} Peak Intensity'))**2".format(**{
+                    formula = "{columns} + (Q('{silac_label1} Intensity')*Q('{silac_label1} SNR'))**2+(Q('{silac_label2} SNR')*Q('{silac_label2} Intensity'))**2".format(**{
                         'columns': "+".join(["Q('{}')".format(i) for i in fit_data.columns]),
                         'silac_label1': silac_label1,
                         'silac_label2': silac_label2,
@@ -1168,8 +1169,8 @@ def run_pyquant():
                 template.append(i)
         html_template = Template(''.join(template))
         html_out.write(html_template.safe_substitute({
-            'peak_output': base64.b64encode(gzip.zlib.compress(json.dumps(peak_map), 9)),
-            'html_output': base64.b64encode(gzip.zlib.compress(json.dumps(html_map), 9)),
+            'peak_output': base64.b64encode(gzip.zlib.compress(simplejson.dumps(peak_map, ignore_nan=True), 9)),
+            'html_output': base64.b64encode(gzip.zlib.compress(simplejson.dumps(html_map, ignore_nan=True), 9)),
         }))
 
     os.remove(temp_file.name)

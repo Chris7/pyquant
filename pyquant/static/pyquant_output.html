@@ -262,8 +262,8 @@
 
             $(document).ready(function() {
 
-                var dt_data = eval(pako.inflate(window.atob("$html_output"), { to: 'string' }));
-                var peak_data = eval(pako.inflate(window.atob("$peak_output"), { to: 'string' }));
+                var dt_data = JSON.parse(pako.inflate(window.atob("$html_output"), { to: 'string' }));
+                var peak_data = JSON.parse(pako.inflate(window.atob("$peak_output"), { to: 'string' }));
                 var non_numeric_rows = [0,1,2];
                 var multiple_peaks = peak_data['header'].length != 0;
                 var numeric_rows = [];
