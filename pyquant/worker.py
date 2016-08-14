@@ -753,7 +753,7 @@ class Worker(Process):
                               peak_width_start=1,
                               **self.peak_finding_kwargs
                             )
-                            if fit is None:
+                            if not fit.any():
                                 continue
                             rt_amps = fit[::self.bigauss_stepsize]    # * ydata.max()
                             rt_means = fit[1::self.bigauss_stepsize]
