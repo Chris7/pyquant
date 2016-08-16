@@ -523,14 +523,14 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 peak_indices = xdata[left:right]
             else:
                 left = 0
-                right = len(xdata)
+                right = len(xdata)-1
                 bnds.extend([(rel_peak, 1.01), (peak_left, peak_right), (min_spacing, peak_range)])
                 if bigauss_fit:
                     bnds.extend([(min_spacing, peak_range)])
                 if baseline_correction:
                     bnds.extend([(None, None), (None, None)])
-                peak_values = ydata[left:right]
-                peak_indices = xdata[left:right]
+                peak_values = ydata[left:right+1]
+                peak_indices = xdata[left:right+1]
 
             if debug:
                 print('bounds', peak_index, left, right, peak_values.tolist(), peak_indices.tolist(), bnds)
