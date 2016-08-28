@@ -544,7 +544,7 @@ class Worker(Process):
                                             del isotopes_chosen[i]
                         del df
                 all_data_intensity[delta].append(current_scan_intensity)
-                if not found or ((np.abs(ms_index) > 7 and self.low_snr(all_data_intensity[delta], thresh=self.parser_args.xic_snr)) or (self.parser_args.max_scan_count != -1 and np.abs(ms_index) >= self.parser_args.max_scan_count)):
+                if not found or ((np.abs(ms_index) > 7 and self.low_snr(all_data_intensity[delta], thresh=self.parser_args.xic_snr)) or (self.parser_args.xic_window_size != -1 and np.abs(ms_index) >= self.parser_args.xic_window_size)):
                     not_found += 1
                     if current_scan is None or (not_found >= 2 and not self.parser_args.msn_all_scans):
                         not_found = 0
