@@ -482,8 +482,8 @@
                         }
                     });
                 };
-                var initDataViewer = function(){
-                    $('td > button').click(function(event){
+                function initButtons() {
+                    $('td > button').on('click', function(event){
                         var $this = $(this);
                         var cell_info = dt.cell($(this).parent()).index();
                         var row_index = cell_info['row'];
@@ -545,6 +545,9 @@
                         $(this).parent().parent().addClass('selected');
                         $(this).addClass('current-plot');
                     });
+                }
+                var initDataViewer = function(){
+                    initButtons();
                     $.contextMenu({
                         selector: 'tr > th',
                         items: {
@@ -645,10 +648,10 @@
                 });
                 $('#raw-table').on( 'draw.dt', function () {
                     if(reload){
-                        initDataViewer();
                         $('[data-toggle="tooltip"]').tooltip({
                             container: 'body'
                         });
+                        initButtons();
                         reload = false;
                     }
                 });

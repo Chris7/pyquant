@@ -49,12 +49,13 @@ tsv_group.add_argument('--source', help='The column indicating the raw file the 
 ion_search_group = pyquant_parser.add_argument_group('Targetted Ion Search Parameters')
 ion_search_group.add_argument('--msn-id', help='The ms level to search for the ion in. Default: 2 (ms2)', type=int, default=2)
 ion_search_group.add_argument('--msn-quant-from', help='The ms level to quantify values from. i.e. if we are identifying an ion in ms2, we can quantify it in ms1 (or ms2). Default: msn value-1', type=int, default=None)
-ion_search_group.add_argument('--msn-ion', help='M/Z values to search for in the scans.', nargs='+', type=float)
+ion_search_group.add_argument('--msn-ion', help='M/Z values to search for in the scans. To search for multiple m/z values for a given ion, separate m/z values with a comma.', nargs='+', type=str)
 ion_search_group.add_argument('--msn-ion-rt', help='RT values each ion is expected at.', nargs='+', type=float)
 ion_search_group.add_argument('--msn-peaklist', help='A file containing peaks to search for in the scans.', type=argparse.FileType('rb'))
 ion_search_group.add_argument('--msn-ppm', help='The error tolerance for identifying the ion(s).', type=float, default=200)
 ion_search_group.add_argument('--msn-rt-window', help='The range of retention times for identifying the ion(s). (ex:  7.54-9.43)', type=str, nargs='+')
 ion_search_group.add_argument('--msn-all-scans', help='Search for the ion across all scans (ie if you have 3 ions, you will have 3 results with one long XIC)', action='store_true')
+ion_search_group.add_argument('--require-all-ions', help='If multiple ions are set (in the style of 93.15,105.15), all ions must be found in a scan.', action='store_true')
 
 quant_parameters = pyquant_parser.add_argument_group('Quantification Parameters')
 quant_parameters.add_argument('--quant-method', help='The process to use for quantification. Default: Integrate for ms1, sum for ms2+.', choices=['integrate', 'sum'], default=None)
@@ -69,16 +70,21 @@ quant_parameters.add_argument('--no-mass-accuracy-correction', help='Disables th
 quant_parameters.add_argument('--no-contaminant-detection', help='Disables routine to check if an ion is a contaminant of a nearby peptide (checks if its a likely isotopologue).', action='store_true')
 
 peak_parameters = pyquant_parser.add_argument_group('Peak Fitting Parameters')
+peak_parameters.add_argument('--remove-baseline', help='Fit a separate line for the baseline of each peak.', action='store_true')
 peak_parameters.add_argument('--peak-cutoff', help='The threshold from the initial retention time a peak can fall by before being discarded', type=float, default=0.05)
 peak_parameters.add_argument('--max-peaks', help='The maximal number of peaks to detect per scan. A lower value can help with very noisy data.', type=int, default=-1)
 peak_parameters.add_argument('--peaks-n', help='The number of peaks to report per scan. Useful for ions with multiple elution times.', type=int, default=1)
 peak_parameters.add_argument('--no-rt-guide', help='Do not use the retention tme to guide peak selection.', action='store_true')
-peak_parameters.add_argument('--snr-filter', help='Filter peaks below a given SNR.', type=int, default=0)
-peak_parameters.add_argument('--intensity-filter', help='Filter peaks whose peak are below a given intensity.', type=int, default=0)
+peak_parameters.add_argument('--snr-filter', help='Filter peaks below a given SNR.', type=float, default=0)
+peak_parameters.add_argument('--zscore-filter', help='Peaks below a given z-score are excluded.', type=float, default=0)
+peak_parameters.add_argument('--filter-width', help='The window size for snr/zscore filtering. Default: entire scan', type=float, default=0)
+peak_parameters.add_argument('--intensity-filter', help='Filter peaks whose peak are below a given intensity.', type=float, default=0)
 peak_parameters.add_argument('--min-peak-separation', help='Peaks separated by less than this distance will be combined. For very crisp data, set this to 2. (minimal value is 1)', type=int, default=4)
 peak_parameters.add_argument('--disable-peak-filtering', help='This will disable smoothing of data prior to peak finding. If you have very good LC, this may be used to identify small peaks.', action='store_true')
 
 xic_parameters = pyquant_parser.add_argument_group('XIC Options')
+xic_parameters.add_argument('--xic-snr', help='When the SNR of the XIC falls below this, stop searching for more data. Useful for escaping from noisy shoulders and contaminants.', type=float, default=1.0)
+xic_parameters.add_argument('--xic-window-size', help='When the number of scans in a given direction from the initial datapoint of an XIC passes this, stop. Default is -1 (disabled). Useful for removing contaminants', type=int, default=-1)
 xic_parameters.add_argument('--export-msn', help='This will export spectra of a given MSN that were used to provide the quantification.', action='store_false')
 
 
@@ -108,6 +114,7 @@ convenience_group.add_argument('--neucode', help='This will select parameters sp
 convenience_group.add_argument('--isobaric-tags', help='This will select parameters specific for isobaric tag based labeling (TMT/iTRAQ).', action='store_true')
 convenience_group.add_argument('--ms3', help='This will select parameters specific for ms3 based quantification.', action='store_true')
 convenience_group.add_argument('--maxquant', help='This will select parameters specific for a MaxQuant evidence file.', action='store_true')
+convenience_group.add_argument('--gcms', help='This will select parameters specific for ion identification and quantification in GCMS experiments.', action='store_true')
 #'This will select parameters specific for Selective/Multiple Reaction Monitoring (SRM/MRM).'
 convenience_group.add_argument('--mrm', help=argparse.SUPPRESS, action='store_true')
 
