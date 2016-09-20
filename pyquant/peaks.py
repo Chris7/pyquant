@@ -604,8 +604,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             routines = ['SLSQP', 'TNC', 'L-BFGS-B']
             if method:
                 routines = [method]
-            # if baseline_correction:
-            #     routines = ['nelder-mead'] #0.05
+
             routine = routines.pop(0)
             if len(bnds) == 0:
                 bnds = deepcopy(initial_bounds)
@@ -616,13 +615,12 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             if debug:
                 print('guess and bnds', segment_guess, segment_bounds)
             hessian = None# if bigauss_fit else gauss_hess
-            # print('params', fit_func, guess, args, routine, bnds, opts, jacobian, hessian)
+
             results = [optimize.minimize(fit_func, segment_guess, args, method=routine, bounds=segment_bounds, options=opts, jac=jacobian, hess=hessian)]
             while not results[-1].success and routines:
                 routine = routines.pop(0)
                 results.append(
                     optimize.minimize(fit_func, segment_guess, args, method=routine, bounds=segment_bounds, options=opts, jac=jacobian))
-                # print routine, res[-1]
             if results[-1].success:
                 res = results[-1]
             else:
