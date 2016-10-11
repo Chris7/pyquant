@@ -218,26 +218,26 @@ def calculate_theoretical_distribution(peptide=None, elemental_composition=None)
 
     ETN_P = {}
     if peptide is not None:
-        element_composition = {}
+        elemental_composition = {}
         aa_counts = Counter(peptide)
         for aa, aa_count in aa_counts.items():
             for element, element_count in RESIDUE_COMPOSITION[aa].items():
                 try:
-                    element_composition[element] += aa_count * element_count
+                    elemental_composition[element] += aa_count * element_count
                 except KeyError:
-                    element_composition[element] = aa_count * element_count
+                    elemental_composition[element] = aa_count * element_count
         # we lose a water for every peptide bond
         peptide_bonds = len(peptide) - 1
-        element_composition['H'] -= peptide_bonds * 2
-        element_composition['O'] -= peptide_bonds
+        elemental_composition['H'] -= peptide_bonds * 2
+        elemental_composition['O'] -= peptide_bonds
         # and gain a hydrogen for our NH3
-        element_composition['H'] += 1
+        elemental_composition['H'] += 1
 
-    total_atoms = sum(element_composition.values())
+    total_atoms = sum(elemental_composition.values())
     for etn, etn_members in ETNS.items():
         p = 0.0
         for isotope, abundance in etn_members.items():
-            p += element_composition.get(isotope, 0) * abundance / total_atoms
+            p += elemental_composition.get(isotope, 0) * abundance / total_atoms
         ETN_P[etn] = p
     tp = 0
     dist = []
