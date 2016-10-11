@@ -29,7 +29,7 @@ from scipy.ndimage.filters import gaussian_filter1d
 from pythomics.proteomics import config
 
 from . import peaks
-from .utils import find_scan, find_prior_scan, find_next_scan, find_common_peak_mean, nanmean
+from .utils import calculate_theoretical_distribution, find_scan, find_prior_scan, find_next_scan, find_common_peak_mean, nanmean
 
 
 class Worker(Process):
@@ -368,7 +368,7 @@ class Worker(Process):
             finished_isotopes = {i: set([]) for i in precursors.keys()}
             ms_index = 0
             delta = -1
-            theo_dist = peaks.calculate_theoretical_distribution(peptide.upper()) if peptide else None
+            theo_dist = calculate_theoretical_distribution(peptide=peptide.upper()) if peptide else None
             spacing = config.NEUTRON / float(charge)
             isotope_labels = {}
             isotopes_chosen = {}

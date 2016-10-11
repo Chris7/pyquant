@@ -1,11 +1,16 @@
 import copy
 import six
 import warnings
+from collections import Counter
 from itertools import combinations
 from operator import itemgetter
 
 import numpy as np
 import pandas as pd
+from scipy.misc import comb
+
+if six.PY3:
+    xrange = range
 
 def merge_list(starting_list):
     final_list = []
@@ -186,3 +191,64 @@ def naninfmean(arr):
 
 def naninfsum(arr):
     return np.nansum(inffilter(arr))
+
+
+ETNS = {
+    1: {'C': .0110, 'H': 0.00015, 'N': 0.0037, 'O': 0.00038, 'S': 0.0075},
+    2: {'O': 0.0020, 'S': .0421},
+    4: {'S': 0.00020}
+}
+
+def calculate_theoretical_distribution(peptide=None, elemental_composition=None):
+    from pythomics.proteomics.config import RESIDUE_COMPOSITION
+
+    def dio_solve(n, l=None, index=0, out=None):
+        if l is None:
+            l = [1, 2, 4]
+        if out is None:
+            out = [0] * len(l)
+        if index != len(l):
+            for i in xrange(int(n / l[index]) + 1):
+                out[index] = i
+                for j in dio_solve(n, l=l, index=index + 1, out=out):
+                    yield j
+        else:
+            if n == sum([a * b for a, b in zip(l, out)]):
+                yield out
+
+    ETN_P = {}
+    if peptide is not None:
+        element_composition = {}
+        aa_counts = Counter(peptide)
+        for aa, aa_count in aa_counts.items():
+            for element, element_count in RESIDUE_COMPOSITION[aa].items():
+                try:
+                    element_composition[element] += aa_count * element_count
+                except KeyError:
+                    element_composition[element] = aa_count * element_count
+        # we lose a water for every peptide bond
+        peptide_bonds = len(peptide) - 1
+        element_composition['H'] -= peptide_bonds * 2
+        element_composition['O'] -= peptide_bonds
+        # and gain a hydrogen for our NH3
+        element_composition['H'] += 1
+
+    total_atoms = sum(element_composition.values())
+    for etn, etn_members in ETNS.items():
+        p = 0.0
+        for isotope, abundance in etn_members.items():
+            p += element_composition.get(isotope, 0) * abundance / total_atoms
+        ETN_P[etn] = p
+    tp = 0
+    dist = []
+    while tp < 0.999:
+        p = 0
+        for solution in dio_solve(len(dist)):
+            p2 = []
+            for k, i in zip(solution, [1, 2, 4]):
+                petn = ETN_P[i]
+                p2.append((comb(total_atoms, k) * (petn ** k)) * ((1 - petn) ** (total_atoms - k)))
+            p += np.cumprod(p2)[-1]
+        tp += p
+        dist.append(p)
+    return pd.Series(dist)
