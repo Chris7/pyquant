@@ -76,7 +76,7 @@ class EColiManualTest(FileMixins, unittest.TestCase):
 
     @timer
     def test_pyquant_manual(self):
-        com = [self.executable, '--search-file', self.search_file, '--scan-file', self.mzml, '--html', '-p', str(config.CORES), '-o', self.output, '--max-scan-count', '12']
+        com = [self.executable, '--search-file', self.search_file, '--scan-file', self.mzml, '--html', '-p', str(config.CORES), '-o', self.output, '--xic-window-size', '12']
         peptides, scans = zip(*map(lambda x: x.split(' '),peps_scans))
         com.extend(['--peptide'])
         com.extend(peptides)

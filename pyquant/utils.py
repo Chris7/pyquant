@@ -259,7 +259,7 @@ def get_classifier():
     import pickle
 
     pq_dir = os.path.split(__file__)[0]
-    classifier = pickle.load(open(os.path.join(pq_dir, 'static', 'new_classifier2.pickle'), 'rb'))
+    classifier = pickle.load(open(os.path.join(pq_dir, 'static', 'classifier.pickle'), 'rb'))
 
     return classifier
 
