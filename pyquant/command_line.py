@@ -34,7 +34,7 @@ from pythomics.proteomics import config
 
 from .reader import Reader
 from .worker import Worker
-from .utils import find_prior_scan, get_scans_under_peaks, naninfmean, naninfsum
+from .utils import find_prior_scan, get_scans_under_peaks, naninfmean, naninfsum, perform_ml
 from . import peaks
 
 
@@ -1059,109 +1059,8 @@ def run_pyquant():
             header_mapping.append(RESULT_ORDER[order_names.index(i)][0])
         except ValueError:
             header_mapping.append(False)
-    if calc_stats and six.PY2:
-        from scipy import stats
-        import pickle
-        import numpy as np
-        classifier = pickle.load(open(os.path.join(pq_dir, 'static', 'classifier.pickle'), 'rb'))
-        data = data.replace('NA', np.nan)
-        for silac_label1 in mass_labels.keys():
-            label1_log = 'L{}'.format(silac_label1)
-            label1_logp = 'L{}_p'.format(silac_label1)
-            label1_int = '{} Intensity'.format(silac_label1)
-            label1_pint = '{} Peak Intensity'.format(silac_label1)
-            label1_hif = '{} Isotopes Found'.format(silac_label1)
-            label1_hifp = '{} Isotopes Found p'.format(silac_label1)
-            for silac_label2 in mass_labels.keys():
-                if silac_label1 == silac_label2:
-                    continue
-                try:
-                    label2_log = 'L{}'.format(silac_label2)
-                    label2_logp = 'L{}_p'.format(silac_label2)
-                    label2_int = '{} Intensity'.format(silac_label2)
-                    label2_pint = '{} Peak Intensity'.format(silac_label2)
-                    label2_hif = '{} Isotopes Found'.format(silac_label2)
-                    label2_hifp = '{} Isotopes Found p'.format(silac_label2)
-
-                    mixed = '{}/{}'.format(silac_label1, silac_label2)
-                    mixed_p = '{}/{}_p'.format(silac_label1, silac_label2)
-                    mixed_mean = '{}_Mean_Diff'.format(mixed)
-                    mixed_mean_p = '{}_Mean_Diff_p'.format(mixed)
-                    mixed_rt_diff = '{}_RT_Diff'.format(mixed)
-                    mixed_rt_diff_p = '{}_p'.format(mixed_rt_diff)
-                    mixed_isotope_diff = '{}_Isotope_Diff'.format(mixed)
-                    mixed_isotope_diff_p = '{}_Isotope_Diff_p'.format(mixed)
-
-                    data[label1_log] = np.log(data[label1_int].astype(float)+1)
-                    data[label1_logp] = stats.norm.cdf((data[label1_log] - data[data[label1_log]>0][label1_log].mean())/data[data[label1_log]>0][label1_log].std(ddof=0))
-                    data[label2_log] = np.log(data[label2_int].astype(float)+1)
-                    data[label2_logp] = stats.norm.cdf((data[label2_log] - data[data[label2_log]>0][label2_log].mean())/data[data[label2_log]>0][label2_log].std(ddof=0))
-
-                    nz = data[(data[label2_log] > 0) & (data[label1_log] > 0)]
-                    mu = pd.Series(np.ravel(nz.loc[:,(label2_log, label1_log)])).mean()
-                    std = pd.Series(np.ravel(nz.loc[:,(label2_log, label1_log)])).std()
-
-                    data[mixed_p] = stats.norm.cdf((data.loc[:,(label2_log, label1_log)].mean(axis=1)-mu)/std)
-                    data[mixed_rt_diff] = np.log2(np.abs(data['{} RT Width'.format(silac_label2)].astype(float)-data['{} RT Width'.format(silac_label1)].astype(float)))
-                    data[mixed_mean] = np.abs(data['{} Mean Offset'.format(silac_label1)].astype(float)-data['{} Mean Offset'.format(silac_label1)].astype(float))
-                    data[mixed_rt_diff] = data[mixed_rt_diff].replace([np.inf, -np.inf], np.nan)
-                    data[mixed_rt_diff_p] = stats.norm.cdf((data[mixed_rt_diff] - data[mixed_rt_diff].mean())/data[mixed_rt_diff].std(ddof=0))
-                    data[mixed_mean_p] = stats.norm.cdf((data[mixed_mean] - data[mixed_mean].mean())/data[mixed_mean].std(ddof=0))
-
-                    data[label2_hif] = data[label2_hif].astype(float)
-                    data[label2_hifp] = np.log2(data[label2_hif]).replace([np.inf, -np.inf], np.nan)
-                    data[label2_hifp] = stats.norm.cdf((data[label2_hifp]-data[label2_hifp].median())/data[label2_hifp].std())
-
-                    data[label1_hif] = data[label1_hif].astype(float)
-                    data[label1_hifp] = np.log2(data[label1_hif]).replace([np.inf, -np.inf], np.nan)
-                    data[label1_hifp] = stats.norm.cdf((data[label1_hifp]-data[label1_hifp].median())/data[label2_hifp].std())
-
-                    data[mixed_isotope_diff] = np.log2(data[label2_hif]/data[label1_hif]).replace([np.inf, -np.inf], np.nan)
-                    data[mixed_isotope_diff_p] = stats.norm.cdf((data[mixed_isotope_diff] - data[mixed_isotope_diff].median())/data[mixed_isotope_diff].std(ddof=0))
-
-                    # confidence assessment
-                    mixed_confidence = '{}/{} Confidence'.format(silac_label1, silac_label2)
-
-                    cols = []
-                    for i in (silac_label1, silac_label2):
-                        cols.extend(['{} {}'.format(i, j) for j in ['Intensity', 'Isotopes Found', 'SNR', 'Residual']])
-
-                    fit_data = data.loc[:, cols]
-
-                    # TODO: Fix this in hte model to be peak area
-                    fit_data.loc[:, (label2_int, label1_int)] = np.log2(fit_data.loc[:, (label2_int, label1_int)].astype(float))
-                    from sklearn import preprocessing
-                    from patsy import dmatrix
-                    fit_data = fit_data.replace([np.inf, -np.inf], np.nan)
-                    non_na_data = fit_data.dropna().index
-                    fit_data.dropna(inplace=True)
-                    fit_data.loc[:] = preprocessing.scale(fit_data)
-
-                    formula = "{columns} + (Q('{silac_label1} Intensity')*Q('{silac_label1} SNR'))**2+(Q('{silac_label2} SNR')*Q('{silac_label2} Intensity'))**2".format(**{
-                        'columns': "+".join(["Q('{}')".format(i) for i in fit_data.columns]),
-                        'silac_label1': silac_label1,
-                        'silac_label2': silac_label2,
-                    })
-                    fit_predictors = dmatrix(str(formula), fit_data)
-
-                    # for a 'good' vs. 'bad' classifier, where 1 is good
-                    conf_ass = classifier.predict_proba(fit_predictors)[:,1]*10
-                    data.loc[non_na_data, mixed_confidence] = conf_ass
-
-                    # conf_ass = classifier.predict(fit_data.values)
-                    # left = conf_ass[conf_ass<0]
-                    # ecdf = pd.Series(left).value_counts().sort_index().cumsum()*1./len(left)*10
-                    # #ecdf = pd.Series(conf_ass).value_counts().sort_index(ascending=False).cumsum()*1./len(conf_ass)*10
-                    # mapper = interp1d(ecdf.index.values, ecdf.values)
-                    # data.loc[non_na_data[conf_ass<0], mixed_confidence] = mapper(left)
-                    # right = conf_ass[conf_ass>=0]
-                    # ecdf = pd.Series(right).value_counts().sort_index(ascending=False).cumsum()*1./len(right)*10
-                    # #ecdf = pd.Series(conf_ass).value_counts().sort_index(ascending=False).cumsum()*1./len(conf_ass)*10
-                    # mapper = interp1d(ecdf.index.values, ecdf.values)
-                    # data.loc[non_na_data[conf_ass>=0], mixed_confidence] = mapper(right)
-                except:
-                    sys.stderr.write('Unable to calculate statistics for {}/{}.\n Traceback: {}'.format(silac_label1, silac_label2, traceback.format_exc()))
-
+    if calc_stats:
+        perform_ml(data, mass_labels)
         data.to_csv('{}_stats'.format(out_path), sep=str('\t'), index=None)
 
     if html:

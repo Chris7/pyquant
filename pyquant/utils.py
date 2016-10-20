@@ -252,3 +252,73 @@ def calculate_theoretical_distribution(peptide=None, elemental_composition=None)
         tp += p
         dist.append(p)
     return pd.Series(dist)
+
+
+def get_classifier():
+    import os
+    import pickle
+
+    pq_dir = os.path.split(__file__)[0]
+    classifier = pickle.load(open(os.path.join(pq_dir, 'static', 'new_classifier2.pickle'), 'rb'))
+
+    return classifier
+
+def perform_ml(data, mass_labels):
+    import numpy as np
+    import sys
+
+    from sklearn.preprocessing import scale
+    from scipy.special import logit
+
+    classifier = get_classifier()
+    cols = ['Isotopes Found', 'Intensity', 'RT Width', 'Mean Offset', 'Residual', 'R^2', 'SNR']
+
+    for label1 in mass_labels.keys():
+        for label2 in mass_labels.keys():
+            if label1 == label2:
+                continue
+
+            try:
+                nd = pd.DataFrame([], columns=[
+                    'Label1 Isotopes Found',
+                    'Label1 Intensity',
+                    'Label1 RT Width',
+                    'Label1 Mean Offset',
+                    'Label1 Residual',
+                    'Label1 R^2',
+                    'Label1 SNR',
+                    'Label2 Isotopes Found',
+                    'Label2 Intensity',
+                    'Label2 RT Width',
+                    'Label2 Mean Offset',
+                    'Label2 Residual',
+                    'Label2 R^2',
+                    'Label2 SNR',
+                ])
+                for label, new_label in zip([label1, label2], ['Label1', 'Label2']):
+                    for col in cols:
+                        nd['{} {}'.format(new_label, col)] = data['{} {}'.format(label, col)]
+
+                nd.replace([-np.inf, np.inf, 'NA'], np.nan, inplace=True)
+                non_na_data = nd.dropna().index
+                nd.loc[non_na_data, 'Label1 Intensity'] = np.log2(nd.loc[non_na_data, 'Label1 Intensity'].astype(float))
+                nd.loc[non_na_data, 'Label2 Intensity'] = np.log2(nd.loc[non_na_data, 'Label2 Intensity'].astype(float))
+
+                non_na_data = nd.dropna().index
+                nd.loc[non_na_data, 'Label1 R^2'] = logit(nd.loc[non_na_data, 'Label1 R^2'].astype(float))
+                nd.loc[non_na_data, 'Label2 R^2'] = logit(nd.loc[non_na_data, 'Label2 R^2'].astype(float))
+
+                non_na_data = nd.dropna().index
+                nd.loc[non_na_data, :] = scale(nd.loc[non_na_data, :].values)
+
+                mixed_confidence = '{}/{} Confidence'.format(label1, label2)
+
+
+                # for a 'good' vs. 'bad' classifier, where 1 is good
+                conf_ass = classifier.predict_proba(nd.loc[non_na_data, :])[:, 1] * 10
+                data.loc[non_na_data, mixed_confidence] = conf_ass
+
+            except:
+                import traceback
+                sys.stderr.write(
+                    'Unable to calculate statistics for {}/{}.\n Traceback: {}'.format(label1, label2, traceback.format_exc()))
