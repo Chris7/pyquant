@@ -4,6 +4,9 @@ import os
 import copy
 import operator
 import traceback
+
+from functools import cmp_to_key
+
 import pandas as pd
 import numpy as np
 import six
@@ -354,7 +357,7 @@ class Worker(Process):
                 precursors['Precursor']['theoretical_mz'] = precursor
                 data['Precursor'] = copy.deepcopy(silac_dict)
             precursors = OrderedDict(
-                sorted(precursors.items(), cmp=lambda x, y: int(x[1]['uncalibrated_mz'] - y[1]['uncalibrated_mz'])))
+                sorted(precursors.items(), key=cmp_to_key(lambda x, y: int(x[1]['uncalibrated_mz'] - y[1]['uncalibrated_mz']))))
             shift_maxes = {i: max([j['uncalibrated_mz'], j['calibrated_mz'], j['theoretical_mz']]) for i, j in
                                          zip(precursors.keys(), list(precursors.values())[1:])}
             lowest_precursor_mz = min(
