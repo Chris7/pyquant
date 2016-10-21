@@ -132,8 +132,6 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
                 displacement = last_displacement + tolerance if last_displacement is not None else tolerance * 2
             else:
                 displacement = get_ppm(start + offset, current_loc)
-            # if debug:
-            #     print pos, start, current_loc, displacement, last_displacement, displacement > last_displacement, last_displacement < tolerance, isotope_index, offset
             # because the peak location may be between two readings, we use a very tolerance search here and enforce the ppm at the peak fitting stage.
             if displacement < tolerance * 5:
                 valid_locations.append((displacement, current_loc, pos))
@@ -393,8 +391,6 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     fitted_segments = defaultdict(list)
     for peak_width, peak_info in final_peaks.items():
         row_peaks = peak_info['peaks']
-        if debug:
-            print 'analyzing', row_peaks
         minima_array = np.array(peak_info['minima'], dtype=long)
         guess = []
         bnds = []

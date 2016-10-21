@@ -411,7 +411,6 @@ class Worker(Process):
                         if self.min_resolution and df is not None:
                             scan_resolution = np.average(
                                 df.index[1:] / np.array([df.index[i] - df.index[i - 1] for i in xrange(1, len(df))]))
-                            # print self.msn_rt_map.index[next_scan], self.min_resolution, scan_resolution
                             if scan_resolution < self.min_resolution:
                                 scans_to_skip.add(current_scan)
                                 continue
@@ -892,8 +891,6 @@ class Worker(Process):
                                 ydata = rt_values.fillna(0).values.astype(float)
                                 # pick the biggest within a rt cutoff of 0.2, otherwise pick closest
                                 # closest_rts = sorted([(i, i['amp']) for i in values if np.abs(i['peak']-common_peak) < 0.2], key=operator.itemgetter(1), reverse=True)
-                                # if not closest_rts:
-                                # print values
                                 closest_rts = sorted([(i, np.abs(i['mean'] - common_peak)) for i in values], key=operator.itemgetter(1))
                                 xic_peaks = [i[0] for i in closest_rts]
                                 pos_x = xdata[ydata > 0]
@@ -1072,7 +1069,6 @@ class Worker(Process):
                                         fit_data = np.log2(np.array(y).reshape(len(y), 1))
                                         true_pred = (True, 1)
                                         classifier.fit(fit_data)
-                                        # print peptide, ms1, np.mean([y[i] for i,v in enumerate(classifier.predict(fit_data)) if v in true_pred]), y
                                         ratio = nanmean([y[i] for i, v in enumerate(classifier.predict(fit_data)) if v in true_pred])
                                     else:
                                         ratio = nanmean(np.array(y))
