@@ -3,6 +3,7 @@ import unittest
 from random import randint, random
 
 import numpy as np
+from six.moves import xrange
 from sympy import symbols, diff, exp, Piecewise
 
 from pyquant.tests.utils import timer
