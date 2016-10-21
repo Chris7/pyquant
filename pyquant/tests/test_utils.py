@@ -1,10 +1,18 @@
 __author__ = 'chris'
+import os
 import unittest
+
+import pandas as pd
 
 from pyquant import utils
 from pyquant.tests.mixins import GaussianMixin
 
 class UtilsTests(GaussianMixin, unittest.TestCase):
+    def setUp(self):
+        super(UtilsTests, self).setUp()
+        self.base_dir = os.path.split(os.path.abspath(__file__))[0]
+        self.data_dir = os.path.join(self.base_dir, 'data')
+
     def test_select_window(self):
         x = range(10)
         selection = utils.select_window(x, 0, 3)
@@ -29,6 +37,18 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         ele_comp = utils.calculate_theoretical_distribution(elemental_composition={'C': 7})
         self.assertListEqual(pep_comp.values.tolist(), [0.6411550319843632, 0.2662471681269686, 0.07401847648709056, 0.015434213671511215, 0.002681646815294711])
         self.assertListEqual(ele_comp.values.tolist(), [0.9254949240653104, 0.07205572209608584, 0.002404285974894674])
+
+    def test_ml(self):
+        data = os.path.join(self.data_dir, 'ml_data.tsv')
+        dat = pd.read_table(data)
+        labels = ['Heavy', 'Medium', 'Light']
+        utils.perform_ml(dat, {i: [] for i in labels})
+        for label1 in labels:
+            for label2 in labels:
+                if label1 == label2:
+                    continue
+                col = '{}/{} Confidence'.format(label1, label2)
+                self.assertNotEqual(sum(pd.isnull(dat['Heavy/Light Confidence']) == False), 0)
 
 
 if __name__ == '__main__':
