@@ -40,7 +40,7 @@ class Worker(Process):
                  debug=False, html=False, mono=False, precursor_ppm=5.0, isotope_ppm=2.5, quant_method='integrate',
                  reader_in=None, reader_out=None, thread=None, fitting_run=False, msn_rt_map=None, reporter_mode=False,
                  spline=None, isotopologue_limit=-1, labels_needed=1, overlapping_mz=False, min_resolution=0, min_scans=3,
-                 quant_msn_map=None, mrm=False, mrm_pair_info=None, peak_cutoff=0.05, ratio_cutoff=1, replicate=False,
+                 quant_msn_map=None, mrm=False, mrm_pair_info=None, peak_cutoff=0.05, ratio_cutoff=0, replicate=False,
                  ref_label=None, max_peaks=4, parser_args=None):
         super(Worker, self).__init__()
         self.precision = precision
@@ -77,7 +77,7 @@ class Worker(Process):
         self.mrm_pair_info = mrm_pair_info
         self.peak_cutoff = peak_cutoff
         self.replicate = replicate
-        self.ratio_cutoff = 1
+        self.ratio_cutoff = ratio_cutoff
         self.ref_label = ref_label
         self.max_peaks = max_peaks
         self.parser_args = parser_args
@@ -782,16 +782,22 @@ class Worker(Process):
                                 if rb > len(positive_y):
                                     rb = -1
                                 data_window = positive_y[lb:rb]
-                                try:
-                                    background = np.percentile(data_window, 0.8)
-                                except:
-                                    background = np.percentile(ydata, 0.8)
-                                mean = nanmean(data_window)
-                                if background < mean:
-                                    background = mean
-                                d['sbr'] = nanmean(j / (np.array(
-                                    sorted(data_window, reverse=True)[:5])))    # (j-np.mean(positive_y[lb:rb]))/np.std(positive_y[lb:rb])
-                                d['snr'] = (j - background) / np.std(data_window)
+                                if data_window.any():
+                                    try:
+                                        background = np.percentile(data_window, 0.8)
+                                    except:
+                                        background = np.percentile(ydata, 0.8)
+                                    mean = nanmean(data_window)
+                                    if background < mean:
+                                        background = mean
+                                    d['sbr'] = nanmean(j / (np.array( sorted(data_window, reverse=True)[:5])))    # (j-np.mean(positive_y[lb:rb]))/np.std(positive_y[lb:rb])
+                                    if len(data_window) > 2:
+                                        d['snr'] = (j - background) / np.std(data_window)
+                                    else:
+                                        d['snr'] = np.NaN
+                                else:
+                                    d['sbr'] = np.NaN
+                                    d['snr'] = np.NaN
                                 xic_peaks.append(d)
                             # if we have a peaks containing our retention time, keep them and throw out ones not containing it
                             to_remove = []
@@ -1081,7 +1087,7 @@ class Worker(Process):
                                     quant2 = sum([qv2.get(i, 0) for i in common_isotopes])
                                     ratio = quant1 / quant2 if quant1 and quant2 else 'NA'
                                 try:
-                                    if np.abs(np.log2(ratio)) > self.ratio_cutoff:
+                                    if self.ratio_cutoff and not pd.isnull(ratio) and np.abs(np.log2(ratio)) > self.ratio_cutoff:
                                         write_html = True
                                 except:
                                     pass

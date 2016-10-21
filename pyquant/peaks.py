@@ -1,13 +1,17 @@
-from operator import itemgetter
-from collections import defaultdict, Counter
-import pandas as pd
-import six
+import os
+from collections import defaultdict
+
 import numpy as np
-if True:#os.environ.get('PYQUANT_DEV', False) == 'True':
+import six
+
+if os.environ.get('PYQUANT_DEV', False) == 'True':
     try:
         import pyximport; pyximport.install(setup_args={'include_dirs': np.get_include()}, reload_support=True)
     except:
+        import traceback
+        traceback.print_exc()
         pass
+
 from pyquant.cpeaks import *
 from .utils import select_window, divide_peaks
 
@@ -700,9 +704,12 @@ def findMicro(xdata, ydata, pos, ppm=None, start_mz=None, calc_start_mz=None, is
                 fit = False
 
         peak = np.array(sorted_peaks[0][0])
-        # peak[0] *= new_y.max()
-
-        int_val = gauss_ndim(new_x, peak).sum()
+        # only go ahead with fitting if we have a stdev. Otherwise, set this to 0
+        if peak[2] > 0:
+            # peak[0] *= new_y.max()
+            int_val = gauss_ndim(new_x, peak).sum()
+        else:
+            int_val = 0
         if not fit:
             pass
         error = sorted_peaks[0][1]

@@ -1,4 +1,5 @@
 import copy
+import os
 import six
 import warnings
 from collections import Counter
@@ -11,6 +12,8 @@ from scipy.misc import comb
 
 if six.PY3:
     xrange = range
+
+ERRORS = 'error' if os.environ.get('PYQUANT_DEV', False) == 'True' else 'ignore'
 
 def merge_list(starting_list):
     final_list = []
@@ -158,7 +161,7 @@ def find_common_peak_mean(found_peaks):
     peak_overlaps = [(key, len(overlap_info['overlaps']), overlap_info['intensities']) for key, overlap_info in six.iteritems(potential_peaks)]
     if not peak_overlaps and len(new_peaks) == 1:
         # there is only 1 ion w/ peaks, just pick the biggest peak
-        means = [sorted(new_peaks.values()[0], key=itemgetter('total'), reverse=True)[0].get('mean')]
+        means = [sorted(list(new_peaks.values())[0], key=itemgetter('total'), reverse=True)[0].get('mean')]
     else:
         most_likely_peak = sorted(peak_overlaps, key=itemgetter(1, 2), reverse=True)[0]
         means = [i[1] for i in potential_peaks[most_likely_peak[0]]['overlaps']]
@@ -167,10 +170,15 @@ def find_common_peak_mean(found_peaks):
     return float(sum(means)) / len(means)
 
 
-def nanmean(arr):
+def nanmean(arr, empty=0):
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=RuntimeWarning)
-        return np.nanmean(arr)
+        warnings.simplefilter(ERRORS, category=RuntimeWarning)
+        if any((i for i in arr if not pd.isnull(i))):
+            if isinstance(arr, list):
+                return np.nanmean(arr)
+            elif arr.any():
+                return np.nanmean(arr)
+        return empty
 
 
 def divide_peaks(peaks):
@@ -182,15 +190,27 @@ def divide_peaks(peaks):
 
 
 def inffilter(arr):
-    return filter(lambda x: x not in (np.inf, -np.inf), arr)
+    with warnings.catch_warnings():
+        warnings.simplefilter(ERRORS, category=RuntimeWarning)
+        return filter(lambda x: x not in (np.inf, -np.inf), arr)
 
 
-def naninfmean(arr):
-    return np.nanmean(inffilter(arr))
+def naninfmean(arr, empty=0):
+    with warnings.catch_warnings():
+        warnings.simplefilter(ERRORS, category=RuntimeWarning)
+        arr = list(inffilter(arr))
+        if any((i for i in arr if not pd.isnull(i))):
+            return np.nanmean(arr)
+        return empty
 
 
-def naninfsum(arr):
-    return np.nansum(inffilter(arr))
+def naninfsum(arr, empty=0):
+    with warnings.catch_warnings():
+        warnings.simplefilter(ERRORS, category=RuntimeWarning)
+        arr = list(inffilter(arr))
+        if any((i for i in arr if not pd.isnull(i))):
+            return np.nansum(arr)
+        return empty
 
 
 ETNS = {

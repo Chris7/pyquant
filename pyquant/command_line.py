@@ -1,36 +1,31 @@
 from __future__ import division, unicode_literals, print_function
-import sys
-import json
-from string import Template
-import gzip
-import signal
 import base64
-import os
 import copy
+import gzip
+import os
 import operator
 import traceback
-import pandas as pd
 import random
-import six
-
-if six.PY3:
-    xrange = range
-
+import signal
+import sys
 from collections import defaultdict, OrderedDict
+from functools import partial
 from multiprocessing import Queue
-from six.moves.queue import Empty
+from string import Template
 
+import pandas as pd
+import six
+from pythomics.proteomics.parsers import GuessIterator
+from pythomics.proteomics import config
+from scipy.interpolate import UnivariateSpline
+from six.moves.queue import Empty
+from six.moves import xrange
 try:
     from profilestats import profile
     from memory_profiler import profile as memory_profiler
 except ImportError:
     pass
 
-import simplejson
-from scipy.interpolate import UnivariateSpline
-
-from pythomics.proteomics.parsers import GuessIterator
-from pythomics.proteomics import config
 
 from .reader import Reader
 from .worker import Worker
@@ -399,19 +394,19 @@ def run_pyquant():
                 ('{}_isotopes'.format(label), '{}Isotopes Found'.format(label_key)),
             ])
         RESULT_ORDER.extend([
-            ('{}_intensity'.format(label), '{}Intensity'.format(label_key), naninfsum),
+            ('{}_intensity'.format(label), '{}Intensity'.format(label_key), partial(naninfsum, empty=0)),
         ])
         if args.peaks_n == 1:
             RESULT_ORDER.extend([
-                ('{}_peak_width'.format(label), '{}RT Width'.format(label_key), naninfmean),
-                ('{}_mean_diff'.format(label), '{}Mean Offset'.format(label_key), naninfmean),
+                ('{}_peak_width'.format(label), '{}RT Width'.format(label_key), partial(naninfmean, empty=0)),
+                ('{}_mean_diff'.format(label), '{}Mean Offset'.format(label_key), partial(naninfmean, empty=np.NaN)),
             ])
 
         if msn_for_quant == 1:
             RESULT_ORDER.extend([
-                ('{}_residual'.format(label), '{}Residual'.format(label_key), naninfsum),
-                ('{}_coef_det'.format(label), '{}R^2'.format(label_key), naninfmean),
-                ('{}_snr'.format(label), '{}SNR'.format(label_key), naninfmean),
+                ('{}_residual'.format(label), '{}Residual'.format(label_key), partial(naninfsum, empty=np.NaN)),
+                ('{}_coef_det'.format(label), '{}R^2'.format(label_key), partial(naninfmean, empty=0)),
+                ('{}_snr'.format(label), '{}SNR'.format(label_key), partial(naninfmean, empty=0)),
             ])
         if not args.merge_labels and not args.no_ratios and label != '':
             for label2 in labels:
@@ -475,7 +470,7 @@ def run_pyquant():
         if os.path.exists(resume_name):
             with open(resume_name, 'r') as temp_file:
                 for index, entry in enumerate(temp_file):
-                    info = json.loads(entry)['res_list']
+                    info = pd.io.json.loads(entry)['res_list']
                     # key is filename, peptide, charge, target scan id, modifications
                     key = tuple(map(str, (info[0], info[1], info[3], info[5], info[2])))
                     skip_map.add(key)
@@ -1006,7 +1001,7 @@ def run_pyquant():
                 out.write(res)
                 out.flush()
 
-                temp_file.write(json.dumps({'res_dict': res_dict, 'html': result.get('html', {})}))
+                temp_file.write(pd.io.json.dumps({'res_dict': res_dict, 'html': result.get('html', {})}))
                 temp_file.write('\n')
                 temp_file.flush()
 
@@ -1045,7 +1040,7 @@ def run_pyquant():
     peak_data = []
 
     for j in open(temp_file.name, 'r'):
-        result = json.loads(j if isinstance(j, six.text_type) else j.decode('utf-8'))
+        result = pd.io.json.loads(j if isinstance(j, six.text_type) else j.decode('utf-8'))
         res_dict = result['res_dict']
         res_list = [res_dict['filename']]+[res_dict.get(i[0], 'NA') for i in RESULT_ORDER]
         peak_data.append(res_dict['peak_report'])
@@ -1083,8 +1078,8 @@ def run_pyquant():
                 template.append(i)
         html_template = Template(''.join(template))
         html_out.write(html_template.safe_substitute({
-            'peak_output': base64.b64encode(gzip.zlib.compress(simplejson.dumps(peak_map, ignore_nan=True), 9)),
-            'html_output': base64.b64encode(gzip.zlib.compress(simplejson.dumps(html_map, ignore_nan=True), 9)),
+            'peak_output': base64.b64encode(gzip.zlib.compress(pd.io.json.dumps(peak_map, ignore_nan=True), 9)),
+            'html_output': base64.b64encode(gzip.zlib.compress(pd.io.json.dumps(html_map, ignore_nan=True), 9)),
         }))
 
     os.remove(temp_file.name)
