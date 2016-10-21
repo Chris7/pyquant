@@ -709,11 +709,11 @@ def findMicro(xdata, ydata, pos, ppm=None, start_mz=None, calc_start_mz=None, is
             # peak[0] *= new_y.max()
             int_val = gauss_ndim(new_x, peak).sum()
         else:
-            int_val = 0
+            int_val = 0.
         if not fit:
             pass
         error = sorted_peaks[0][1]
-    ret_dict = {'int': int_val if fit or fragment_scan == True else 0, 'int2': int_val, 'bounds': (left, right),
+    ret_dict = {'int': int_val if fit or fragment_scan == True else 0., 'int2': int_val, 'bounds': (left, right),
                 'params': peak, 'error': error}
     return ret_dict
 

@@ -949,6 +949,11 @@ class Worker(Process):
                                         left_index = 0
                                     if right_index >= len(xdata) or right_index <= 0:
                                         right_index = len(xdata)
+
+                                    # check that we have at least 2 positive values
+                                    if sum(ydata[left_index:right_index] > 0) < 2:
+                                        continue
+
                                     try:
                                         int_val = integrate.simps(peaks.bigauss_ndim(xr, peak_params), x=xr) if self.quant_method == 'integrate' else ydata[(xdata > left) & (xdata < right)].sum()
                                     except:
