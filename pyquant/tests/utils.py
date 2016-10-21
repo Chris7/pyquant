@@ -1,4 +1,5 @@
 import os
+import six
 # import plotly.plotly as py
 # import plotly
 # plotly.tools.set_credentials_file(username=os.environ.get('plotly_username'), api_key=os.environ.get('plotly_api_key'))
@@ -12,7 +13,7 @@ def timer(func):
         start = time.time()
         val = func(*args, **kwargs)
         elapsed = time.time()-start
-        print('{} evaluated in {}'.format(func.func_name, elapsed))
+        print('{} evaluated in {}'.format(func.func_name if six.PY2 else func.__name__, elapsed))
         # trace = Scatter(
         #     x=os.environ.get('TRAVIS_BUILD_NUMBER', 1),
         #     y=elapsed,
