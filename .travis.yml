@@ -38,6 +38,8 @@ script: make testall
 after_success:
   - if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
       coveralls
+    else
+      echo "no coveralls for python3"
     fi
 cache:
   directories:
