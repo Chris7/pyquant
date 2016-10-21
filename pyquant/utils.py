@@ -276,10 +276,10 @@ def calculate_theoretical_distribution(peptide=None, elemental_composition=None)
 
 def get_classifier():
     import os
-    import pickle
+    from six.moves.cPickle import load
 
     pq_dir = os.path.split(__file__)[0]
-    classifier = pickle.load(open(os.path.join(pq_dir, 'static', 'classifier.pickle'), 'rb'))
+    classifier = load(open(os.path.join(pq_dir, 'static', 'classifier.pickle'), 'rb'), encoding='latin1')
 
     return classifier
 
