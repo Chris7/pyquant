@@ -24,6 +24,8 @@ install:
   # Coverage packages are on my binstar channel
   - if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
       conda install --yes -c dan_blanchard python-coveralls nose-cov
+    else
+      echo "no coveralls for python3"
     fi
   - pip install --upgrade pip
   - pip install -r requirements.txt
