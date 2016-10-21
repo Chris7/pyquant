@@ -391,7 +391,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     fitted_segments = defaultdict(list)
     for peak_width, peak_info in final_peaks.items():
         row_peaks = peak_info['peaks']
-        minima_array = np.array(peak_info['minima'], dtype=long)
+        minima_array = np.array(peak_info['minima'], dtype=six.integer_types)
         guess = []
         bnds = []
         last_peak = -1
