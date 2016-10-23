@@ -342,7 +342,8 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     # Next, for fitting multiple peaks, we want to divide up the space so we are not fitting peaks that
     # have no chance of actually impacting one another.
     chunks = divide_peaks(ydata_peaks)
-    chunks = np.hstack((chunks, -1))
+    if not chunks or chunks[-1] != len(ydata_peaks):
+        chunks = np.hstack((chunks, len(ydata_peaks)))
 
     # Now that we've found our peaks and breakpoints between peaks, we can obliterate part of ydata_peaks
     if snr != 0 and not local_filter_size:
