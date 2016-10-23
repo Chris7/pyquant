@@ -1077,9 +1077,11 @@ def run_pyquant():
             elif append:
                 template.append(i)
         html_template = Template(''.join(template))
+        peak_map = pd.io.json.dumps(peak_map)
+        html_map = pd.io.json.dumps(html_map)
         html_out.write(html_template.safe_substitute({
-            'peak_output': base64.b64encode(gzip.zlib.compress(pd.io.json.dumps(peak_map, ignore_nan=True), 9)),
-            'html_output': base64.b64encode(gzip.zlib.compress(pd.io.json.dumps(html_map, ignore_nan=True), 9)),
+            'peak_output': base64.b64encode(gzip.zlib.compress(peak_map if six.PY2 else six.binary_type(peak_map, 'utf-8'), 9)).decode('utf-8'),
+            'html_output': base64.b64encode(gzip.zlib.compress(html_map if six.PY2 else six.binary_type(html_map, 'utf-8'), 9)).decode('utf-8'),
         }))
 
     os.remove(temp_file.name)

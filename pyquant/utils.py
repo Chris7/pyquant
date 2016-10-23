@@ -279,7 +279,8 @@ def get_classifier():
     from six.moves.cPickle import load
 
     pq_dir = os.path.split(__file__)[0]
-    classifier = load(open(os.path.join(pq_dir, 'static', 'classifier.pickle'), 'rb'), encoding='latin1')
+    handle = open(os.path.join(pq_dir, 'static', 'classifier.pickle'), 'rb')
+    classifier = load(handle) if six.PY2 else load(handle, encoding='latin1')
 
     return classifier
 
@@ -324,10 +325,12 @@ def perform_ml(data, mass_labels):
                 nd.loc[non_na_data, 'Label1 Intensity'] = np.log2(nd.loc[non_na_data, 'Label1 Intensity'].astype(float))
                 nd.loc[non_na_data, 'Label2 Intensity'] = np.log2(nd.loc[non_na_data, 'Label2 Intensity'].astype(float))
 
+                nd.replace([-np.inf, np.inf, 'NA'], np.nan, inplace=True)
                 non_na_data = nd.dropna().index
                 nd.loc[non_na_data, 'Label1 R^2'] = logit(nd.loc[non_na_data, 'Label1 R^2'].astype(float))
                 nd.loc[non_na_data, 'Label2 R^2'] = logit(nd.loc[non_na_data, 'Label2 R^2'].astype(float))
 
+                nd.replace([-np.inf, np.inf, 'NA'], np.nan, inplace=True)
                 non_na_data = nd.dropna().index
                 nd.loc[non_na_data, :] = scale(nd.loc[non_na_data, :].values)
 
