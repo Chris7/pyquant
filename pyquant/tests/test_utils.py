@@ -15,7 +15,7 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         self.data_dir = os.path.join(self.base_dir, 'data')
 
     def test_select_window(self):
-        x = range(10)
+        x = list(range(10))
         selection = utils.select_window(x, 0, 3)
         self.assertListEqual(selection, [0, 1, 2, 3])
         selection = utils.select_window(x, 3, 3)
