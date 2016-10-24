@@ -1,5 +1,9 @@
 import os
 
+import numpy as np
+
+from pyquant import peaks
+
 class FileMixins(object):
     def setUp(self):
         super(FileMixins, self).setUp()
@@ -18,3 +22,12 @@ class FileMixins(object):
     #     os.remove(self.output)
     #     os.remove(self.output_stats)
     #     os.rmdir(self.out_dir)
+
+class GaussianMixin(object):
+    def setUp(self):
+        self.amp, self.mu, self.std, self.mu2 = 1., 0., 1., 3.
+        self.one_gauss_params = np.array([self.amp, self.mu, self.std], dtype=np.float)
+        self.two_gauss_params = np.array([self.amp, self.mu, self.std, self.amp, self.mu2, self.std], dtype=np.float)
+        self.x = np.array(np.linspace(-5, 5, 101), dtype=np.float)
+        self.one_gauss = peaks.gauss_ndim(self.x, self.one_gauss_params)
+        self.two_gauss = peaks.gauss_ndim(self.x, self.two_gauss_params)

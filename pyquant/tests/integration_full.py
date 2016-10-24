@@ -1,16 +1,14 @@
 __author__ = 'chris'
 import os
-from unittest import TestCase
+import unittest
 import pandas as pd
-import multiprocessing
 import numpy as np
 import subprocess
 
-from .mixins import FileMixins
-from . import config
+from pyquant.tests import mixins, utils, config
 
 
-class EColiTest(FileMixins, TestCase):
+class EColiTest(mixins.FileMixins, unittest.TestCase):
     def setUp(self):
         super(EColiTest, self).setUp()
         self.output = os.path.join(self.out_dir, 'pqtest2')
@@ -18,8 +16,9 @@ class EColiTest(FileMixins, TestCase):
         self.r_std = 0.5
         self.k_std = 0.7
 
+    @utils.timer
     def test_pyquant(self):
-        com = [self.executable, '--search-file', self.search_file, '--scan-file', self.mzml, '-p', str(config.CORES), '-o', self.output, '--html', '--precursor-ppm', '2']
+        com = [self.executable, '--search-file', self.search_file, '--scan-file', self.mzml, '-p', str(config.CORES), '-o', self.output, '--html', '--precursor-ppm', '2', '--xic-window-size', '12']
         subprocess.call(com)
         pyquant = pd.read_table(self.output)
         label = 'Medium'
@@ -38,3 +37,6 @@ class EColiTest(FileMixins, TestCase):
         # the median is robust, we care about the standard deviation since changes to the backend can alter the peak width
         r_stdh = np.std(pyquant.loc[pyquant['Class'] == 'R', pq_sel])
         k_stdh = np.std(pyquant.loc[pyquant['Class'] == 'K', pq_sel])
+
+if __name__ == '__main__':
+    unittest.main()
