@@ -18,7 +18,7 @@ class EColiTest(mixins.FileMixins, unittest.TestCase):
 
     @utils.timer
     def test_pyquant(self):
-        com = [self.executable, '--search-file', self.search_file, '--scan-file', self.mzml, '-p', str(config.CORES), '-o', self.output, '--html', '--precursor-ppm', '2', '--max-scan-count', '12']
+        com = [self.executable, '--search-file', self.search_file, '--scan-file', self.mzml, '-p', str(config.CORES), '-o', self.output, '--html', '--precursor-ppm', '2', '--xic-window-size', '12']
         subprocess.call(com)
         pyquant = pd.read_table(self.output)
         label = 'Medium'

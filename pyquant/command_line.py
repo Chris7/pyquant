@@ -1,40 +1,35 @@
 from __future__ import division, unicode_literals, print_function
-import sys
-import json
-from string import Template
-import gzip
-import signal
 import base64
-import os
 import copy
+import gzip
+import os
 import operator
 import traceback
-import pandas as pd
 import random
-import six
-
-if six.PY3:
-    xrange = range
-
+import signal
+import sys
 from collections import defaultdict, OrderedDict
+from functools import partial
 from multiprocessing import Queue
-from six.moves.queue import Empty
+from string import Template
 
+import pandas as pd
+import six
+from pythomics.proteomics.parsers import GuessIterator
+from pythomics.proteomics import config
+from scipy.interpolate import UnivariateSpline
+from six.moves.queue import Empty
+from six.moves import xrange
 try:
     from profilestats import profile
     from memory_profiler import profile as memory_profiler
 except ImportError:
     pass
 
-import simplejson
-from scipy.interpolate import UnivariateSpline
-
-from pythomics.proteomics.parsers import GuessIterator
-from pythomics.proteomics import config
 
 from .reader import Reader
 from .worker import Worker
-from .utils import find_prior_scan, get_scans_under_peaks, naninfmean, naninfsum
+from .utils import find_prior_scan, get_scans_under_peaks, naninfmean, naninfsum, perform_ml
 from . import peaks
 
 
@@ -399,19 +394,19 @@ def run_pyquant():
                 ('{}_isotopes'.format(label), '{}Isotopes Found'.format(label_key)),
             ])
         RESULT_ORDER.extend([
-            ('{}_intensity'.format(label), '{}Intensity'.format(label_key), naninfsum),
+            ('{}_intensity'.format(label), '{}Intensity'.format(label_key), partial(naninfsum, empty=0)),
         ])
         if args.peaks_n == 1:
             RESULT_ORDER.extend([
-                ('{}_peak_width'.format(label), '{}RT Width'.format(label_key), naninfmean),
-                ('{}_mean_diff'.format(label), '{}Mean Offset'.format(label_key), naninfmean),
+                ('{}_peak_width'.format(label), '{}RT Width'.format(label_key), partial(naninfmean, empty=0)),
+                ('{}_mean_diff'.format(label), '{}Mean Offset'.format(label_key), partial(naninfmean, empty=np.NaN)),
             ])
 
         if msn_for_quant == 1:
             RESULT_ORDER.extend([
-                ('{}_residual'.format(label), '{}Residual'.format(label_key), naninfsum),
-                ('{}_coef_det'.format(label), '{}R^2'.format(label_key), naninfmean),
-                ('{}_snr'.format(label), '{}SNR'.format(label_key), naninfmean),
+                ('{}_residual'.format(label), '{}Residual'.format(label_key), partial(naninfsum, empty=np.NaN)),
+                ('{}_coef_det'.format(label), '{}R^2'.format(label_key), partial(naninfmean, empty=0)),
+                ('{}_snr'.format(label), '{}SNR'.format(label_key), partial(naninfmean, empty=0)),
             ])
         if not args.merge_labels and not args.no_ratios and label != '':
             for label2 in labels:
@@ -475,7 +470,7 @@ def run_pyquant():
         if os.path.exists(resume_name):
             with open(resume_name, 'r') as temp_file:
                 for index, entry in enumerate(temp_file):
-                    info = json.loads(entry)['res_list']
+                    info = pd.io.json.loads(entry)['res_list']
                     # key is filename, peptide, charge, target scan id, modifications
                     key = tuple(map(str, (info[0], info[1], info[3], info[5], info[2])))
                     skip_map.add(key)
@@ -1006,7 +1001,7 @@ def run_pyquant():
                 out.write(res)
                 out.flush()
 
-                temp_file.write(json.dumps({'res_dict': res_dict, 'html': result.get('html', {})}))
+                temp_file.write(pd.io.json.dumps({'res_dict': res_dict, 'html': result.get('html', {})}))
                 temp_file.write('\n')
                 temp_file.flush()
 
@@ -1045,7 +1040,7 @@ def run_pyquant():
     peak_data = []
 
     for j in open(temp_file.name, 'r'):
-        result = json.loads(j if isinstance(j, six.text_type) else j.decode('utf-8'))
+        result = pd.io.json.loads(j if isinstance(j, six.text_type) else j.decode('utf-8'))
         res_dict = result['res_dict']
         res_list = [res_dict['filename']]+[res_dict.get(i[0], 'NA') for i in RESULT_ORDER]
         peak_data.append(res_dict['peak_report'])
@@ -1059,109 +1054,8 @@ def run_pyquant():
             header_mapping.append(RESULT_ORDER[order_names.index(i)][0])
         except ValueError:
             header_mapping.append(False)
-    if calc_stats and six.PY2:
-        from scipy import stats
-        import pickle
-        import numpy as np
-        classifier = pickle.load(open(os.path.join(pq_dir, 'static', 'classifier.pickle'), 'rb'))
-        data = data.replace('NA', np.nan)
-        for silac_label1 in mass_labels.keys():
-            label1_log = 'L{}'.format(silac_label1)
-            label1_logp = 'L{}_p'.format(silac_label1)
-            label1_int = '{} Intensity'.format(silac_label1)
-            label1_pint = '{} Peak Intensity'.format(silac_label1)
-            label1_hif = '{} Isotopes Found'.format(silac_label1)
-            label1_hifp = '{} Isotopes Found p'.format(silac_label1)
-            for silac_label2 in mass_labels.keys():
-                if silac_label1 == silac_label2:
-                    continue
-                try:
-                    label2_log = 'L{}'.format(silac_label2)
-                    label2_logp = 'L{}_p'.format(silac_label2)
-                    label2_int = '{} Intensity'.format(silac_label2)
-                    label2_pint = '{} Peak Intensity'.format(silac_label2)
-                    label2_hif = '{} Isotopes Found'.format(silac_label2)
-                    label2_hifp = '{} Isotopes Found p'.format(silac_label2)
-
-                    mixed = '{}/{}'.format(silac_label1, silac_label2)
-                    mixed_p = '{}/{}_p'.format(silac_label1, silac_label2)
-                    mixed_mean = '{}_Mean_Diff'.format(mixed)
-                    mixed_mean_p = '{}_Mean_Diff_p'.format(mixed)
-                    mixed_rt_diff = '{}_RT_Diff'.format(mixed)
-                    mixed_rt_diff_p = '{}_p'.format(mixed_rt_diff)
-                    mixed_isotope_diff = '{}_Isotope_Diff'.format(mixed)
-                    mixed_isotope_diff_p = '{}_Isotope_Diff_p'.format(mixed)
-
-                    data[label1_log] = np.log(data[label1_int].astype(float)+1)
-                    data[label1_logp] = stats.norm.cdf((data[label1_log] - data[data[label1_log]>0][label1_log].mean())/data[data[label1_log]>0][label1_log].std(ddof=0))
-                    data[label2_log] = np.log(data[label2_int].astype(float)+1)
-                    data[label2_logp] = stats.norm.cdf((data[label2_log] - data[data[label2_log]>0][label2_log].mean())/data[data[label2_log]>0][label2_log].std(ddof=0))
-
-                    nz = data[(data[label2_log] > 0) & (data[label1_log] > 0)]
-                    mu = pd.Series(np.ravel(nz.loc[:,(label2_log, label1_log)])).mean()
-                    std = pd.Series(np.ravel(nz.loc[:,(label2_log, label1_log)])).std()
-
-                    data[mixed_p] = stats.norm.cdf((data.loc[:,(label2_log, label1_log)].mean(axis=1)-mu)/std)
-                    data[mixed_rt_diff] = np.log2(np.abs(data['{} RT Width'.format(silac_label2)].astype(float)-data['{} RT Width'.format(silac_label1)].astype(float)))
-                    data[mixed_mean] = np.abs(data['{} Mean Offset'.format(silac_label1)].astype(float)-data['{} Mean Offset'.format(silac_label1)].astype(float))
-                    data[mixed_rt_diff] = data[mixed_rt_diff].replace([np.inf, -np.inf], np.nan)
-                    data[mixed_rt_diff_p] = stats.norm.cdf((data[mixed_rt_diff] - data[mixed_rt_diff].mean())/data[mixed_rt_diff].std(ddof=0))
-                    data[mixed_mean_p] = stats.norm.cdf((data[mixed_mean] - data[mixed_mean].mean())/data[mixed_mean].std(ddof=0))
-
-                    data[label2_hif] = data[label2_hif].astype(float)
-                    data[label2_hifp] = np.log2(data[label2_hif]).replace([np.inf, -np.inf], np.nan)
-                    data[label2_hifp] = stats.norm.cdf((data[label2_hifp]-data[label2_hifp].median())/data[label2_hifp].std())
-
-                    data[label1_hif] = data[label1_hif].astype(float)
-                    data[label1_hifp] = np.log2(data[label1_hif]).replace([np.inf, -np.inf], np.nan)
-                    data[label1_hifp] = stats.norm.cdf((data[label1_hifp]-data[label1_hifp].median())/data[label2_hifp].std())
-
-                    data[mixed_isotope_diff] = np.log2(data[label2_hif]/data[label1_hif]).replace([np.inf, -np.inf], np.nan)
-                    data[mixed_isotope_diff_p] = stats.norm.cdf((data[mixed_isotope_diff] - data[mixed_isotope_diff].median())/data[mixed_isotope_diff].std(ddof=0))
-
-                    # confidence assessment
-                    mixed_confidence = '{}/{} Confidence'.format(silac_label1, silac_label2)
-
-                    cols = []
-                    for i in (silac_label1, silac_label2):
-                        cols.extend(['{} {}'.format(i, j) for j in ['Intensity', 'Isotopes Found', 'SNR', 'Residual']])
-
-                    fit_data = data.loc[:, cols]
-
-                    # TODO: Fix this in hte model to be peak area
-                    fit_data.loc[:, (label2_int, label1_int)] = np.log2(fit_data.loc[:, (label2_int, label1_int)].astype(float))
-                    from sklearn import preprocessing
-                    from patsy import dmatrix
-                    fit_data = fit_data.replace([np.inf, -np.inf], np.nan)
-                    non_na_data = fit_data.dropna().index
-                    fit_data.dropna(inplace=True)
-                    fit_data.loc[:] = preprocessing.scale(fit_data)
-
-                    formula = "{columns} + (Q('{silac_label1} Intensity')*Q('{silac_label1} SNR'))**2+(Q('{silac_label2} SNR')*Q('{silac_label2} Intensity'))**2".format(**{
-                        'columns': "+".join(["Q('{}')".format(i) for i in fit_data.columns]),
-                        'silac_label1': silac_label1,
-                        'silac_label2': silac_label2,
-                    })
-                    fit_predictors = dmatrix(str(formula), fit_data)
-
-                    # for a 'good' vs. 'bad' classifier, where 1 is good
-                    conf_ass = classifier.predict_proba(fit_predictors)[:,1]*10
-                    data.loc[non_na_data, mixed_confidence] = conf_ass
-
-                    # conf_ass = classifier.predict(fit_data.values)
-                    # left = conf_ass[conf_ass<0]
-                    # ecdf = pd.Series(left).value_counts().sort_index().cumsum()*1./len(left)*10
-                    # #ecdf = pd.Series(conf_ass).value_counts().sort_index(ascending=False).cumsum()*1./len(conf_ass)*10
-                    # mapper = interp1d(ecdf.index.values, ecdf.values)
-                    # data.loc[non_na_data[conf_ass<0], mixed_confidence] = mapper(left)
-                    # right = conf_ass[conf_ass>=0]
-                    # ecdf = pd.Series(right).value_counts().sort_index(ascending=False).cumsum()*1./len(right)*10
-                    # #ecdf = pd.Series(conf_ass).value_counts().sort_index(ascending=False).cumsum()*1./len(conf_ass)*10
-                    # mapper = interp1d(ecdf.index.values, ecdf.values)
-                    # data.loc[non_na_data[conf_ass>=0], mixed_confidence] = mapper(right)
-                except:
-                    sys.stderr.write('Unable to calculate statistics for {}/{}.\n Traceback: {}'.format(silac_label1, silac_label2, traceback.format_exc()))
-
+    if calc_stats:
+        perform_ml(data, mass_labels)
         data.to_csv('{}_stats'.format(out_path), sep=str('\t'), index=None)
 
     if html:
@@ -1183,9 +1077,11 @@ def run_pyquant():
             elif append:
                 template.append(i)
         html_template = Template(''.join(template))
+        peak_map = pd.io.json.dumps(peak_map)
+        html_map = pd.io.json.dumps(html_map)
         html_out.write(html_template.safe_substitute({
-            'peak_output': base64.b64encode(gzip.zlib.compress(simplejson.dumps(peak_map, ignore_nan=True), 9)),
-            'html_output': base64.b64encode(gzip.zlib.compress(simplejson.dumps(html_map, ignore_nan=True), 9)),
+            'peak_output': base64.b64encode(gzip.zlib.compress(peak_map if six.PY2 else six.binary_type(peak_map, 'utf-8'), 9)).decode('utf-8'),
+            'html_output': base64.b64encode(gzip.zlib.compress(html_map if six.PY2 else six.binary_type(html_map, 'utf-8'), 9)).decode('utf-8'),
         }))
 
     os.remove(temp_file.name)

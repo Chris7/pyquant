@@ -3,6 +3,7 @@ import unittest
 from random import randint, random
 
 import numpy as np
+from six.moves import xrange
 from sympy import symbols, diff, exp, Piecewise
 
 from pyquant.tests.utils import timer
@@ -111,7 +112,7 @@ class FittingTests(unittest.TestCase):
         a * exp(-(u - x) ** 2 / (2 * s1 ** 2)) + a2 * exp(-(u2 - x) ** 2 / (2 * s2 ** 2)) + a3 * exp(
             -(u3 - x) ** 2 / (2 * s3 ** 2)))) ** 2
         hess_store = {}
-        for i in xrange(2):
+        for _ in xrange(2):
             subs = [
                 ('a', random()+0.5),
                 ('u', random()*10),

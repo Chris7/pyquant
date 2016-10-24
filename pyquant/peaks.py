@@ -1,13 +1,17 @@
-from operator import itemgetter
-from collections import defaultdict, Counter
-import pandas as pd
-import six
+import os
+from collections import defaultdict
+
 import numpy as np
-if True:#os.environ.get('PYQUANT_DEV', False) == 'True':
+import six
+
+if os.environ.get('PYQUANT_DEV', False) == 'True':
     try:
         import pyximport; pyximport.install(setup_args={'include_dirs': np.get_include()}, reload_support=True)
     except:
+        import traceback
+        traceback.print_exc()
         pass
+
 from pyquant.cpeaks import *
 from .utils import select_window, divide_peaks
 
@@ -132,8 +136,6 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
                 displacement = last_displacement + tolerance if last_displacement is not None else tolerance * 2
             else:
                 displacement = get_ppm(start + offset, current_loc)
-            # if debug:
-            #     print pos, start, current_loc, displacement, last_displacement, displacement > last_displacement, last_displacement < tolerance, isotope_index, offset
             # because the peak location may be between two readings, we use a very tolerance search here and enforce the ppm at the peak fitting stage.
             if displacement < tolerance * 5:
                 valid_locations.append((displacement, current_loc, pos))
@@ -340,7 +342,8 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     # Next, for fitting multiple peaks, we want to divide up the space so we are not fitting peaks that
     # have no chance of actually impacting one another.
     chunks = divide_peaks(ydata_peaks)
-    chunks = np.hstack((chunks, -1))
+    if not chunks.any() or chunks[-1] != len(ydata_peaks):
+        chunks = np.hstack((chunks, len(ydata_peaks)))
 
     # Now that we've found our peaks and breakpoints between peaks, we can obliterate part of ydata_peaks
     if snr != 0 and not local_filter_size:
@@ -393,9 +396,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     fitted_segments = defaultdict(list)
     for peak_width, peak_info in final_peaks.items():
         row_peaks = peak_info['peaks']
-        if debug:
-            print 'analyzing', row_peaks
-        minima_array = np.array(peak_info['minima'], dtype=long)
+        minima_array = np.array(peak_info['minima'], dtype=np.long)
         guess = []
         bnds = []
         last_peak = -1
@@ -704,13 +705,16 @@ def findMicro(xdata, ydata, pos, ppm=None, start_mz=None, calc_start_mz=None, is
                 fit = False
 
         peak = np.array(sorted_peaks[0][0])
-        # peak[0] *= new_y.max()
-
-        int_val = gauss_ndim(new_x, peak).sum()
+        # only go ahead with fitting if we have a stdev. Otherwise, set this to 0
+        if peak[2] > 0:
+            # peak[0] *= new_y.max()
+            int_val = gauss_ndim(new_x, peak).sum()
+        else:
+            int_val = 0.
         if not fit:
             pass
         error = sorted_peaks[0][1]
-    ret_dict = {'int': int_val if fit or fragment_scan == True else 0, 'int2': int_val, 'bounds': (left, right),
+    ret_dict = {'int': int_val if fit or fragment_scan == True else 0., 'int2': int_val, 'bounds': (left, right),
                 'params': peak, 'error': error}
     return ret_dict
 

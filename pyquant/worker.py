@@ -4,6 +4,9 @@ import os
 import copy
 import operator
 import traceback
+
+from functools import cmp_to_key
+
 import pandas as pd
 import numpy as np
 import six
@@ -37,7 +40,7 @@ class Worker(Process):
                  debug=False, html=False, mono=False, precursor_ppm=5.0, isotope_ppm=2.5, quant_method='integrate',
                  reader_in=None, reader_out=None, thread=None, fitting_run=False, msn_rt_map=None, reporter_mode=False,
                  spline=None, isotopologue_limit=-1, labels_needed=1, overlapping_mz=False, min_resolution=0, min_scans=3,
-                 quant_msn_map=None, mrm=False, mrm_pair_info=None, peak_cutoff=0.05, ratio_cutoff=1, replicate=False,
+                 quant_msn_map=None, mrm=False, mrm_pair_info=None, peak_cutoff=0.05, ratio_cutoff=0, replicate=False,
                  ref_label=None, max_peaks=4, parser_args=None):
         super(Worker, self).__init__()
         self.precision = precision
@@ -74,7 +77,7 @@ class Worker(Process):
         self.mrm_pair_info = mrm_pair_info
         self.peak_cutoff = peak_cutoff
         self.replicate = replicate
-        self.ratio_cutoff = 1
+        self.ratio_cutoff = ratio_cutoff
         self.ref_label = ref_label
         self.max_peaks = max_peaks
         self.parser_args = parser_args
@@ -354,7 +357,7 @@ class Worker(Process):
                 precursors['Precursor']['theoretical_mz'] = precursor
                 data['Precursor'] = copy.deepcopy(silac_dict)
             precursors = OrderedDict(
-                sorted(precursors.items(), cmp=lambda x, y: int(x[1]['uncalibrated_mz'] - y[1]['uncalibrated_mz'])))
+                sorted(precursors.items(), key=cmp_to_key(lambda x, y: int(x[1]['uncalibrated_mz'] - y[1]['uncalibrated_mz']))))
             shift_maxes = {i: max([j['uncalibrated_mz'], j['calibrated_mz'], j['theoretical_mz']]) for i, j in
                                          zip(precursors.keys(), list(precursors.values())[1:])}
             lowest_precursor_mz = min(
@@ -411,7 +414,6 @@ class Worker(Process):
                         if self.min_resolution and df is not None:
                             scan_resolution = np.average(
                                 df.index[1:] / np.array([df.index[i] - df.index[i - 1] for i in xrange(1, len(df))]))
-                            # print self.msn_rt_map.index[next_scan], self.min_resolution, scan_resolution
                             if scan_resolution < self.min_resolution:
                                 scans_to_skip.add(current_scan)
                                 continue
@@ -780,16 +782,22 @@ class Worker(Process):
                                 if rb > len(positive_y):
                                     rb = -1
                                 data_window = positive_y[lb:rb]
-                                try:
-                                    background = np.percentile(data_window, 0.8)
-                                except:
-                                    background = np.percentile(ydata, 0.8)
-                                mean = nanmean(data_window)
-                                if background < mean:
-                                    background = mean
-                                d['sbr'] = nanmean(j / (np.array(
-                                    sorted(data_window, reverse=True)[:5])))    # (j-np.mean(positive_y[lb:rb]))/np.std(positive_y[lb:rb])
-                                d['snr'] = (j - background) / np.std(data_window)
+                                if data_window.any():
+                                    try:
+                                        background = np.percentile(data_window, 0.8)
+                                    except:
+                                        background = np.percentile(ydata, 0.8)
+                                    mean = nanmean(data_window)
+                                    if background < mean:
+                                        background = mean
+                                    d['sbr'] = nanmean(j / (np.array( sorted(data_window, reverse=True)[:5])))    # (j-np.mean(positive_y[lb:rb]))/np.std(positive_y[lb:rb])
+                                    if len(data_window) > 2:
+                                        d['snr'] = (j - background) / np.std(data_window)
+                                    else:
+                                        d['snr'] = np.NaN
+                                else:
+                                    d['sbr'] = np.NaN
+                                    d['snr'] = np.NaN
                                 xic_peaks.append(d)
                             # if we have a peaks containing our retention time, keep them and throw out ones not containing it
                             to_remove = []
@@ -892,8 +900,6 @@ class Worker(Process):
                                 ydata = rt_values.fillna(0).values.astype(float)
                                 # pick the biggest within a rt cutoff of 0.2, otherwise pick closest
                                 # closest_rts = sorted([(i, i['amp']) for i in values if np.abs(i['peak']-common_peak) < 0.2], key=operator.itemgetter(1), reverse=True)
-                                # if not closest_rts:
-                                # print values
                                 closest_rts = sorted([(i, np.abs(i['mean'] - common_peak)) for i in values], key=operator.itemgetter(1))
                                 xic_peaks = [i[0] for i in closest_rts]
                                 pos_x = xdata[ydata > 0]
@@ -943,6 +949,11 @@ class Worker(Process):
                                         left_index = 0
                                     if right_index >= len(xdata) or right_index <= 0:
                                         right_index = len(xdata)
+
+                                    # check that we have at least 2 positive values
+                                    if sum(ydata[left_index:right_index] > 0) < 2:
+                                        continue
+
                                     try:
                                         int_val = integrate.simps(peaks.bigauss_ndim(xr, peak_params), x=xr) if self.quant_method == 'integrate' else ydata[(xdata > left) & (xdata < right)].sum()
                                     except:
@@ -1072,7 +1083,6 @@ class Worker(Process):
                                         fit_data = np.log2(np.array(y).reshape(len(y), 1))
                                         true_pred = (True, 1)
                                         classifier.fit(fit_data)
-                                        # print peptide, ms1, np.mean([y[i] for i,v in enumerate(classifier.predict(fit_data)) if v in true_pred]), y
                                         ratio = nanmean([y[i] for i, v in enumerate(classifier.predict(fit_data)) if v in true_pred])
                                     else:
                                         ratio = nanmean(np.array(y))
@@ -1082,7 +1092,7 @@ class Worker(Process):
                                     quant2 = sum([qv2.get(i, 0) for i in common_isotopes])
                                     ratio = quant1 / quant2 if quant1 and quant2 else 'NA'
                                 try:
-                                    if np.abs(np.log2(ratio)) > self.ratio_cutoff:
+                                    if self.ratio_cutoff and not pd.isnull(ratio) and np.abs(np.log2(ratio)) > self.ratio_cutoff:
                                         write_html = True
                                 except:
                                     pass

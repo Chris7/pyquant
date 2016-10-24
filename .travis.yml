@@ -22,7 +22,11 @@ install:
   - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION atlas numpy scipy nose pandas statsmodels lxml
   - source activate test-environment
   # Coverage packages are on my binstar channel
-  - conda install --yes -c dan_blanchard python-coveralls nose-cov
+  - if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
+      conda install --yes -c dan_blanchard python-coveralls nose-cov;
+    else
+      echo "no coveralls for python3";
+    fi
   - pip install --upgrade pip
   - pip install -r requirements.txt
   - pip install -e .
@@ -34,7 +38,11 @@ python:
 # command to run tests
 script: make testall
 after_success:
-  - coveralls
+  - if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
+      coveralls;
+    else
+      echo "no coveralls for python3";
+    fi
 cache:
   directories:
   - $TRAVIS_BUILD_DIR/pyquant/tests/data
