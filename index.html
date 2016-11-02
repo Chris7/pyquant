@@ -56,12 +56,30 @@
 
           <p>PyQuant is a versatile tool for an assortment of mass spectrometry based analyses.</p>
 
-          <h3><a class="anchor" href="#installation" aria-hidden="true"><span class="octicon octicon-link"></span></a>Installation</h3>
+          <h3><a class="anchor" href="#installation" aria-hidden="true"><span class="octicon octicon-link"></span></a>Installation Options</h3>
           <div>
-            For non-windows operating systems, <code>pip install pyquant-ms</code> should be sufficient to install PyQuant (provided you have pip installed).
-            <br>
-            <br>
-            <h4>Windows Installation</h4>
+            <h4><strong>Docker</strong></h4>
+              <p>Those who are comfortable using <a href="https://www.docker.com">Docker</a> may run PyQuant via the image at <code>chrismit7/pyquant</code>.
+                <br>
+                The only point of note is to remember that volumes on your local drive must be mounted in docker, for instance, if your files
+                are located at /home/chris/msexperiment, you would run docker as such:
+                <code>docker run -v /home/chris/msexperiment:/msexperiment chrismit7/pyquant --search-file /msexperiment/search_file.msf -o /msexperiment/pyquant_results</code>
+              </p>
+            <h4><strong>Mac/Linux</strong></h4>
+              <p>For mac and linux OS's, <code>pip install pyquant-ms</code> should be sufficient to install PyQuant (provided you have pip installed).</p>
+            <h4><strong>Windows</strong></h4>
+              <em>The easiest way</em>
+              <p>Use <a href="https://www.docker.com">Docker</a></p>
+              <em>The easier way</em>
+              <p>
+                This approach may not work for every configuration, but is considerably less involved.
+                <ol style="padding-left: 30px;">
+                  <li>Install anaconda 64 bit for python 2.7: continuum.io/downloads#windows</li>
+                  <li>In the terminal: <code>pip install pyquant-ms</code></li>
+                  <li>Confirm you can view PyQuant via <code>pyQuant --help</code></li>
+                </ol>
+              </p>
+              <em>The hard way</em>
               <p>
                 The difficult aspect of building on Windows is setting up a compilation environment. Those unfamiliar with compilation on Windows should seek
                 someone comfortable with doing so.<br>
