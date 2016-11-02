@@ -61,7 +61,7 @@
             <h4><strong>Docker</strong></h4>
               <p>Those who are comfortable using <a href="https://www.docker.com">Docker</a> may run PyQuant via the image at <code>chrismit7/pyquant</code>.
                 <br>
-                The only point of note is to remember that volumes on your local drive must be mounted in docker, for instance, if your files
+                One point to remember is that folders on your local drive must be mounted in docker. For instance, if your files
                 are located at /home/chris/msexperiment, you would run docker as such:
                 <code>docker run -v /home/chris/msexperiment:/msexperiment chrismit7/pyquant --search-file /msexperiment/search_file.msf -o /msexperiment/pyquant_results</code>
               </p>
