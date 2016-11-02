@@ -41,7 +41,6 @@ setup(
         'cython',
     ],
     cmdclass={'build_ext': Cython.Distutils.build_ext} if CYTHON else {},
-    extensions = [Extension("*", ["*.pyx"])],
-    # ext_modules=cythonize("pyquant/*.pyx") if CYTHON else [],
+    ext_modules=cythonize("pyquant/*.pyx") if CYTHON else [],
     include_dirs=[numpy.get_include()] if NUMPY else [],
 )
