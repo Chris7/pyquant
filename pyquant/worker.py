@@ -599,6 +599,7 @@ class Worker(Process):
                 # bookend with zeros if there aren't any, do the right end first because pandas will by default append there
                 combined_data = combined_data.sort_index().sort_index(axis='columns')
                 start_rt = rt
+                rt_guide = self.rt_guide and start_rt
                 if len(combined_data.columns) == 1:
                     try:
                         new_col = self.msn_rt_map.iloc[self.msn_rt_map.searchsorted(combined_data.columns[-1]) + 1].values[0]
@@ -663,12 +664,13 @@ class Worker(Process):
 
                 if not self.reporter_mode:
                     combined_peaks = defaultdict(dict)
+                    peak_location = None
 
                     # If we are searching for a particular RT, we look for it in the data and remove other larger peaks
                     # until we find it. To help with cases where we are fitting multiple datasets for the same XIC, we
                     # combine the data to increase the SNR in case some XICs of a given ion are weak
 
-                    if self.rt_guide and not self.parser_args.msn_all_scans:
+                    if rt_guide and not self.parser_args.msn_all_scans:
                         merged_data = combined_data.sum(axis=0)
                         merged_x = merged_data.index.astype(float).values
                         merged_y = merged_data.values.astype(float)
@@ -713,6 +715,8 @@ class Worker(Process):
                             merged_rb = combined_data.shape[1]
 
                     else:
+                        merged_x = xdata
+                        merged_y = ydata
                         merged_lb = 0
                         merged_rb = combined_data.shape[1]
 
@@ -735,8 +739,10 @@ class Worker(Process):
                             peak_y = np.copy(ydata[fit_lb:fit_rb])
                             if peak_x.size <= 1 or sum(peak_y > 0) < self.min_scans:
                                 continue
-                            if self.rt_guide:
+                            if rt_guide:
                                 peak_positive_y = peak_y > 0
+                                if peak_location is None and self.parser_args.msn_all_scans:
+                                    peak_location = start_rt
                                 nearest_positive_peak = peaks.find_nearest(peak_x[peak_positive_y], peak_location)
                                 sub_peak_location = peaks.find_nearest_index(peak_x, nearest_positive_peak)
                                 sub_peak_index = sub_peak_location if peak_y[sub_peak_location] else np.argmax(peak_y)
@@ -802,7 +808,8 @@ class Worker(Process):
                             # if we have a peaks containing our retention time, keep them and throw out ones not containing it
                             to_remove = []
                             to_keep = []
-                            if self.rt_guide:
+                            if rt_guide:
+                                peak_location_index = peaks.find_nearest_index(merged_x, peak_location)
                                 for i, v in enumerate(xic_peaks):
                                     mu = v['mean']
                                     s1 = v['std']
@@ -812,10 +819,10 @@ class Worker(Process):
                                         if mu - s1 * 1.5 < start_rt < mu + s2 * 1.5:
                                             v['valid'] = True
                                             to_keep.append(i)
-                                    elif peaks.find_nearest_index(merged_x, mu) - peak_location > 2:
+                                    elif np.abs(peaks.find_nearest_index(merged_x, mu) - peak_location_index) > 2:
                                         to_remove.append(i)
                             # kick out peaks not containing our RT
-                            if self.rt_guide:
+                            if rt_guide:
                                 if not to_keep:
                                     # we have no peaks with our RT, there are contaminating peaks, remove all the noise but the closest to our RT
                                     if not self.mrm:
@@ -903,7 +910,7 @@ class Worker(Process):
                                 closest_rts = sorted([(i, np.abs(i['mean'] - common_peak)) for i in values], key=operator.itemgetter(1))
                                 xic_peaks = [i[0] for i in closest_rts]
                                 pos_x = xdata[ydata > 0]
-                                if self.rt_guide:
+                                if rt_guide:
                                     xic_peaks = [xic_peaks[0]]
                                 else:
                                     # unguided, sort by amplitude

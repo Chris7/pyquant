@@ -253,7 +253,6 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                  baseline_correction=False, rescale=True):
     amplitude_filter /= ydata_original.max()
     ydata = ydata_original / ydata_original.max()
-
     ydata_peaks = np.copy(ydata)
     if filter:
         if len(ydata) >= 5:
@@ -281,7 +280,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         if not row_peaks.size:
             row_peaks = np.array([np.argmax(ydata)], dtype=int)
         if debug:
-            sys.stderr.write('{}'.format(row_peaks))
+            sys.stderr.write('peak indices: {}\n'.format(row_peaks))
 
         if snr != 0 or zscore != 0:
             if local_filter_size:
@@ -321,9 +320,13 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         # if the user is searching the entire ms spectra because of the number of peaks possible to find
         if max_peaks != -1 and row_peaks.size > max_peaks:
             # pick the top n peaks for max_peaks
-            # this selects the row peaks in ydata, reversed the sorting order (to be greatest to least), then
-            # takes the number of peaks we allow and then sorts those peaks
-            row_peaks = np.sort(row_peaks[np.argsort(ydata_peaks[row_peaks])[::-1]][:max_peaks])
+            if rt_peak:
+                # If the user specified a retention time as a guide, select the n peaks closest
+                row_peaks = np.sort(np.abs(xdata[row_peaks]-rt_peak)[:max_peaks])
+            else:
+                # this selects the row peaks in ydata, reversed the sorting order (to be greatest to least), then
+                # takes the number of peaks we allow and then sorts those peaks
+                row_peaks = np.sort(row_peaks[np.argsort(ydata_peaks[row_peaks])[::-1]][:max_peaks])
             # peak_width_end += 1
             # peak_width += 1
             # continue
