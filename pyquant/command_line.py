@@ -306,10 +306,18 @@ def run_pyquant():
         # determine if we want to do ms1 ion detection, ms2 ion detection, all ms2 of each file
         if args.msn_ion or args.msn_peaklist:
             ion_search = True
-            ions_selected = [sorted(list(set(map(float, ion.split(','))))) for ion in args.msn_ion] if args.msn_ion else []
+            ions_of_interest = []
             if args.msn_peaklist:
-                ion_table = pd.read_table(args.msn_peaklist)
-            # [float(i.strip()) for i in args.msn_peaklist if i]
+                for i in args.msn_peaklist:
+                    if not i.strip():
+                        continue
+                    try:
+                        ions_of_interest.append(i.strip())
+                    except:
+                        import traceback; traceback.print_exc()
+            if args.msn_ion:
+                ions_of_interest += args.msn_ion
+            ions_selected = [sorted(list(set(map(float, ion.split(','))))) for ion in ions_of_interest] if ions_of_interest else []
             d = {'ions': ions_selected, 'rt_info': args.msn_ion_rt}
             for i in scan_filemap:
                 raw_files[i] = d
