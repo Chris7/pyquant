@@ -23,7 +23,7 @@ os.chdir(os.path.normpath(os.path.join(os.path.abspath(__file__), os.pardir)))
 
 setup(
     name='pyquant-ms',
-    version='0.1.43rc2',
+    version='0.1.43rc3',
     packages=find_packages(),
     scripts=['scripts/pyQuant'],
     entry_points={'console_scripts': ['pyQuant = pyquant.command_line:run_pyquant',]},
@@ -41,7 +41,6 @@ setup(
         'cython',
     ],
     cmdclass={'build_ext': Cython.Distutils.build_ext} if CYTHON else {},
-    extensions = [Extension("*", ["*.pyx"])],
-    # ext_modules=cythonize("pyquant/*.pyx") if CYTHON else [],
+    ext_modules=cythonize("pyquant/*.pyx") if CYTHON else [],
     include_dirs=[numpy.get_include()] if NUMPY else [],
 )

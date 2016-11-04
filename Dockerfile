@@ -1,19 +1,21 @@
 FROM ubuntu:14.04
 
 RUN apt-get update && apt-get install -y \
-    libxml2-dev \
     build-essential \
+    curl \
     gcc \
-    python-dev \
-    python-pip \
-    liblapack-dev \
-    libblas-dev \
     gfortran \
+    git \
+    libxml2-dev \
     libxslt1-dev \
-    zlib1g-dev \
-    git
+    python-dev \
+    python-numpy \
+    zlib1g-dev
 
-RUN pip install numpy scipy pandas cython
+RUN curl https://bootstrap.pypa.io/get-pip.py -o - | python
+
+RUN pip install cython
+RUN pip install --upgrade setuptools
 
 RUN git clone https://github.com/Chris7/pyquant.git
 
