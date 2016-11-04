@@ -887,15 +887,6 @@ def run_pyquant():
             scan_count = len(scans_to_submit)
         for i in scans_to_submit:
             in_queue.put(i[1])
-            # in_queue.put(i[1])
-            # in_queue.put(i[1])
-            # in_queue.put(i[1])
-            # in_queue.put(i[1])
-            # in_queue.put(i[1])
-            # in_queue.put(i[1])
-            # in_queue.put(i[1])
-            # in_queue.put(i[1])
-            # in_queue.put(i[1])
 
         sys.stderr.write('{0} processed and placed into queue.\n'.format(filename))
 
