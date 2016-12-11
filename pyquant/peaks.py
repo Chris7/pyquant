@@ -422,6 +422,11 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                         left = 0
                     else:
                         left = minima_array[left]
+                elif left_stop > left:
+                    # We are at the last minima, set our left bound to the last peak if it is greater than
+                    # the left minima, otherwise set to the left minima
+                    minima_index = minima_array[left]
+                    left = last_peak if last_peak > minima_index else minima_index
                 else:
                     for i in xrange(left, left_stop, -1):
                         minima_index = minima_array[i]
