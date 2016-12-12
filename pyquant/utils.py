@@ -375,7 +375,6 @@ def boolrelextrema(data, comparator, axis=0, order=1, mode='clip'):
             results[locs[index]] = result
         return results
     else:
-        locs = locs[np.ma.getmask(data)==False]
         results = np.ones(data.shape, dtype=bool)
         main = data.take(locs, axis=axis, mode=mode)
         for shift in xrange(1, order + 1):
