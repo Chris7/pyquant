@@ -249,14 +249,16 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
 
 def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_size=0, filter=False, bigauss_fit=False, rt_peak=0.0, mrm=False,
                  max_peaks=4, debug=False, peak_width_start=2, snr=0, zscore=0, amplitude_filter=0, peak_width_end=4,
-                 baseline_correction=False, rescale=True, micro=False):
-    amplitude_filter /= ydata_original.max()
-    ydata = ydata_original / ydata_original.max()
+                 baseline_correction=False, rescale=True, fit_negative=False):
+    original_max = np.abs(ydata_original).max() if fit_negative else ydata_original.max()
+    amplitude_filter /= original_max
+    ydata = ydata_original / original_max
     ydata_peaks = np.copy(ydata)
     if filter:
         if len(ydata) >= 5:
             ydata_peaks = convolve(ydata_peaks, kaiser(10, 12), mode='same')
-            ydata_peaks[ydata_peaks < 0] = 0
+            if not fit_negative:
+                ydata_peaks[ydata_peaks < 0] = 0
     ydata_peaks[np.isnan(ydata_peaks)] = 0
     ydata_peaks_std = np.std(ydata_peaks)
     ydata_peaks_median = np.median(ydata_peaks)
@@ -268,7 +270,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             rt_peak_val = ydata_peaks[find_nearest_index(xdata, rt_peak)]
         ydata_peaks = np.where(ydata_peaks > rt_peak_val * 0.9, ydata_peaks, 0)
 
-    ydata_peaks /= ydata_peaks.max()
+    ydata_peaks /= (np.abs(ydata_peaks).max() if fit_negative else ydata_peaks.max())
 
     peaks_found = {}
     if peak_width_start > peak_width_end:
@@ -277,6 +279,8 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     final_peak = False
     while peak_width <= peak_width_end or final_peak:
         row_peaks = np.array(argrelextrema(ydata_peaks, np.greater, order=peak_width)[0], dtype=int)
+        if fit_negative:
+            row_peaks = np.append(row_peaks, np.array(argrelextrema(ydata_peaks*-1, np.greater, order=peak_width)[0], dtype=int))
         if not row_peaks.size:
             row_peaks = np.array([np.argmax(ydata)], dtype=int)
         if len(row_peaks) == 1:
@@ -291,11 +295,16 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 lost_peaks = {}
                 for row_peak in row_peaks:
                     selection = select_window(ydata_peaks, row_peak, local_filter_size)
+                    ydata_row_peak = ydata_peaks[row_peak]
                     local_std = np.std(selection)
-                    local_snr = ydata_peaks[row_peak] / local_std
-                    local_zscore = (ydata_peaks[row_peak] - np.median(selection)) / local_std
+                    local_snr = ydata_row_peak / local_std
+                    local_zscore = (ydata_row_peak - np.median(selection)) / local_std
+                    if fit_negative and ydata_row_peak < 0:
+                        local_snr *= -1
+                        local_zscore *= -1
+
                     add_peak = (snr == 0 or local_snr > snr) and \
-                          (zscore == 0 or  local_zscore >= zscore)
+                          (zscore == 0 or local_zscore >= zscore)
                     if add_peak:
                         new_peaks.append(row_peak)
                     elif debug:
@@ -310,15 +319,15 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                     sys.stderr.write(
                         '{} peaks lost to zscore\n'.format(sum((ydata_peaks[row_peaks] - ydata_peaks_median) / ydata_peaks_std < zscore)))
                 if snr:
-                    row_peaks = row_peaks[ydata_peaks[row_peaks] / ydata_peaks_std >= snr]
+                    row_peaks = row_peaks[np.abs(ydata_peaks[row_peaks]) / ydata_peaks_std >= snr]
                 if zscore:
-                    row_peaks = row_peaks[(ydata_peaks[row_peaks] - ydata_peaks_median) / ydata_peaks_std >= zscore]
+                    row_peaks = row_peaks[(np.abs(ydata_peaks[row_peaks]) - ydata_peaks_median) / ydata_peaks_std >= zscore]
 
 
         if amplitude_filter != 0:
             if debug:
                 sys.stderr.write('{} peaks lost to amp filter\n{}\n'.format(sum(ydata[row_peaks] < amplitude_filter), row_peaks[ydata[row_peaks] < amplitude_filter]))
-            row_peaks = row_peaks[ydata[row_peaks] >= amplitude_filter]
+            row_peaks = row_peaks[(np.abs(ydata[row_peaks]) if fit_negative else ydata[row_peaks]) >= amplitude_filter]
         # Max peaks is to avoid spending a significant amount of time fitting bad data. It can lead to problems
         # if the user is searching the entire ms spectra because of the number of peaks possible to find
         if max_peaks != -1 and row_peaks.size > max_peaks:
@@ -329,7 +338,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             else:
                 # this selects the row peaks in ydata, reversed the sorting order (to be greatest to least), then
                 # takes the number of peaks we allow and then sorts those peaks
-                row_peaks = np.sort(row_peaks[np.argsort(ydata_peaks[row_peaks])[::-1]][:max_peaks])
+                row_peaks = np.sort(row_peaks[np.argsort(np.abs(ydata_peaks[row_peaks]) if fit_negative else ydata_peaks[row_peaks])[::-1]][:max_peaks])
             # peak_width_end += 1
             # peak_width += 1
             # continue
@@ -339,6 +348,10 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             minima = []
         minima.extend(
             [i for i in argrelextrema(ydata_peaks, np.less, order=peak_width)[0] if i not in minima and i not in row_peaks])
+        if fit_negative:
+            minima.extend(
+                [i for i in argrelextrema(ydata_peaks*-1, np.less, order=peak_width)[0] if
+                 i not in minima and i not in row_peaks])
         minima.sort()
         peaks_found[peak_width] = {'peaks': row_peaks, 'minima': minima}
         # if row_peaks.size > 1:
@@ -359,11 +372,11 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
 
     # Now that we've found our peaks and breakpoints between peaks, we can obliterate part of ydata_peaks
     if snr != 0 and not local_filter_size:
-        ydata_peaks[ydata_peaks / ydata_peaks_std < snr] = 0
+        ydata_peaks[(np.abs(ydata_peaks) if fit_negative else ydata_peaks) / ydata_peaks_std < snr] = 0
     if zscore != 0 and not local_filter_size:
-        ydata_peaks[(ydata_peaks - ydata_peaks_median) / ydata_peaks_std < zscore] = 0
+        ydata_peaks[((np.abs(ydata_peaks) if fit_negative else ydata_peaks) - ydata_peaks_median) / ydata_peaks_std < zscore] = 0
     if amplitude_filter != 0:
-        ydata_peaks[ydata_peaks < amplitude_filter] = 0
+        ydata_peaks[np.abs(ydata_peaks) if fit_negative else ydata_peaks < amplitude_filter] = 0
     if debug:
         sys.stderr.write('found: {}\n'.format(peaks_found))
     final_peaks = merge_peaks(peaks_found, debug=debug)
@@ -375,7 +388,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     min_spacing = min(np.diff(xdata)) / 2
     peak_range = xdata[-1] - xdata[0]
     # initial bound setup
-    initial_bounds = [(0, 1.01), (xdata[0], xdata[-1]), (min_spacing, peak_range)]
+    initial_bounds = [(-1.01, 1.01), (xdata[0], xdata[-1]), (min_spacing, peak_range)]
     if bigauss_fit:
         initial_bounds.extend([(min_spacing, peak_range)])
     if baseline_correction:
@@ -453,7 +466,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                     right = next_peak
                 if right >= len(xdata)-1:
                     right = len(xdata)-1
-                bnds.extend([(rel_peak, 1.01), (xdata[left], xdata[right]) if baseline_correction else (peak_left, peak_right), (min_spacing, peak_range)])
+                bnds.extend([(-1.01, rel_peak) if rel_peak < 0 and fit_negative else (rel_peak, 1.01), (xdata[left], xdata[right]) if baseline_correction else (peak_left, peak_right), (min_spacing, peak_range)])
                 if bigauss_fit:
                     bnds.extend([(min_spacing, peak_range)])
                 if baseline_correction:
@@ -463,7 +476,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             else:
                 left = 0
                 right = len(xdata)-1
-                bnds.extend([(rel_peak, 1.01), (peak_left, peak_right), (min_spacing, peak_range)])
+                bnds.extend([(-1.01, rel_peak) if rel_peak < 0 and fit_negative else (rel_peak, 1.01), (peak_left, peak_right), (min_spacing, peak_range)])
                 if bigauss_fit:
                     bnds.extend([(min_spacing, peak_range)])
                 if baseline_correction:
@@ -636,14 +649,14 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     best_fit = np.array(best_fit)
 
     if rescale:# and not baseline_correction:
-        best_fit[::step_size] *= ydata_original.max()
+        best_fit[::step_size] *= original_max
         if baseline_correction:
             if bigauss_fit:
-                best_fit[4::step_size] *= ydata_original.max()
-                best_fit[5::step_size] *= ydata_original.max()
+                best_fit[4::step_size] *= original_max
+                best_fit[5::step_size] *= original_max
             else:
-                best_fit[3::step_size] *= ydata_original.max()
-                best_fit[4::step_size] *= ydata_original.max()
+                best_fit[3::step_size] *= original_max
+                best_fit[4::step_size] *= original_max
 
     return best_fit, best_rss
 
