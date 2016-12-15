@@ -306,7 +306,7 @@ class Worker(Process):
                                         'isotopes': {}, 'peaks': OrderedDict(), 'intensity': 'NA'}
             data = OrderedDict()
             # data['Light'] = copy.deepcopy(silac_dict)
-            combined_data = pd.DataFrame()
+            combined_data = {}
             if self.mrm:
                 mrm_labels = [i for i in self.mrm_pair_info.columns if i.lower() not in ('retention time')]
                 mrm_info = None
@@ -524,11 +524,14 @@ class Worker(Process):
                                         'amplitude': peak_intensity,
                                     }
                                 del envelope
-                            selected = pd.Series(selected, name=df.name).to_frame()
-                            if df.name in combined_data.columns:
-                                combined_data = combined_data.add(selected, axis='index', fill_value=0)
+                            if df.name in combined_data:
+                                for ion_key, ion_intensity in six.iteritems(selected):
+                                    try:
+                                        combined_data[df.name][ion_key] += ion_intensity
+                                    except KeyError:
+                                        combined_data[df.name][ion_key] = ion_intensity
                             else:
-                                combined_data = pd.concat([combined_data, selected], axis=1).fillna(0)
+                                combined_data[df.name] = selected
                             del selected
                         if not self.mrm and ((len(labels_found) < self.labels_needed) or (
                                             self.parser_args.require_all_ions and len(labels_found) < len(precursors))):
@@ -536,10 +539,11 @@ class Worker(Process):
                                 if self.parser_args.require_all_ions:
                                     if self.debug:
                                         print('Not all ions found, setting', df.name, 'to zero')
-                                    combined_data[df.name] = 0
+                                    for ion_key in combined_data[df.name]:
+                                        combined_data[df.name][ion_key] = 0
                             else:
                                 found.discard(precursor_label)
-                                if df is not None and df.name in combined_data.columns:
+                                if df is not None and df.name in combined_data:
                                     del combined_data[df.name]
                                     for i in isotopes_chosen.keys():
                                         if i[0] == df.name:
@@ -578,7 +582,7 @@ class Worker(Process):
                 ms_index += delta
             rt_figure = {}
             isotope_figure = {}
-
+            combined_data = pd.DataFrame(combined_data, columns=sorted(combined_data.keys())).fillna(0)
             if self.parser_args.merge_labels or combine_xics:
                 label_name = '_'.join(map(str, combined_data.index))
                 combined_data = combined_data.sum(axis=0).to_frame(name=label_name).T

@@ -12,6 +12,11 @@ if os.environ.get('PYQUANT_DEV', False) == 'True':
         traceback.print_exc()
         pass
 
+from scipy.signal import argrelmax, argrelmin, convolve, kaiser
+from operator import itemgetter, attrgetter
+from collections import OrderedDict
+from pythomics.proteomics.config import NEUTRON
+
 from pyquant.cpeaks import *
 from .utils import select_window, divide_peaks, argrelextrema
 

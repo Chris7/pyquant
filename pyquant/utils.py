@@ -105,6 +105,7 @@ def get_scans_under_peaks(rt_scan_map, found_peaks):
 
 
 def select_window(x, index, size):
+    size = int(size)
     left = index - size
     right = index + size
     if left < 0:
