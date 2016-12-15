@@ -184,8 +184,7 @@ def nanmean(arr, empty=0):
 def divide_peaks(peaks):
     # We divide up the list of peaks to reduce the number of dimensions each fitting routine is working on
     # to improve convergence speeds
-    from scipy.signal import argrelmin
-    chunks = argrelmin(peaks, order=5)[0]
+    chunks = argrelextrema(peaks, np.less, order=5)[0]
     return chunks
 
 
@@ -345,3 +344,44 @@ def perform_ml(data, mass_labels):
                 import traceback
                 sys.stderr.write(
                     'Unable to calculate statistics for {}/{}.\n Traceback: {}'.format(label1, label2, traceback.format_exc()))
+
+
+def argrelextrema(data, comparator, axis=0, order=1, mode='clip'):
+    results = boolrelextrema(data, comparator, axis, order, mode)
+    return np.where(results)
+
+
+def boolrelextrema(data, comparator, axis=0, order=1, mode='clip'):
+    """
+    A fixed function for scipy's _boolrelextrama that handles data duplication
+    :param data:
+    :param comparator:
+    :param axis:
+    :param order:
+    :param mode:
+    :return:
+    """
+    if((int(order) != order) or (order < 1)):
+        raise ValueError('Order must be an int >= 1')
+
+    datalen = data.shape[axis]
+    locs = np.arange(0, datalen)
+    data = np.ma.masked_array(data, mask=np.hstack(([1], np.diff(data)))==0)
+    if np.ma.is_masked(data):
+        locs = locs[np.ma.getmask(data)==False]
+        main = data.take(locs, axis=axis, mode=mode)
+        results = np.zeros(data.shape, dtype=bool)
+        for index, result in enumerate(boolrelextrema(main, comparator, axis=axis, order=order, mode=mode)):
+            results[locs[index]] = result
+        return results
+    else:
+        results = np.ones(data.shape, dtype=bool)
+        main = data.take(locs, axis=axis, mode=mode)
+        for shift in xrange(1, order + 1):
+            plus = data.take(locs + shift, axis=axis, mode=mode)
+            minus = data.take(locs - shift, axis=axis, mode=mode)
+            results &= comparator(main, plus)
+            results &= comparator(main, minus)
+            if(~results.any()):
+                return results
+        return results

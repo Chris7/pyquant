@@ -13,7 +13,7 @@ if os.environ.get('PYQUANT_DEV', False) == 'True':
         pass
 
 from pyquant.cpeaks import *
-from .utils import select_window, divide_peaks
+from .utils import select_window, divide_peaks, argrelextrema
 
 if six.PY3:
     xrange = range
@@ -276,7 +276,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         peak_width_end = peak_width_start + 1
     peak_width = peak_width_start
     while peak_width <= peak_width_end:
-        row_peaks = np.array(argrelmax(ydata_peaks, order=peak_width)[0], dtype=int)
+        row_peaks = np.array(argrelextrema(ydata_peaks, np.greater, order=peak_width)[0], dtype=int)
         if not row_peaks.size:
             row_peaks = np.array([np.argmax(ydata)], dtype=int)
         if debug:
@@ -335,7 +335,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         else:
             minima = []
         minima.extend(
-            [i for i in argrelmin(ydata_peaks, order=peak_width)[0] if i not in minima and i not in row_peaks])
+            [i for i in argrelextrema(ydata_peaks, np.less, order=peak_width)[0] if i not in minima and i not in row_peaks])
         minima.sort()
         peaks_found[peak_width] = {'peaks': row_peaks, 'minima': minima}
         # if row_peaks.size > 1:
@@ -425,6 +425,11 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                         left = 0
                     else:
                         left = minima_array[left]
+                elif left_stop > left:
+                    # We are at the last minima, set our left bound to the last peak if it is greater than
+                    # the left minima, otherwise set to the left minima
+                    minima_index = minima_array[left]
+                    left = last_peak if last_peak > minima_index else minima_index
                 else:
                     for i in xrange(left, left_stop, -1):
                         minima_index = minima_array[i]

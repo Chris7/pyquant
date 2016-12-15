@@ -8,7 +8,7 @@ ctypedef np.int64_t INT_t
 from scipy import optimize, integrate, stats
 from scipy.interpolate import interp1d
 from scipy.ndimage.filters import gaussian_filter1d
-from scipy.signal import argrelmax, argrelmin, convolve, kaiser
+from scipy.signal import convolve, kaiser
 from operator import itemgetter, attrgetter
 from collections import OrderedDict
 from pythomics.proteomics.config import NEUTRON
