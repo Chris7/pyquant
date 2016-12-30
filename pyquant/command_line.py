@@ -418,7 +418,7 @@ def run_pyquant():
             ])
         if not args.merge_labels and not args.no_ratios and label != '':
             for label2 in labels:
-                label_key2 = '{} '.format(label2) if label2 != '' else label2
+                label_key2 = '{}'.format(label2) if label2 != '' else label2
                 if label_key != label_key2 and (ref_label is None or ref_label.lower() == label_key2.lower()):
                     RESULT_ORDER.extend([('{}_{}_ratio'.format(label, label2), '{}/{}'.format(label_key.strip(), label_key2.strip())),
                                          ])
