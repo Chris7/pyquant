@@ -85,7 +85,7 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
     isotope_index += isotope_offset
     start_index = find_nearest_index(xdata, first_mz)
     start_info = findMicro(xdata, ydata, start_index, ppm=tolerance, start_mz=start_mz, calc_start_mz=theo_mz,
-                           quant_method=quant_method, fragment_scan=fragment_scan, centroid=centroid)
+                           quant_method=quant_method, reporter_mode=reporter_mode, fragment_scan=fragment_scan, centroid=centroid)
     start_error = start_info['error']
 
     if 'params' in start_info:
@@ -660,7 +660,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     return best_fit, best_rss
 
 def findMicro(xdata, ydata, pos, ppm=None, start_mz=None, calc_start_mz=None, isotope=0, spacing=0,
-              quant_method='integrate', fragment_scan=False, centroid=False):
+              quant_method='integrate', fragment_scan=False, centroid=False, reporter_mode=False):
     """
     We want to find the boundaries of our isotopic clusters. Basically we search until our gradient
     changes, this assumes it's roughly gaussian and there is little interference
@@ -699,13 +699,12 @@ def findMicro(xdata, ydata, pos, ppm=None, start_mz=None, calc_start_mz=None, is
             sorted_peaks = sorted(
                 [(peaks[i * 3:(i + 1) * 3], get_ppm(start_mz + offset, v)) for i, v in enumerate(peaks[1::3])],
                 key=itemgetter(1))
-
-        if fragment_scan == False and not within_tolerance(sorted_peaks, tolerance):
+        if (fragment_scan == False or reporter_mode) and not within_tolerance(sorted_peaks, tolerance):
             if calc_start_mz is not None:
                 sorted_peaks2 = sorted(
                     [(peaks[i * 3:(i + 1) * 3], get_ppm(calc_start_mz + offset, v)) for i, v in enumerate(peaks[1::3])],
                     key=itemgetter(1))
-                if filter(lambda x: x[1] < tolerance, sorted_peaks2):
+                if any(filter(lambda x: x[1] < tolerance, sorted_peaks2)):
                     sorted_peaks = sorted_peaks2
                 else:
                     fit = False
@@ -722,7 +721,7 @@ def findMicro(xdata, ydata, pos, ppm=None, start_mz=None, calc_start_mz=None, is
         if not fit:
             pass
         error = sorted_peaks[0][1]
-    ret_dict = {'int': int_val if fit or fragment_scan == True else 0., 'int2': int_val, 'bounds': (left, right),
+    ret_dict = {'int': int_val if fit or (fragment_scan == True and not reporter_mode) else 0., 'int2': int_val, 'bounds': (left, right),
                 'params': peak, 'error': error}
     return ret_dict
 
