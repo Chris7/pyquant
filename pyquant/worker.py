@@ -604,12 +604,15 @@ class Worker(Process):
                 start_rt = rt
                 rt_guide = self.rt_guide and start_rt
                 if len(combined_data.columns) == 1:
-                    try:
-                        new_col = self.msn_rt_map.iloc[self.msn_rt_map.searchsorted(combined_data.columns[-1]) + 1].values[0]
-                    except:
-                        if self.debug:
-                            print(combined_data.columns)
-                            print(self.msn_rt_map)
+                    if combined_data.columns[-1] == self.msn_rt_map[-1]:
+                        new_col = combined_data.columns[-1] + (combined_data.columns[-1] - self.msn_rt_map[-2])
+                    else:
+                        try:
+                            new_col = self.msn_rt_map.iloc[self.msn_rt_map.searchsorted(combined_data.columns[-1]) + 1].values[0]
+                        except:
+                            if self.debug:
+                                print(combined_data.columns)
+                                print(self.msn_rt_map)
                 else:
                     new_col = combined_data.columns[-1] + (combined_data.columns[-1] - combined_data.columns[-2])
                 combined_data[new_col] = 0
