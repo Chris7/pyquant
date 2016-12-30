@@ -15,7 +15,7 @@ environment:
     # /E:ON and /V:ON options are not enabled in the batch script intepreter
     # See: http://stackoverflow.com/a/13751649/163740
     CMD_IN_ENV: "cmd /E:ON /V:ON /C .\\ci\\run_with_env.cmd"
-    DISTRIBUTIONS: "sdist bdist_wheel"
+    DISTRIBUTIONS: "bdist_wheel"
     PYPI_PASS:
       secure: MT+Dz2JEdUGkHuJr7LW3qA==
     PYPI_USER:
@@ -39,6 +39,7 @@ environment:
       PYTHON_ARCH: "64"
       CONDA_PY: "27"
       CONDA_NPY: "110"
+      DISTRIBUTIONS: "sdist bdist_wheel"
 
     - PYTHON: "C:\\Python27_32"
       PYTHON_VERSION: "2.7"
