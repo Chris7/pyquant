@@ -36,7 +36,7 @@ python:
   - "3.4"
   - "3.5"
 # command to run tests
-script: make testall
+script: make testtravis
 after_success:
   - if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
       coveralls;
