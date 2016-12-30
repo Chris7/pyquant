@@ -327,6 +327,8 @@ class Worker(Process):
                 mass_keys = list(silac_masses.keys())
                 if self.reporter_mode:
                     silac_shift = sum(mass_keys)
+                    label_mz = silac_shift
+                    theo_mz = silac_shift
                 else:
                     if peptide:
                         for label_mass, label_masses in silac_masses.items():
@@ -346,10 +348,11 @@ class Worker(Process):
                         silac_shift += sum([global_mass for mod_aa in peptide if mod_aa not in added_residues])
                     silac_shift += cterm_mass + nterm_mass
 
-                label_mz = precursor + silac_shift / float(charge)
+                    label_mz = precursor + (silac_shift / float(charge))
+                    theo_mz = theor_mass + (silac_shift / float(charge))
                 precursors[silac_label]['uncalibrated_mz'] = label_mz
                 precursors[silac_label]['calibrated_mz'] = self.get_calibrated_mass(label_mz)
-                precursors[silac_label]['theoretical_mz'] = theor_mass + silac_shift / float(charge)
+                precursors[silac_label]['theoretical_mz'] = theo_mz
                 data[silac_label] = copy.deepcopy(silac_dict)
             if not precursors:
                 precursors['Precursor']['uncalibrated_mz'] = precursor
@@ -601,12 +604,15 @@ class Worker(Process):
                 start_rt = rt
                 rt_guide = self.rt_guide and start_rt
                 if len(combined_data.columns) == 1:
-                    try:
-                        new_col = self.msn_rt_map.iloc[self.msn_rt_map.searchsorted(combined_data.columns[-1]) + 1].values[0]
-                    except:
-                        if self.debug:
-                            print(combined_data.columns)
-                            print(self.msn_rt_map)
+                    if combined_data.columns[-1] == self.msn_rt_map[-1]:
+                        new_col = combined_data.columns[-1] + (combined_data.columns[-1] - self.msn_rt_map[-2])
+                    else:
+                        try:
+                            new_col = self.msn_rt_map.iloc[self.msn_rt_map.searchsorted(combined_data.columns[-1]) + 1].values[0]
+                        except:
+                            if self.debug:
+                                print(combined_data.columns)
+                                print(self.msn_rt_map)
                 else:
                     new_col = combined_data.columns[-1] + (combined_data.columns[-1] - combined_data.columns[-2])
                 combined_data[new_col] = 0
@@ -1132,8 +1138,7 @@ class Worker(Process):
             del combined_data
             del isotopes_chosen
         except:
-            # if self.debug:
-            print('ERROR ON {}: {}'.format(peptide, traceback.format_exc()))
+            print('ERROR encountered. Please report at https://github.com/Chris7/pyquant/issues:\n {}'.format(traceback.format_exc()))
             try:
                 self.results.put(result_dict)
             except:

@@ -792,9 +792,9 @@ def run_pyquant():
         most_peaks_found = 0
         mrm_added = set([])
         exclusion_masses = mrm_pair_info.loc[:,[i for i in mrm_pair_info.columns if i.lower() not in ('light', 'retention time')]].values.flatten() if args.mrm else set([])
-        for scan_index, v in enumerate(raw_scans):
-            target_scan = v['id_scan']
-            quant_scan = v['quant_scan']
+        for scan_index, raw_scan_info in enumerate(raw_scans):
+            target_scan = raw_scan_info['id_scan']
+            quant_scan = raw_scan_info['quant_scan']
             scanId = target_scan['id']
             scan_mass = target_scan.get('mass')
             if args.mrm:
@@ -878,7 +878,7 @@ def run_pyquant():
                 if tuple(map(str, key)) in skip_map:
                     completed += 1
                     continue
-            params = {'scan_info': v}
+            params = {'scan_info': raw_scan_info}
             scans_to_submit.append((target_scan['rt'], params))
 
         # sort by RT so we can minimize our memory footprint by throwing away scans we no longer need

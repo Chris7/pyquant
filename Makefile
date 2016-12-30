@@ -9,10 +9,12 @@ test:
 testintegration:
 	nosetests -i integration_.* pyquant.tests
 
-testmanual:
-	nosetests -i .*manual.* pyquant.tests
+testitraq:
+	nosetests pyquant.tests.integration_isobaric_tags
 
-testtargeted:
-	nosetests -i targeted_.* pyquant.tests
+testmanual:
+	nosetests pyquant.tests.integration_manual
+
+testtravis: test testitraq
 
 testall: test testintegration testtargeted

@@ -27,7 +27,7 @@ install:
     else
       echo "no coveralls for python3";
     fi
-  - pip install --upgrade pip
+  - pip install --upgrade pip setuptools
   - pip install -r requirements.txt
   - pip install -e .
 language: python
@@ -36,7 +36,7 @@ python:
   - "3.4"
   - "3.5"
 # command to run tests
-script: make testall
+script: make testtravis
 after_success:
   - if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
       coveralls;

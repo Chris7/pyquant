@@ -21,7 +21,7 @@ class TestTargeted(FileMixins, unittest.TestCase):
         f.write('\t'.join(['0', 'R', '10.008269', 'R10'])+'\n')
         f.write('\t'.join(['1', 'R', '0', 'Light'])+'\n')
         f.seek(0)
-        com = [self.executable, '--scan-file', self.mzml, '-p', str(config.CORES), '-o', self.output, '--msn-ion', '175', '--html', '--label-scheme', f.name]
+        com = [self.executable, '--scan-file', self.ecoli_mzml, '-p', str(config.CORES), '-o', self.output, '--msn-ion', '175', '--html', '--label-scheme', f.name]
         subprocess.call(com)
         pyquant = pd.read_table(self.output)
         label = 'R10'
