@@ -17,7 +17,7 @@ class TestReader(mixins.FileMixins, TestCase):
 
     def test_reader(self):
         output = {0: Queue()}
-        reader = Reader(self.input, output, raw_file=self.mzml)
+        reader = Reader(self.input, output, raw_file=self.ecoli_mzml)
         reader.start()
         queue = output[0]
         self.input.put((0, '80', 0, 10000))
@@ -38,7 +38,7 @@ class TestReader(mixins.FileMixins, TestCase):
         self.assertFalse(reader.is_alive())
 
         # test that we can get scans that have been deleted
-        reader = Reader(self.input, output, raw_file=self.mzml, timeout_minutes=0.01)
+        reader = Reader(self.input, output, raw_file=self.ecoli_mzml, timeout_minutes=0.01)
         reader.start()
         self.input.put((0, '80', 0, 10000))
         self.input.put((0, '81', 0, 10000))

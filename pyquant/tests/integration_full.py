@@ -18,7 +18,7 @@ class EColiTest(mixins.FileMixins, unittest.TestCase):
 
     @utils.timer
     def test_pyquant(self):
-        com = [self.executable, '--search-file', self.search_file, '--scan-file', self.mzml, '-p', str(config.CORES), '-o', self.output, '--html', '--precursor-ppm', '2', '--xic-window-size', '12']
+        com = [self.executable, '--search-file', self.ecoli_search_file, '--scan-file', self.ecoli_mzml, '-p', str(config.CORES), '-o', self.output, '--html', '--precursor-ppm', '2', '--xic-window-size', '12']
         subprocess.call(com)
         pyquant = pd.read_table(self.output)
         label = 'Medium'
@@ -37,6 +37,22 @@ class EColiTest(mixins.FileMixins, unittest.TestCase):
         # the median is robust, we care about the standard deviation since changes to the backend can alter the peak width
         r_stdh = np.std(pyquant.loc[pyquant['Class'] == 'R', pq_sel])
         k_stdh = np.std(pyquant.loc[pyquant['Class'] == 'K', pq_sel])
+
+
+class ITraqTest(mixins.FileMixins, unittest.TestCase):
+    def setUp(self):
+        super(ITraqTest, self).setUp()
+        self.output = os.path.join(self.out_dir, 'itraq_test')
+
+    @utils.timer
+    def test_itraq_processing(self):
+        com = [self.executable, '--scan-file', self.itraq_mzml, '-o', self.output, '--precursor-ppm', '200', '--isobaric-tags', '--label-method', 'iTRAQ4']
+        subprocess.call(com)
+        data = pd.read_table(self.output)
+        self.assertListEqual(map(int, data['114 Intensity'].values.tolist()), [1215, 9201, 1218, 83983, 10266, 2995, 7160])
+        self.assertListEqual(map(int, data['115 Intensity'].values.tolist()), [1428, 38772, 946, 1161, 12032, 4109, 8421])
+        self.assertListEqual(map(int, data['116 Intensity'].values.tolist()), [1031, 15314, 0, 94243, 11381, 3350, 8577])
+        self.assertListEqual(map(int, data['117 Intensity'].values.tolist()), [0, 42004, 1032, 383, 14290, 2557, 8969])
 
 if __name__ == '__main__':
     unittest.main()

@@ -13,7 +13,7 @@ if os.environ.get('PYQUANT_DEV', False) == 'True':
         pass
 
 from pyquant.cpeaks import *
-from .utils import select_window, divide_peaks
+from .utils import select_window, divide_peaks, argrelextrema
 
 if six.PY3:
     xrange = range
@@ -253,7 +253,6 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                  baseline_correction=False, rescale=True):
     amplitude_filter /= ydata_original.max()
     ydata = ydata_original / ydata_original.max()
-
     ydata_peaks = np.copy(ydata)
     if filter:
         if len(ydata) >= 5:
@@ -277,11 +276,11 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         peak_width_end = peak_width_start + 1
     peak_width = peak_width_start
     while peak_width <= peak_width_end:
-        row_peaks = np.array(argrelmax(ydata_peaks, order=peak_width)[0], dtype=int)
+        row_peaks = np.array(argrelextrema(ydata_peaks, np.greater, order=peak_width)[0], dtype=int)
         if not row_peaks.size:
             row_peaks = np.array([np.argmax(ydata)], dtype=int)
         if debug:
-            sys.stderr.write('{}'.format(row_peaks))
+            sys.stderr.write('peak indices: {}\n'.format(row_peaks))
 
         if snr != 0 or zscore != 0:
             if local_filter_size:
@@ -321,9 +320,13 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         # if the user is searching the entire ms spectra because of the number of peaks possible to find
         if max_peaks != -1 and row_peaks.size > max_peaks:
             # pick the top n peaks for max_peaks
-            # this selects the row peaks in ydata, reversed the sorting order (to be greatest to least), then
-            # takes the number of peaks we allow and then sorts those peaks
-            row_peaks = np.sort(row_peaks[np.argsort(ydata_peaks[row_peaks])[::-1]][:max_peaks])
+            if rt_peak:
+                # If the user specified a retention time as a guide, select the n peaks closest
+                row_peaks = np.sort(np.abs(xdata[row_peaks]-rt_peak)[:max_peaks])
+            else:
+                # this selects the row peaks in ydata, reversed the sorting order (to be greatest to least), then
+                # takes the number of peaks we allow and then sorts those peaks
+                row_peaks = np.sort(row_peaks[np.argsort(ydata_peaks[row_peaks])[::-1]][:max_peaks])
             # peak_width_end += 1
             # peak_width += 1
             # continue
@@ -332,7 +335,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         else:
             minima = []
         minima.extend(
-            [i for i in argrelmin(ydata_peaks, order=peak_width)[0] if i not in minima and i not in row_peaks])
+            [i for i in argrelextrema(ydata_peaks, np.less, order=peak_width)[0] if i not in minima and i not in row_peaks])
         minima.sort()
         peaks_found[peak_width] = {'peaks': row_peaks, 'minima': minima}
         # if row_peaks.size > 1:
@@ -422,6 +425,11 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                         left = 0
                     else:
                         left = minima_array[left]
+                elif left_stop > left:
+                    # We are at the last minima, set our left bound to the last peak if it is greater than
+                    # the left minima, otherwise set to the left minima
+                    minima_index = minima_array[left]
+                    left = last_peak if last_peak > minima_index else minima_index
                 else:
                     for i in xrange(left, left_stop, -1):
                         minima_index = minima_array[i]
@@ -731,9 +739,9 @@ def targeted_search(merged_x, merged_y, x_value, attempts=4, stepsize=3, peak_fi
     peak_finding_kwargs = peak_finding_kwargs or {}
     debug = peak_finding_kwargs.get('debug')
     found_rt = False
-    while rt_attempts < 4 and not found_rt:
+    while rt_attempts < attempts and not found_rt:
         if debug:
-            print('MERGED PEAK FINDING')
+            print('MERGED PEAK FINDING ATTEMPT', rt_attempts)
         res, residual = findAllPeaks(
             merged_x,
             fitting_y,

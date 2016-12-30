@@ -306,10 +306,18 @@ def run_pyquant():
         # determine if we want to do ms1 ion detection, ms2 ion detection, all ms2 of each file
         if args.msn_ion or args.msn_peaklist:
             ion_search = True
-            ions_selected = [sorted(list(set(map(float, ion.split(','))))) for ion in args.msn_ion] if args.msn_ion else []
+            ions_of_interest = []
             if args.msn_peaklist:
-                ion_table = pd.read_table(args.msn_peaklist)
-            # [float(i.strip()) for i in args.msn_peaklist if i]
+                for i in args.msn_peaklist:
+                    if not i.strip():
+                        continue
+                    try:
+                        ions_of_interest.append(i.strip())
+                    except:
+                        import traceback; traceback.print_exc()
+            if args.msn_ion:
+                ions_of_interest += args.msn_ion
+            ions_selected = [sorted(list(set(map(float, ion.split(','))))) for ion in ions_of_interest] if ions_of_interest else []
             d = {'ions': ions_selected, 'rt_info': args.msn_ion_rt}
             for i in scan_filemap:
                 raw_files[i] = d
@@ -784,9 +792,9 @@ def run_pyquant():
         most_peaks_found = 0
         mrm_added = set([])
         exclusion_masses = mrm_pair_info.loc[:,[i for i in mrm_pair_info.columns if i.lower() not in ('light', 'retention time')]].values.flatten() if args.mrm else set([])
-        for scan_index, v in enumerate(raw_scans):
-            target_scan = v['id_scan']
-            quant_scan = v['quant_scan']
+        for scan_index, raw_scan_info in enumerate(raw_scans):
+            target_scan = raw_scan_info['id_scan']
+            quant_scan = raw_scan_info['quant_scan']
             scanId = target_scan['id']
             scan_mass = target_scan.get('mass')
             if args.mrm:
@@ -870,7 +878,7 @@ def run_pyquant():
                 if tuple(map(str, key)) in skip_map:
                     completed += 1
                     continue
-            params = {'scan_info': v}
+            params = {'scan_info': raw_scan_info}
             scans_to_submit.append((target_scan['rt'], params))
 
         # sort by RT so we can minimize our memory footprint by throwing away scans we no longer need
@@ -879,15 +887,6 @@ def run_pyquant():
             scan_count = len(scans_to_submit)
         for i in scans_to_submit:
             in_queue.put(i[1])
-            # in_queue.put(i[1])
-            # in_queue.put(i[1])
-            # in_queue.put(i[1])
-            # in_queue.put(i[1])
-            # in_queue.put(i[1])
-            # in_queue.put(i[1])
-            # in_queue.put(i[1])
-            # in_queue.put(i[1])
-            # in_queue.put(i[1])
 
         sys.stderr.write('{0} processed and placed into queue.\n'.format(filename))
 
