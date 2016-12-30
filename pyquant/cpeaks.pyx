@@ -32,11 +32,11 @@ cpdef np.ndarray[FLOAT_t, ndim=1] adjust_baseline(np.ndarray[FLOAT_t, ndim=1] xd
     if index == len(mus)-1:
         right = -1
     else:
-        right = np.searchsorted(xdata, (mus[index+1]+mus[index])/2, side='right')
+        right = np.searchsorted(xdata, (mus[index+1]+mus[index])/2.0, side='right')
     if index == 0:
         left = 0
     else:
-        left = np.searchsorted(xdata, (mus[index-1]+mus[index])/2, side='left')
+        left = np.searchsorted(xdata, (mus[index-1]+mus[index])/2.0, side='right')
     y = slope*xdata+intercept
     y[:left] = 0
     if right != -1:
