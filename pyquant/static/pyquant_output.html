@@ -385,6 +385,11 @@
                     }
                 );
                 var charts = {};
+
+                function isFit(fit_name) {
+                    return /fit \d+/.exec(fit_name) !== null;
+                }
+
                 var plot_func = function(row_index, data_type, fit_index){
                     var chart_data = $.extend(true, {}, dt_data[row_index][data_type]);
                     if($.isEmptyObject(chart_data))
@@ -454,7 +459,7 @@
                                 else if(param_max_y == 'fitted'){
                                     var max_fit = 0;
                                     plot_columns.forEach(function(arr){
-                                        if(arr[0].endsWith('fit')) {
+                                        if(isFit(arr[0])) {
                                             var new_max = Math.max.apply(null, arr.map(function(x){return parseFloat(x) ? x : 0}))
                                             if(new_max > max_fit)
                                                 max_fit = new_max;
