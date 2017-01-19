@@ -100,7 +100,6 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
 
     valid_locations2 = OrderedDict()
     valid_locations2[isotope_index] = [(0, start, find_nearest_index(non_empty, start))]
-    contaminant_bounds = {}
     contaminant_int = 0.
 
     if not reporter_mode and (isotopologue_limit == -1 or len(valid_locations2) < isotopologue_limit):
