@@ -456,6 +456,7 @@ class Worker(Process):
                                     theo_mz=theoretical_precursor,
                                     max_mz=shift_max,
                                     charge=charge,
+                                    contaminant_search=not self.parser_args.no_contaminant_detection,
                                     precursor_ppm=self.precursor_ppm,
                                     isotope_ppm=self.isotope_ppm,
                                     reporter_mode=self.reporter_mode,
