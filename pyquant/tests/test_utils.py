@@ -51,6 +51,18 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
                 col = '{}/{} Confidence'.format(label1, label2)
                 self.assertNotEqual(sum(pd.isnull(dat['Heavy/Light Confidence']) == False), 0)
 
+    def test_merge_peaks(self):
+        peaks = {1: {'minima': [0,1,2,4,5], 'peaks': [3]}, 2: {'minima': [0,1,2,4,5], 'peaks': [3]}, 7: {'minima': [0,1,2,4,5], 'peaks': [3]}}
+        merged = utils.merge_peaks(peaks)
+        self.assertDictEqual(merged, {7: {'minima': [0, 1, 2, 4, 5], 'peaks': [3]}})
+
+        peaks = {1: {'minima': [0,1,2,4,5], 'peaks': [3]}}
+        merged = utils.merge_peaks(peaks)
+        self.assertDictEqual(merged, {1: {'minima': [0,1,2,4,5], 'peaks': [3]}})
+
+        peaks = {1: {'minima': [0,5], 'peaks': [3,7,8]}, 2: {'minima': [0,5], 'peaks': [3,7]}, 7: {'minima': [0,5], 'peaks': [3,7]}}
+        self.assertDictEqual(merged, {1: {'minima': [0,5], 'peaks': [3,7,8]}, 7: {'minima': [0,5], 'peaks': [3,7]}})
+
 
 if __name__ == '__main__':
     unittest.main()

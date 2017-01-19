@@ -13,7 +13,7 @@ if os.environ.get('PYQUANT_DEV', False) == 'True':
         pass
 
 from pyquant.cpeaks import *
-from .utils import select_window, divide_peaks, argrelextrema
+from .utils import select_window, divide_peaks, argrelextrema, merge_peaks
 
 if six.PY3:
     xrange = range
@@ -249,7 +249,7 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
 
 def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_size=0, filter=False, bigauss_fit=False, rt_peak=0.0, mrm=False,
                  max_peaks=4, debug=False, peak_width_start=2, snr=0, zscore=0, amplitude_filter=0, peak_width_end=4,
-                 baseline_correction=False, rescale=True):
+                 baseline_correction=False, rescale=True, micro=False):
     amplitude_filter /= ydata_original.max()
     ydata = ydata_original / ydata_original.max()
     ydata_peaks = np.copy(ydata)
@@ -274,10 +274,14 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     if peak_width_start > peak_width_end:
         peak_width_end = peak_width_start + 1
     peak_width = peak_width_start
-    while peak_width <= peak_width_end:
+    final_peak = False
+    while peak_width <= peak_width_end or final_peak:
         row_peaks = np.array(argrelextrema(ydata_peaks, np.greater, order=peak_width)[0], dtype=int)
         if not row_peaks.size:
             row_peaks = np.array([np.argmax(ydata)], dtype=int)
+        if len(row_peaks) == 1:
+            # We don't need to look for a final peak, we already found a global maximum peak with no other peaks
+            final_peak = None
         if debug:
             sys.stderr.write('peak indices: {}\n'.format(row_peaks))
 
@@ -340,6 +344,12 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         # if row_peaks.size > 1:
         #     peak_width_end += 1
         peak_width += 1
+        if peak_width > peak_width_end:
+            if final_peak:
+                final_peak = False
+            elif final_peak is not None and not micro:
+                final_peak = True
+                peak_width = len(xdata)
 
     # Next, for fitting multiple peaks, we want to divide up the space so we are not fitting peaks that
     # have no chance of actually impacting one another.
@@ -356,28 +366,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         ydata_peaks[ydata_peaks < amplitude_filter] = 0
     if debug:
         sys.stderr.write('found: {}\n'.format(peaks_found))
-    final_peaks = {}
-    if peak_width_start == peak_width_end:
-        final_peaks = peaks_found
-    else:
-        for peak_width in xrange(peak_width_start, peak_width_end):
-            if debug:
-                sys.stderr.write('checking {}\n'.format(peak_width))
-            if peak_width not in peaks_found:
-                continue
-            smaller_peaks, smaller_minima = peaks_found[peak_width]['peaks'], peaks_found[peak_width]['minima']
-            larger_peaks, larger_minima = peaks_found[peak_width + 1]['peaks'], peaks_found[peak_width + 1]['minima']
-            if debug:
-                sys.stderr.write('{}: {} ---- {}\n'.format(peak_width, smaller_peaks, larger_peaks))
-            if set(smaller_peaks) == set(larger_peaks) and set(smaller_minima) == set(larger_minima):
-                final_peaks[peak_width + 1] = peaks_found[peak_width + 1]
-                if peak_width in final_peaks:
-                    del final_peaks[peak_width]
-            else:
-                final_peaks[peak_width] = peaks_found[peak_width]
-                if peak_width == peak_width_end - 1:
-                    final_peaks[peak_width + 1] = peaks_found[peak_width + 1]
-
+    final_peaks = merge_peaks(peaks_found, debug=debug)
 
     fit_accuracy = []
     step_size = 4 if bigauss_fit else 3
@@ -694,7 +683,7 @@ def findMicro(xdata, ydata, pos, ppm=None, start_mz=None, calc_start_mz=None, is
             peaks = (new_y.max(), peak_mean, 0)
             sorted_peaks = [(peaks, get_ppm(start_mz + offset, peak_mean))]
         else:
-            peaks, peak_residuals = findAllPeaks(new_x, new_y, min_dist=(new_x[1] - new_x[0]) * 2.0, peak_width_start=1)
+            peaks, peak_residuals = findAllPeaks(new_x, new_y, min_dist=(new_x[1] - new_x[0]) * 2.0, peak_width_start=1, micro=True)
             sorted_peaks = sorted(
                 [(peaks[i * 3:(i + 1) * 3], get_ppm(start_mz + offset, v)) for i, v in enumerate(peaks[1::3])],
                 key=itemgetter(1))

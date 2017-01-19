@@ -1,6 +1,7 @@
 import copy
 import os
 import six
+import sys
 import warnings
 from collections import Counter
 from itertools import combinations
@@ -385,3 +386,30 @@ def boolrelextrema(data, comparator, axis=0, order=1, mode='clip'):
             if(~results.any()):
                 return results
         return results
+
+
+def merge_peaks(peaks_found, debug=False):
+    if len(peaks_found) == 1:
+        return peaks_found
+
+    final_peaks = {}
+    peak_widths = sorted(peaks_found.keys())
+    for peak_width_index in xrange(len(peak_widths) - 1):
+        current_width = peak_widths[peak_width_index]
+        next_width = peak_widths[peak_width_index + 1]
+        current_peaks = peaks_found[current_width]
+        next_peaks = peaks_found[next_width]
+        smaller_peaks, smaller_minima = current_peaks['peaks'], current_peaks['minima']
+        larger_peaks, larger_minima = next_peaks['peaks'], next_peaks['minima']
+        if debug:
+            sys.stderr.write('{}: {} ---- {}\n'.format(peak_width_index, smaller_peaks, larger_peaks))
+        if set(smaller_peaks) == set(larger_peaks) and set(smaller_minima) == set(larger_minima):
+            final_peaks[next_width] = next_peaks
+            if current_width in final_peaks:
+                del final_peaks[current_width]
+        else:
+            final_peaks[current_width] = peaks_found[current_width]
+            if current_width == peak_widths[-2]:
+                final_peaks[next_width] = peaks_found[next_width]
+
+    return final_peaks
