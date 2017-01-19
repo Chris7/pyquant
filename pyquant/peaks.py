@@ -413,6 +413,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             fitted_peaks.append(peak_index)
             rel_peak = ydata_peaks[peak_index]
             # bounds for fitting the peak mean
+            peak_x = xdata[peak_index]
             peak_left = xdata[peak_index - 1]
             peak_right = xdata[peak_index + 1] if peak_index+1 < len(xdata) else xdata[-1]
             # find the points around it to estimate the std of the peak
@@ -488,8 +489,8 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 print('bounds', peak_index, left, right, peak_values.tolist(), peak_indices.tolist(), bnds)
 
             if peak_values.any():
-                average = np.average(peak_indices, weights=peak_values)
-                variance = np.sqrt(np.average((peak_indices - average) ** 2, weights=peak_values))
+                average = np.average(peak_indices, weights=np.abs(peak_values))
+                variance = np.sqrt(np.average((peak_indices - average) ** 2, weights=np.abs(peak_values)))
                 if variance == 0:
                     # we have a singular peak if variance == 0, so set the variance to half of the x/y spacing
                     if peak_index >= 1:
@@ -506,16 +507,16 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 variance = min_spacing
             if variance is not None:
                 if bigauss_fit:
-                    guess.extend([rel_peak, average, variance, variance])
+                    guess.extend([rel_peak, peak_x, variance, variance])
                 else:
-                    guess.extend([rel_peak, average, variance])
+                    guess.extend([rel_peak, peak_x, variance])
                 if baseline_correction:
                     slope = (ydata[right]-ydata[left])/(xdata[right]-xdata[left])
                     intercept = ((ydata[right]-slope*xdata[right])+(ydata[left]-slope*xdata[left]))/2
                     guess.extend([slope, intercept])
         if not guess:
-            average = np.average(xdata, weights=ydata)
-            variance = np.sqrt(np.average((xdata - average) ** 2, weights=ydata))
+            average = np.average(xdata, weights=np.abs(ydata))
+            variance = np.sqrt(np.average((xdata - average) ** 2, weights=np.abs(ydata)))
             if variance == 0:
                 variance = 0.05
             guess = [max(ydata), average, variance]
