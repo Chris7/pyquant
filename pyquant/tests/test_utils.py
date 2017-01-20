@@ -61,6 +61,7 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         self.assertDictEqual(merged, {1: {'minima': [0,1,2,4,5], 'peaks': [3]}})
 
         peaks = {1: {'minima': [0,5], 'peaks': [3,7,8]}, 2: {'minima': [0,5], 'peaks': [3,7]}, 7: {'minima': [0,5], 'peaks': [3,7]}}
+        merged = utils.merge_peaks(peaks)
         self.assertDictEqual(merged, {1: {'minima': [0,5], 'peaks': [3,7,8]}, 7: {'minima': [0,5], 'peaks': [3,7]}})
 
 
