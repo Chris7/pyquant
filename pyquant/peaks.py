@@ -248,7 +248,7 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
 
 def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_size=0, filter=False, bigauss_fit=False,
                  rt_peak=None, mrm=False, max_peaks=4, debug=False, peak_width_start=2, snr=0, zscore=0, amplitude_filter=0,
-                 peak_width_end=4, baseline_correction=False, rescale=True, fit_negative=False, percentile_filter=0, fit_opts=None):
+                 peak_width_end=4, baseline_correction=False, rescale=True, fit_negative=False, percentile_filter=0, micro=False, fit_opts=None):
     original_max = np.abs(ydata_original).max() if fit_negative else ydata_original.max()
     amplitude_filter /= original_max
     ydata = ydata_original / original_max
@@ -287,7 +287,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         if debug:
             sys.stderr.write('peak indices: {}\n'.format(row_peaks))
 
-        if snr or zscore or percentile_filter:
+        if snr or zscore:
             if local_filter_size:
                 new_peaks = []
                 lost_peaks = {}
@@ -322,7 +322,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 sys.stderr.write('{} peaks lost to amp filter\n{}\n'.format(sum(abs_ydata[row_peaks] < amplitude_filter), row_peaks[abs_ydata[row_peaks] < amplitude_filter]))
             row_peaks = row_peaks[np.abs(ydata_peaks[row_peaks]) >= amplitude_filter]
 
-        if percentile_filter != 0:
+        if percentile_filter:
             if debug:
                 sys.stderr.write('{} peaks lost to percentile filter\n{}\n'.format(
                     sum(np.abs(ydata_peaks) < np.percentile(np.abs(ydata_peaks), percentile_filter),
@@ -576,6 +576,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 jacobian = None
             else:
                 jacobian = bigauss_jac if bigauss_fit else gauss_jac
+
             if debug:
                 print('guess and bnds', segment_guess, segment_bounds)
             hessian = None  # if bigauss_fit else gauss_hess
