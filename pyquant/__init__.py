@@ -79,6 +79,7 @@ peak_parameters.add_argument('--snr-filter', help='Filter peaks below a given SN
 peak_parameters.add_argument('--zscore-filter', help='Peaks below a given z-score are excluded.', type=float, default=0)
 peak_parameters.add_argument('--filter-width', help='The window size for snr/zscore filtering. Default: entire scan', type=float, default=0)
 peak_parameters.add_argument('--intensity-filter', help='Filter peaks whose peak are below a given intensity.', type=float, default=0)
+peak_parameters.add_argument('--percentile-filter', help='Filter peaks whose peak are below a given percentile of the data.', type=float, default=0)
 peak_parameters.add_argument('--min-peak-separation', help='Peaks separated by less than this distance will be combined. For very crisp data, set this to 2. (minimal value is 1)', type=int, default=4)
 peak_parameters.add_argument('--disable-peak-filtering', help='This will disable smoothing of data prior to peak finding. If you have very good LC, this may be used to identify small peaks.', action='store_true')
 
