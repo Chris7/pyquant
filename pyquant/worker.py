@@ -101,7 +101,7 @@ class Worker(Process):
             'baseline_correction': self.parser_args.remove_baseline,
             'zscore': self.parser_args.zscore_filter,
             'local_filter_size': self.parser_args.filter_width,
-            'percenter_filter': self.parser_args.percentle_filter
+            'percentile_filter': self.parser_args.percentile_filter
         }
 
     def get_calibrated_mass(self, mass):
