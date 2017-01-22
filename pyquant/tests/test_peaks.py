@@ -9,6 +9,7 @@ from sympy import symbols, diff, exp, Piecewise
 from pyquant.tests.utils import timer
 from pyquant.tests.mixins import GaussianMixin
 from pyquant import peaks
+from pyquant import cpeaks
 
 def get_gauss_value(x, amp, mu, std):
     return amp*np.exp(-(x - mu)**2/(2*std**2))
@@ -40,7 +41,7 @@ class GaussianTests(GaussianMixin, unittest.TestCase):
         failures = 0
         for i in range(10):
             self.noisy_two_gauss = self.two_gauss + np.random.normal(0, 0.05, size=len(self.two_gauss))
-            params, residual = peaks.findAllPeaks(self.x, self.noisy_two_gauss, rt_peak=-1, filter=True, max_peaks=30, bigauss_fit=True)
+            params, residual = peaks.findAllPeaks(self.x, self.noisy_two_gauss, rt_peak=None, filter=True, max_peaks=30, bigauss_fit=True, snr=1)
             # we compare just the means here because the amplitude and variance can change too much due to the noise for reliable testing, but manual
             # inspect reveals the fits to be accurate
             try:
@@ -127,8 +128,8 @@ class FittingTests(unittest.TestCase):
             params = np.array([i[1] for i in subs], dtype=float)
             noisy_params = params + 2 * np.random.rand(params.shape[0])
             gauss_x = np.linspace(-10, 40, 100)
-            gauss_y = peaks.gauss_ndim(gauss_x, noisy_params)
-            hessian = peaks.gauss_hess(params, gauss_x, gauss_y)
+            gauss_y = cpeaks.gauss_ndim(gauss_x, noisy_params)
+            hessian = cpeaks.gauss_hess(params, gauss_x, gauss_y)
             for var_index, var in enumerate([a, u, s1, a2, u2, s2, a3, u3, s3]):
                 for var_index2, var2 in enumerate([a, u, s1, a2, u2, s2, a3, u3, s3]):
                     deriv = hess_store.setdefault((var, var2), diff(three_gauss, var, var2))

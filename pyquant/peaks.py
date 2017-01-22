@@ -277,8 +277,6 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             ydata_peaks = convolve(ydata_peaks, kaiser(10, 12), mode='same')
 
     ydata_peaks[np.isnan(ydata_peaks)] = 0
-    ydata_peaks_std = np.std(ydata_peaks)
-    ydata_peaks_median = np.median(ydata_peaks)
 
     if rt_peak is not None:
         mapper = interp1d(xdata, ydata_peaks)
@@ -288,6 +286,9 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             rt_peak_val = ydata_peaks[find_nearest_index(xdata, rt_peak)]
 
     ydata_peaks /= (np.abs(ydata_peaks).max() if fit_negative else ydata_peaks.max())
+
+    ydata_peaks_std = np.std(ydata_peaks)
+    ydata_peaks_median = np.median(ydata_peaks)
 
     peaks_found = {}
     if peak_width_start > peak_width_end:
