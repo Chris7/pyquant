@@ -31,8 +31,9 @@ from scipy.ndimage.filters import gaussian_filter1d
 
 from pythomics.proteomics import config
 
+from . import PEAK_RESOLUTION_RT_MODE, PEAK_RESOLUTION_COMMON_MODE
 from . import peaks
-from .utils import calculate_theoretical_distribution, find_scan, find_prior_scan, find_next_scan, find_common_peak_mean, nanmean
+from .utils import calculate_theoretical_distribution, find_scan, find_prior_scan, find_next_scan, find_common_peak_mean, nanmean, find_common_peak_mean
 
 
 class Worker(Process):
@@ -586,6 +587,20 @@ class Worker(Process):
             rt_figure = {}
             isotope_figure = {}
 
+            if self.parser_args.merge_isotopes:
+                new_labels = {}
+                labels = set(v['label'] for i,v in six.iteritems(isotope_labels))
+                for label in labels:
+                    to_merge = [(i, v['isotope_index'], v) for i, v in six.iteritems(isotope_labels) if v['label'] == label]
+                    to_merge.sort(key=operator.itemgetter(1))
+                    new_labels[to_merge[0][0]] = to_merge[0][2]
+                    if len(to_merge) > 1:
+                        combined_data.loc[to_merge[0][0], :] = combined_data.loc[[i[0] for i in to_merge], :].sum(axis=0)
+                        combined_data.drop([i[0] for i in to_merge[1:]], inplace=True)
+                isotope_labels = new_labels
+
+
+
             if self.parser_args.merge_labels or combine_xics:
                 label_name = '_'.join(map(str, combined_data.index))
                 combined_data = combined_data.sum(axis=0).to_frame(name=label_name).T
@@ -731,6 +746,8 @@ class Worker(Process):
                         merged_lb = 0
                         merged_rb = combined_data.shape[1]
 
+                    potential_peaks = defaultdict(list)
+
                     for row_num, (index, values) in enumerate(combined_data.iterrows()):
                         quant_label = isotope_labels.loc[index, 'label']
                         xdata = values.index.values.astype(float)
@@ -853,51 +870,53 @@ class Worker(Process):
                                     d['sbr'] = np.NaN
                                     d['snr'] = np.NaN
                                 xic_peaks.append(d)
-                            # if we have a peaks containing our retention time, keep them and throw out ones not containing it
-                            to_remove = []
-                            to_keep = []
-                            if rt_guide:
-                                peak_location_index = peaks.find_nearest_index(merged_x, peak_location)
-                                for i, v in enumerate(xic_peaks):
-                                    mu = v['mean']
-                                    s1 = v['std']
-                                    s2 = v['std2']
-                                    if mu - s1 * 2 < start_rt < mu + s2 * 2:
-                                        # these peaks are considered true and will help with the machine learning
-                                        if mu - s1 * 1.5 < start_rt < mu + s2 * 1.5:
-                                            v['valid'] = True
-                                            to_keep.append(i)
-                                    elif np.abs(peaks.find_nearest_index(merged_x, mu) - peak_location_index) > 2:
-                                        to_remove.append(i)
-                            # kick out peaks not containing our RT
-                            if rt_guide:
-                                if not to_keep:
-                                    # we have no peaks with our RT, there are contaminating peaks, remove all the noise but the closest to our RT
-                                    if not self.mrm:
-                                        # for i in to_remove:
-                                        #         xic_peaks[i]['interpolate'] = True
-                                        valid_peak = \
-                                            sorted([(i, np.abs(i['mean'] - start_rt)) for i in xic_peaks], key=operator.itemgetter(1))[0][0]
-                                        for i in reversed(xrange(len(xic_peaks))):
-                                            if xic_peaks[i] == valid_peak:
-                                                continue
-                                            else:
-                                                del xic_peaks[i]
-                                                # valid_peak['interpolate'] = True
-                                                # else:
-                                                #         valid_peak = [j[0] for j in sorted([(i, i['amp']) for i in xic_peaks], key=operator.itemgetter(1), reverse=True)[:3]]
-                                else:
-                                    # if not to_remove:
-                                    #         xic_peaks = [xic_peaks[i] for i in to_keep]
-                                    # else:
-                                    for i in reversed(to_remove):
-                                        del xic_peaks[i]
-                            if self.debug:
-                                print(quant_label, index)
-                                print(fit)
-                                print(to_remove, to_keep, xic_peaks)
-                            combined_peaks[quant_label][index] = xic_peaks    # if valid_peak is None else [valid_peak]
 
+                            potential_peaks[(quant_label, index)] = xic_peaks
+
+                            # if we have a peaks containing our retention time, keep them and throw out ones not containing it
+                            if self.parser_args.peak_resolution_mode == PEAK_RESOLUTION_RT_MODE:
+                                to_remove = []
+                                to_keep = []
+                                if rt_guide:
+                                    peak_location_index = peaks.find_nearest_index(merged_x, peak_location)
+                                    for i, v in enumerate(xic_peaks):
+                                        mu = v['mean']
+                                        s1 = v['std']
+                                        s2 = v['std2']
+                                        if mu - s1 * 2 < start_rt < mu + s2 * 2:
+                                            # these peaks are considered true and will help with the machine learning
+                                            if mu - s1 * 1.5 < start_rt < mu + s2 * 1.5:
+                                                v['valid'] = True
+                                                to_keep.append(i)
+                                        elif np.abs(peaks.find_nearest_index(merged_x, mu) - peak_location_index) > 2:
+                                            to_remove.append(i)
+
+                                    if not to_keep:
+                                        # we have no peaks with our RT, there are contaminating peaks, remove all the noise but the closest to our RT
+                                        if not self.mrm:
+                                            # for i in to_remove:
+                                            #         xic_peaks[i]['interpolate'] = True
+                                            valid_peak = \
+                                                sorted([(i, np.abs(i['mean'] - start_rt)) for i in xic_peaks], key=operator.itemgetter(1))[0][0]
+                                            for i in reversed(xrange(len(xic_peaks))):
+                                                if xic_peaks[i] == valid_peak:
+                                                    continue
+                                                else:
+                                                    del xic_peaks[i]
+                                                    # valid_peak['interpolate'] = True
+                                                    # else:
+                                                    #         valid_peak = [j[0] for j in sorted([(i, i['amp']) for i in xic_peaks], key=operator.itemgetter(1), reverse=True)[:3]]
+                                    else:
+                                        # if not to_remove:
+                                        #         xic_peaks = [xic_peaks[i] for i in to_keep]
+                                        # else:
+                                        for i in reversed(to_remove):
+                                            del xic_peaks[i]
+                                if self.debug:
+                                    print(quant_label, index)
+                                    print(fit)
+                                    print(to_remove, to_keep, xic_peaks)
+                            combined_peaks[quant_label][index] = xic_peaks    # if valid_peak is None else [valid_peak]
 
                 peak_info = {i: {} for i in self.mrm_pair_info.columns} if self.mrm else {i: {} for i in precursors.keys()}
                 if self.reporter_mode or combined_peaks:

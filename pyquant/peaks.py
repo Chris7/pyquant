@@ -483,7 +483,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 if right >= len(xdata) - 1:
                     right = len(xdata) - 1
                 bnds.extend([
-                    (-1.01, rel_peak) if rel_peak < 0 and fit_negative else (rel_peak, 1.01),
+                    (-1.01, rel_peak*0.5) if rel_peak < 0 and fit_negative else (rel_peak*0.5, 1.01),
                     (peak_left, peak_right) if micro else (xdata[left], xdata[right]),
                     (min_spacing, peak_range)
                 ])
@@ -495,7 +495,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 left = 0
                 right = len(xdata) - 1
                 bnds.extend([
-                    (-1.01, rel_peak) if rel_peak < 0 and fit_negative else (rel_peak, 1.01),
+                    (-1.01, rel_peak*0.5) if rel_peak < 0 and fit_negative else (rel_peak*0.5, 1.01),
                     (peak_left, peak_right) if micro else (xdata[0], xdata[-1]),
                     (min_spacing, peak_range)
                 ])
@@ -621,7 +621,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 res = results[-1]
             else:
                 res = sorted(results, key=attrgetter('fun'))[0]
-            n = len(xdata)
+            n = len(segment_x)
             k = len(res.x)
             # this is actually incorrect, but works better...
             # bic = n*np.log(res.fun/n)+k+np.log(n)
@@ -675,17 +675,19 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         best_segment_res = 0
         best_segment_rss = 0
         for bic, res in fits:
-            if bic < lowest_bic or (getattr(best_segment_res, '_contains_rt', False) and res._contains_rt == True):
+            if bic < lowest_bic or (getattr(best_segment_res, '_contains_rt', False) != True and res._contains_rt == True):
                 if debug:
-                    sys.stderr.write('{} < {}'.format(bic, lowest_bic))
+                    sys.stderr.write('{} < {}\n'.format(bic, lowest_bic))
                 if res._contains_rt == False and best_segment_res != 0 and best_segment_res._contains_rt == True:
                     continue
+                if debug:
+                    print('NEW BEST!', res, 'old was', best_segment_res)
                 best_segment_fit = np.copy(res.x)
                 best_segment_res = res
                 best_segment_rss = res.fun
                 lowest_bic = bic
             if debug:
-                sys.stderr.write('{} - best: {}'.format(res, best_segment_fit))
+                sys.stderr.write('{} - best: {}\n'.format(res, best_segment_fit))
         best_fit += best_segment_fit.tolist()
 
     best_fit = np.array(best_fit)
@@ -822,6 +824,8 @@ def targeted_search(merged_x, merged_y, x_value, attempts=4, stepsize=3, peak_fi
             rt_peak=x_value,
             **peak_finding_kwargs
         )
+        if not res.any():
+            return (None, np.inf)
         rt_peak = bigauss_ndim(np.array([x_value]), res)[0]
         # we don't do this routine for cases where there are > 5
         found_rt = sum(fitting_y > 0) <= 5 or rt_peak > 0.05
