@@ -31,8 +31,9 @@ from scipy.ndimage.filters import gaussian_filter1d
 
 from pythomics.proteomics import config
 
+from . import PEAK_RESOLUTION_RT_MODE, PEAK_RESOLUTION_COMMON_MODE
 from . import peaks
-from .utils import calculate_theoretical_distribution, find_scan, find_prior_scan, find_next_scan, find_common_peak_mean, nanmean
+from .utils import calculate_theoretical_distribution, find_scan, find_prior_scan, find_next_scan, find_common_peak_mean, nanmean, find_common_peak_mean
 
 
 class Worker(Process):
@@ -97,10 +98,13 @@ class Worker(Process):
             'debug': self.debug,
             'snr': self.parser_args.snr_filter,
             'amplitude_filter': self.parser_args.intensity_filter,
-            'peak_width_end': self.parser_args.min_peak_separation,
+            'peak_width_start': self.parser_args.min_peak_separation or 1,
             'baseline_correction': self.parser_args.remove_baseline,
             'zscore': self.parser_args.zscore_filter,
             'local_filter_size': self.parser_args.filter_width,
+            'percentile_filter': self.parser_args.percentile_filter,
+            'smooth': self.parser_args.xic_smooth,
+            'r2_cutoff': self.parser_args.r2_cutoff,
         }
 
     def get_calibrated_mass(self, mass):
@@ -583,6 +587,20 @@ class Worker(Process):
             rt_figure = {}
             isotope_figure = {}
 
+            if self.parser_args.merge_isotopes:
+                new_labels = {}
+                labels = set(v['label'] for i,v in six.iteritems(isotope_labels))
+                for label in labels:
+                    to_merge = [(i, v['isotope_index'], v) for i, v in six.iteritems(isotope_labels) if v['label'] == label]
+                    to_merge.sort(key=operator.itemgetter(1))
+                    new_labels[to_merge[0][0]] = to_merge[0][2]
+                    if len(to_merge) > 1:
+                        combined_data.loc[to_merge[0][0], :] = combined_data.loc[[i[0] for i in to_merge], :].sum(axis=0)
+                        combined_data.drop([i[0] for i in to_merge[1:]], inplace=True)
+                isotope_labels = new_labels
+
+
+
             if self.parser_args.merge_labels or combine_xics:
                 label_name = '_'.join(map(str, combined_data.index))
                 combined_data = combined_data.sum(axis=0).to_frame(name=label_name).T
@@ -720,6 +738,7 @@ class Worker(Process):
                         else:
                             merged_lb = 0
                             merged_rb = combined_data.shape[1]
+                            peak_location = start_rt
 
                     else:
                         merged_x = xdata
@@ -727,10 +746,50 @@ class Worker(Process):
                         merged_lb = 0
                         merged_rb = combined_data.shape[1]
 
+                    potential_peaks = defaultdict(list)
+
                     for row_num, (index, values) in enumerate(combined_data.iterrows()):
                         quant_label = isotope_labels.loc[index, 'label']
                         xdata = values.index.values.astype(float)
                         ydata = values.fillna(0).values.astype(float)
+
+                        # Setup the HTML first in case we do not fit any peaks, we still want to report the raw data
+                        if self.html:
+                            # ax = fig.add_subplot(subplot_rows, subplot_columns, fig_index)
+                            if quant_label in rt_figure_mapper:
+                                rt_base = rt_figure_mapper[(quant_label, index)]
+                            else:
+                                rt_base = {
+                                    'data': {
+                                        'x': 'x',
+                                        'columns': []
+                                    },
+                                    'grid': {
+                                        'x': {
+                                            'lines': [{
+                                                'value': rt,
+                                                'text': 'Initial RT {0:0.4f}'.format(rt),
+                                                'position': 'middle'
+                                            }]
+                                        }
+                                    },
+                                    'subchart': {
+                                        'show': True
+                                    },
+                                    'axis': {
+                                        'x': {
+                                            'label': 'Retention Time'
+                                        },
+                                        'y': {
+                                            'label': 'Intensity'
+                                        }
+                                    }
+                                }
+                                rt_figure_mapper[(quant_label, index)] = rt_base
+                                rt_figure['data'].append(rt_base)
+                            rt_base['data']['columns'].append(
+                                ['{0} {1} raw'.format(quant_label, index)] + ydata.tolist())
+
                         if sum(ydata > 0) >= self.min_scans:
                             # this step is to add in a term on the border if possible
                             # otherwise, there are no penalties on the variance if it is
@@ -754,7 +813,7 @@ class Worker(Process):
                                 sub_peak_location = peaks.find_nearest_index(peak_x, nearest_positive_peak)
                                 sub_peak_index = sub_peak_location if peak_y[sub_peak_location] else np.argmax(peak_y)
                             else:
-                                nearest_positive_peak = 0
+                                nearest_positive_peak = None
                             # fit, residual = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=sub_peak_index, debug=self.debug)
                             if self.debug:
                                 print('fitting XIC for', quant_label, index)
@@ -765,7 +824,6 @@ class Worker(Process):
                               bigauss_fit=True,
                               filter=self.filter_peaks,
                               rt_peak=nearest_positive_peak,
-                              peak_width_start=1,
                               **self.peak_finding_kwargs
                             )
                             if not fit.any():
@@ -812,85 +870,53 @@ class Worker(Process):
                                     d['sbr'] = np.NaN
                                     d['snr'] = np.NaN
                                 xic_peaks.append(d)
-                            # if we have a peaks containing our retention time, keep them and throw out ones not containing it
-                            to_remove = []
-                            to_keep = []
-                            if rt_guide:
-                                peak_location_index = peaks.find_nearest_index(merged_x, peak_location)
-                                for i, v in enumerate(xic_peaks):
-                                    mu = v['mean']
-                                    s1 = v['std']
-                                    s2 = v['std2']
-                                    if mu - s1 * 2 < start_rt < mu + s2 * 2:
-                                        # these peaks are considered true and will help with the machine learning
-                                        if mu - s1 * 1.5 < start_rt < mu + s2 * 1.5:
-                                            v['valid'] = True
-                                            to_keep.append(i)
-                                    elif np.abs(peaks.find_nearest_index(merged_x, mu) - peak_location_index) > 2:
-                                        to_remove.append(i)
-                            # kick out peaks not containing our RT
-                            if rt_guide:
-                                if not to_keep:
-                                    # we have no peaks with our RT, there are contaminating peaks, remove all the noise but the closest to our RT
-                                    if not self.mrm:
-                                        # for i in to_remove:
-                                        #         xic_peaks[i]['interpolate'] = True
-                                        valid_peak = \
-                                            sorted([(i, np.abs(i['mean'] - start_rt)) for i in xic_peaks], key=operator.itemgetter(1))[0][0]
-                                        for i in reversed(xrange(len(xic_peaks))):
-                                            if xic_peaks[i] == valid_peak:
-                                                continue
-                                            else:
-                                                del xic_peaks[i]
-                                                # valid_peak['interpolate'] = True
-                                                # else:
-                                                #         valid_peak = [j[0] for j in sorted([(i, i['amp']) for i in xic_peaks], key=operator.itemgetter(1), reverse=True)[:3]]
-                                else:
-                                    # if not to_remove:
-                                    #         xic_peaks = [xic_peaks[i] for i in to_keep]
-                                    # else:
-                                    for i in reversed(to_remove):
-                                        del xic_peaks[i]
-                            if self.debug:
-                                print(quant_label, index)
-                                print(fit)
-                                print(to_remove, to_keep, xic_peaks)
-                            combined_peaks[quant_label][index] = xic_peaks    # if valid_peak is None else [valid_peak]
 
-                        if self.html:
-                            # ax = fig.add_subplot(subplot_rows, subplot_columns, fig_index)
-                            if quant_label in rt_figure_mapper:
-                                rt_base = rt_figure_mapper[(quant_label, index)]
-                            else:
-                                rt_base = {
-                                    'data': {
-                                        'x': 'x',
-                                        'columns': []
-                                    },
-                                    'grid': {
-                                        'x': {
-                                            'lines': [{
-                                                'value': rt,
-                                                'text': 'Initial RT {0:0.4f}'.format(rt),
-                                                'position': 'middle'
-                                            }]
-                                        }
-                                    },
-                                    'subchart': {
-                                        'show': True
-                                    },
-                                    'axis': {
-                                        'x': {
-                                            'label': 'Retention Time'
-                                        },
-                                        'y': {
-                                            'label': 'Intensity'
-                                        }
-                                    }
-                                }
-                                rt_figure_mapper[(quant_label, index)] = rt_base
-                                rt_figure['data'].append(rt_base)
-                            rt_base['data']['columns'].append(['{0} {1} raw'.format(quant_label, index)] + ydata.tolist())
+                            potential_peaks[(quant_label, index)] = xic_peaks
+
+                            # if we have a peaks containing our retention time, keep them and throw out ones not containing it
+                            if self.parser_args.peak_resolution_mode == PEAK_RESOLUTION_RT_MODE:
+                                to_remove = []
+                                to_keep = []
+                                if rt_guide:
+                                    peak_location_index = peaks.find_nearest_index(merged_x, peak_location)
+                                    for i, v in enumerate(xic_peaks):
+                                        mu = v['mean']
+                                        s1 = v['std']
+                                        s2 = v['std2']
+                                        if mu - s1 * 2 < start_rt < mu + s2 * 2:
+                                            # these peaks are considered true and will help with the machine learning
+                                            if mu - s1 * 1.5 < start_rt < mu + s2 * 1.5:
+                                                v['valid'] = True
+                                                to_keep.append(i)
+                                        elif np.abs(peaks.find_nearest_index(merged_x, mu) - peak_location_index) > 2:
+                                            to_remove.append(i)
+
+                                    if not to_keep:
+                                        # we have no peaks with our RT, there are contaminating peaks, remove all the noise but the closest to our RT
+                                        if not self.mrm:
+                                            # for i in to_remove:
+                                            #         xic_peaks[i]['interpolate'] = True
+                                            valid_peak = \
+                                                sorted([(i, np.abs(i['mean'] - start_rt)) for i in xic_peaks], key=operator.itemgetter(1))[0][0]
+                                            for i in reversed(xrange(len(xic_peaks))):
+                                                if xic_peaks[i] == valid_peak:
+                                                    continue
+                                                else:
+                                                    del xic_peaks[i]
+                                                    # valid_peak['interpolate'] = True
+                                                    # else:
+                                                    #         valid_peak = [j[0] for j in sorted([(i, i['amp']) for i in xic_peaks], key=operator.itemgetter(1), reverse=True)[:3]]
+                                    else:
+                                        # if not to_remove:
+                                        #         xic_peaks = [xic_peaks[i] for i in to_keep]
+                                        # else:
+                                        for i in reversed(to_remove):
+                                            del xic_peaks[i]
+                                if self.debug:
+                                    print(quant_label, index)
+                                    print(fit)
+                                    print(to_remove, to_keep, xic_peaks)
+                            combined_peaks[quant_label][index] = xic_peaks    # if valid_peak is None else [valid_peak]
 
                 peak_info = {i: {} for i in self.mrm_pair_info.columns} if self.mrm else {i: {} for i in precursors.keys()}
                 if self.reporter_mode or combined_peaks:

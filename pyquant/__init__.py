@@ -7,6 +7,9 @@ This will quantify labeled peaks (such as SILAC) in ms1 spectra. It relies solel
  which can correct for errors due to amino acid conversions.
 """
 
+PEAK_RESOLUTION_RT_MODE = 'rt'
+PEAK_RESOLUTION_COMMON_MODE = 'common-peak'
+
 pyquant_parser = argparse.ArgumentParser(description=description)
 pyquant_parser.add_argument('-p', help="Threads to run", type=int, default=1)
 pyquant_parser.add_argument('--theo-xic', help=argparse.SUPPRESS, action='store_true')
@@ -74,17 +77,23 @@ peak_parameters.add_argument('--remove-baseline', help='Fit a separate line for 
 peak_parameters.add_argument('--peak-cutoff', help='The threshold from the initial retention time a peak can fall by before being discarded', type=float, default=0.05)
 peak_parameters.add_argument('--max-peaks', help='The maximal number of peaks to detect per scan. A lower value can help with very noisy data.', type=int, default=-1)
 peak_parameters.add_argument('--peaks-n', help='The number of peaks to report per scan. Useful for ions with multiple elution times.', type=int, default=1)
-peak_parameters.add_argument('--no-rt-guide', help='Do not use the retention tme to guide peak selection.', action='store_true')
+peak_parameters.add_argument('--no-rt-guide', help='Do not use the retention time to bias for peaks containing the MS trigger time.', action='store_true')
 peak_parameters.add_argument('--snr-filter', help='Filter peaks below a given SNR.', type=float, default=0)
 peak_parameters.add_argument('--zscore-filter', help='Peaks below a given z-score are excluded.', type=float, default=0)
 peak_parameters.add_argument('--filter-width', help='The window size for snr/zscore filtering. Default: entire scan', type=float, default=0)
+peak_parameters.add_argument('--r2-cutoff', help='The minimal R^2 for a peak to be kept. Should be a value between 0 and 1', type=float, default=None)
 peak_parameters.add_argument('--intensity-filter', help='Filter peaks whose peak are below a given intensity.', type=float, default=0)
+peak_parameters.add_argument('--percentile-filter', help='Filter peaks whose peak are below a given percentile of the data.', type=float, default=0)
 peak_parameters.add_argument('--min-peak-separation', help='Peaks separated by less than this distance will be combined. For very crisp data, set this to 2. (minimal value is 1)', type=int, default=4)
 peak_parameters.add_argument('--disable-peak-filtering', help='This will disable smoothing of data prior to peak finding. If you have very good LC, this may be used to identify small peaks.', action='store_true')
+peak_parameters.add_argument('--merge-isotopes', help='Merge Isotopologues together prior to fitting.', action='store_true')
+peak_parameters.add_argument('--peak-resolution-mode', help='The method to use to resolve peaks across multiple XICs', choices=(PEAK_RESOLUTION_RT_MODE, PEAK_RESOLUTION_COMMON_MODE), type=str, default='common-peak')
+
 
 xic_parameters = pyquant_parser.add_argument_group('XIC Options')
 xic_parameters.add_argument('--xic-snr', help='When the SNR of the XIC falls below this, stop searching for more data. Useful for escaping from noisy shoulders and contaminants.', type=float, default=1.0)
 xic_parameters.add_argument('--xic-window-size', help='When the number of scans in a given direction from the initial datapoint of an XIC passes this, stop. Default is -1 (disabled). Useful for removing contaminants', type=int, default=-1)
+xic_parameters.add_argument('--xic-smooth', help='Prior to fitting, apply a smooth data with a Gaussian filter.', action='store_true')
 xic_parameters.add_argument('--export-msn', help='This will export spectra of a given MSN that were used to provide the quantification.', action='store_false')
 
 
