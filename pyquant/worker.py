@@ -813,7 +813,7 @@ class Worker(Process):
                                 sub_peak_location = peaks.find_nearest_index(peak_x, nearest_positive_peak)
                                 sub_peak_index = sub_peak_location if peak_y[sub_peak_location] else np.argmax(peak_y)
                             else:
-                                nearest_positive_peak = 0
+                                nearest_positive_peak = None
                             # fit, residual = peaks.fixedMeanFit2(peak_x, peak_y, peak_index=sub_peak_index, debug=self.debug)
                             if self.debug:
                                 print('fitting XIC for', quant_label, index)
