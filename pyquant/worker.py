@@ -97,11 +97,13 @@ class Worker(Process):
             'debug': self.debug,
             'snr': self.parser_args.snr_filter,
             'amplitude_filter': self.parser_args.intensity_filter,
-            'peak_width_end': self.parser_args.min_peak_separation,
+            'peak_width_start': self.parser_args.min_peak_separation or 1,
             'baseline_correction': self.parser_args.remove_baseline,
             'zscore': self.parser_args.zscore_filter,
             'local_filter_size': self.parser_args.filter_width,
-            'percentile_filter': self.parser_args.percentile_filter
+            'percentile_filter': self.parser_args.percentile_filter,
+            'smooth': self.parser_args.xic_smooth,
+            'r2_cutoff': self.parser_args.r2_cutoff,
         }
 
     def get_calibrated_mass(self, mass):
@@ -721,6 +723,7 @@ class Worker(Process):
                         else:
                             merged_lb = 0
                             merged_rb = combined_data.shape[1]
+                            peak_location = start_rt
 
                     else:
                         merged_x = xdata
@@ -766,7 +769,6 @@ class Worker(Process):
                               bigauss_fit=True,
                               filter=self.filter_peaks,
                               rt_peak=nearest_positive_peak,
-                              peak_width_start=1,
                               **self.peak_finding_kwargs
                             )
                             if not fit.any():

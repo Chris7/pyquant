@@ -1,17 +1,11 @@
 import numpy as np
-import sys
-from copy import deepcopy
 cimport numpy as np
 cimport cython
 ctypedef np.float_t FLOAT_t
 ctypedef np.int64_t INT_t
-from scipy import optimize, integrate, stats
-from scipy.interpolate import interp1d
+from scipy import optimize
 from scipy.ndimage.filters import gaussian_filter1d
 from scipy.signal import convolve, kaiser
-from operator import itemgetter, attrgetter
-from collections import OrderedDict
-from pythomics.proteomics.config import NEUTRON
 
 cdef int within_bounds(np.ndarray[FLOAT_t, ndim=1] res, np.ndarray[FLOAT_t, ndim=2] bnds):
     for i,j in zip(res, bnds):

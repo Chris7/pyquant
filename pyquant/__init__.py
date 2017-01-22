@@ -72,6 +72,7 @@ quant_parameters.add_argument('--no-contaminant-detection', help='Disables routi
 peak_parameters = pyquant_parser.add_argument_group('Peak Fitting Parameters')
 peak_parameters.add_argument('--remove-baseline', help='Fit a separate line for the baseline of each peak.', action='store_true')
 peak_parameters.add_argument('--peak-cutoff', help='The threshold from the initial retention time a peak can fall by before being discarded', type=float, default=0.05)
+peak_parameters.add_argument('--r2-cutoff', help='The minimal R^2 for a peak to be kept. Should be a value between 0 and 1', type=float, default=None)
 peak_parameters.add_argument('--max-peaks', help='The maximal number of peaks to detect per scan. A lower value can help with very noisy data.', type=int, default=-1)
 peak_parameters.add_argument('--peaks-n', help='The number of peaks to report per scan. Useful for ions with multiple elution times.', type=int, default=1)
 peak_parameters.add_argument('--no-rt-guide', help='Do not use the retention tme to guide peak selection.', action='store_true')
@@ -86,6 +87,7 @@ peak_parameters.add_argument('--disable-peak-filtering', help='This will disable
 xic_parameters = pyquant_parser.add_argument_group('XIC Options')
 xic_parameters.add_argument('--xic-snr', help='When the SNR of the XIC falls below this, stop searching for more data. Useful for escaping from noisy shoulders and contaminants.', type=float, default=1.0)
 xic_parameters.add_argument('--xic-window-size', help='When the number of scans in a given direction from the initial datapoint of an XIC passes this, stop. Default is -1 (disabled). Useful for removing contaminants', type=int, default=-1)
+xic_parameters.add_argument('--xic-smooth', help='Prior to fitting, apply a smooth data with a Gaussian filter.', action='store_true')
 xic_parameters.add_argument('--export-msn', help='This will export spectra of a given MSN that were used to provide the quantification.', action='store_false')
 
 
