@@ -735,6 +735,44 @@ class Worker(Process):
                         quant_label = isotope_labels.loc[index, 'label']
                         xdata = values.index.values.astype(float)
                         ydata = values.fillna(0).values.astype(float)
+
+                        # Setup the HTML first in case we do not fit any peaks, we still want to report the raw data
+                        if self.html:
+                            # ax = fig.add_subplot(subplot_rows, subplot_columns, fig_index)
+                            if quant_label in rt_figure_mapper:
+                                rt_base = rt_figure_mapper[(quant_label, index)]
+                            else:
+                                rt_base = {
+                                    'data': {
+                                        'x': 'x',
+                                        'columns': []
+                                    },
+                                    'grid': {
+                                        'x': {
+                                            'lines': [{
+                                                'value': rt,
+                                                'text': 'Initial RT {0:0.4f}'.format(rt),
+                                                'position': 'middle'
+                                            }]
+                                        }
+                                    },
+                                    'subchart': {
+                                        'show': True
+                                    },
+                                    'axis': {
+                                        'x': {
+                                            'label': 'Retention Time'
+                                        },
+                                        'y': {
+                                            'label': 'Intensity'
+                                        }
+                                    }
+                                }
+                                rt_figure_mapper[(quant_label, index)] = rt_base
+                                rt_figure['data'].append(rt_base)
+                            rt_base['data']['columns'].append(
+                                ['{0} {1} raw'.format(quant_label, index)] + ydata.tolist())
+
                         if sum(ydata > 0) >= self.min_scans:
                             # this step is to add in a term on the border if possible
                             # otherwise, there are no penalties on the variance if it is
@@ -860,40 +898,6 @@ class Worker(Process):
                                 print(to_remove, to_keep, xic_peaks)
                             combined_peaks[quant_label][index] = xic_peaks    # if valid_peak is None else [valid_peak]
 
-                        if self.html:
-                            # ax = fig.add_subplot(subplot_rows, subplot_columns, fig_index)
-                            if quant_label in rt_figure_mapper:
-                                rt_base = rt_figure_mapper[(quant_label, index)]
-                            else:
-                                rt_base = {
-                                    'data': {
-                                        'x': 'x',
-                                        'columns': []
-                                    },
-                                    'grid': {
-                                        'x': {
-                                            'lines': [{
-                                                'value': rt,
-                                                'text': 'Initial RT {0:0.4f}'.format(rt),
-                                                'position': 'middle'
-                                            }]
-                                        }
-                                    },
-                                    'subchart': {
-                                        'show': True
-                                    },
-                                    'axis': {
-                                        'x': {
-                                            'label': 'Retention Time'
-                                        },
-                                        'y': {
-                                            'label': 'Intensity'
-                                        }
-                                    }
-                                }
-                                rt_figure_mapper[(quant_label, index)] = rt_base
-                                rt_figure['data'].append(rt_base)
-                            rt_base['data']['columns'].append(['{0} {1} raw'.format(quant_label, index)] + ydata.tolist())
 
                 peak_info = {i: {} for i in self.mrm_pair_info.columns} if self.mrm else {i: {} for i in precursors.keys()}
                 if self.reporter_mode or combined_peaks:
