@@ -411,13 +411,14 @@
                             if(!plot_info)
                                 continue;
                             var plot_title = plot_info[0].split(' ');
-                            if(!last_title || (plot_title && last_title && plot_title[0] != 'Scan' && plot_title[0].indexOf(last_title) == -1 )) {
-                                if (last_title) {
-                                    $element.css('width', chart_width + $element.find('.chart-title').outerWidth(true) + 20);
-                                    chart_width = 0;
-                                }
-                                $element = $('<div class="row"><h2 class="chart-title">'+plot_title[0]+'</h2></div>').appendTo($base_element);
+                            var plot_label = plot_title[0];
+                            var $element = $('[data-isotope-group="' + plot_label + '"]');
+                            if (!$element.length) {
+                                $element = $('<div class="row" data-isotope-group="' + plot_label + '"><h2 class="chart-title">'+plot_title[0]+'</h2></div>').appendTo($base_element);
+                            } else {
+                                $element.css('width', (($element.children('div[id^=chart]').length+1) * plot_width) + $element.find('.chart-title').outerWidth(true) + 20);
                             }
+
                             if(plot_title)
                                 last_title = plot_title[0];
                             var chart_name = 'chart'+i;
@@ -474,8 +475,6 @@
                             charts[row_index] = chart;
 
                         }
-                        if(plot_data.length)
-                            $element.css('width', chart_width+$element.find('.chart-title').outerWidth(true)+20);
                     }
                     $(".c3").resizable({
                         //when box is resized redraw the d3

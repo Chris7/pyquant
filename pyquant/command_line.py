@@ -805,31 +805,37 @@ def run_pyquant():
                     continue
 
             if quant_scan.get('id') is None:
-                # we will hit this in a normal proteomic run
-                # figure out the ms-1 from the ms level we are at
+                scan_to_quant = None
                 if msn_for_quant > msn_for_id:
-                    children = scan_info_map[scanId]['children']
+                    # Cases like MS3 hit this, go down until we hit the correct MS level and add
+                    # those scans to be quantified
+                    children = scan_info_map[scanId].get('children', [scanId])
                     quant_scan['scans'] = []
-                    scan_to_quant = None
-                    for child in children:
+                    while children:
+                        child = children.pop()
                         child_scan_info = scan_info_map[child]
                         scan_to_quant_ms = child_scan_info['msn']
+                        if scan_to_quant_ms < msn_for_quant:
+                            children += child_scan_info.get('children', [])
                         if scan_to_quant_ms == msn_for_quant:
                             if scan_to_quant is None:
                                 scan_to_quant = child
                             quant_scan['scans'].append(child)
                 else:
+                    # we will hit this in a normal proteomic run
+                    # figure out the ms-1 from the ms level we are at
                     scan_info = scan_info_map[scanId]
-                    scan_to_quant = scan_info['parent']
+                    current_scan = scan_info['parent']
                     try:
-                        scan_to_quant_ms = scan_info[scan_to_quant]['msn']
-                        while scan_to_quant and scan_to_quant != msn_for_quant:
+                        while current_scan:
                             scan_info = scan_info_map[scanId]
-                            scan_to_quant = scan_info['parent']
+                            current_scan = scan_info['parent']
                             scan_to_quant_ms = scan_info[scan_to_quant]['msn']
+                            if scan_to_quant_ms == msn_for_quant:
+                                scan_to_quant = current_scan
                     except KeyError:
                         scan_to_quant = None
-                if scan_to_quant is not None and scan_to_quant_ms == msn_for_quant:
+                if scan_to_quant is not None:
                     msn_to_quant = scan_to_quant
                 else:
                     msn_to_quant = find_prior_scan(msn_map, scanId, ms_level=msn_for_quant)
