@@ -700,7 +700,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         final_fit = np.array([])
         for peak_index in xrange(0, len(best_fit), step_size):
 
-            peak_info = best_fit[peak_index:peak_index + step_size + 1]
+            peak_info = best_fit[peak_index:peak_index + step_size]
             amplitude, mean, std = peak_info[:3]
             left = mean - 2 * std
             right = mean + 2 * peak_info[3] if bigauss_fit else mean + 2 * std
@@ -713,7 +713,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             for other_peak_index in xrange(0, len(best_fit), step_size):
                 if other_peak_index == peak_index:
                     continue
-                fitted_data -= peak_func(fitted_x, best_fit[other_peak_index:other_peak_index + step_size + 1])
+                fitted_data -= peak_func(fitted_x, best_fit[other_peak_index:other_peak_index + step_size])
             ss_tot = np.sum((fitted_data - np.mean(fitted_data)) ** 2)
             ss_res = np.sum((fitted_data - peak_func(fitted_x, peak_info)) ** 2)
             coeff_det = 1 - (ss_res / ss_tot)
