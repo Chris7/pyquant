@@ -589,7 +589,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             # smallest peaks. i.e. if we are fitting two peaks, one with an amplitude of 20M and another with 10000,
             # changes in the smaller peak will be below our tolerance and the minimization routine can ignore them
 
-            if 'ftol' not in opts:
+            if 'ftol' not in opts and not micro:
                 min_tol = 1e-10
                 for i, j in zip(segment_bounds, segment_guess):
                     abs_i = np.abs(i[0]) if i[0] else None
@@ -712,7 +712,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     best_fit = np.array(best_fit)
     peak_func = bigauss_ndim if bigauss_fit else gauss_ndim
     # Get rid of peaks with low r^2
-    if r2_cutoff is not None:
+    if micro and r2_cutoff is not None:
         final_fit = np.array([])
         for peak_index in xrange(0, len(best_fit), step_size):
 
@@ -731,7 +731,10 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                     continue
                 fitted_data -= peak_func(fitted_x, best_fit[other_peak_index:other_peak_index + step_size])
             ss_tot = np.sum((fitted_data - np.mean(fitted_data)) ** 2)
-            ss_res = np.sum((fitted_data - peak_func(fitted_x, peak_info)) ** 2)
+            explained_data = peak_func(fitted_x, peak_info)
+            if baseline_correction:
+                explained_data += fitted_x*peak_info[-2]+peak_info[-1]
+            ss_res = np.sum((fitted_data - explained_data) ** 2)
             coeff_det = 1 - (ss_res / ss_tot)
             if coeff_det >= r2_cutoff:
                 final_fit = np.hstack((final_fit, peak_info))
