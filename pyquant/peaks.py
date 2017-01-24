@@ -592,10 +592,12 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             if 'ftol' not in opts:
                 min_tol = 1e-10
                 for i, j in zip(segment_bounds, segment_guess):
-                    if i[0] and i[0] < min_tol:
-                        min_tol = i[0]/5.
-                    if j and j < min_tol:
-                        min_tol = j/5.
+                    abs_i = np.abs(i[0]) if i[0] else None
+                    abs_j = np.abs(j) if j else None
+                    if abs_i and abs_i < min_tol:
+                        min_tol = abs_i/5.
+                    if abs_j and abs_j < min_tol:
+                        min_tol = abs_j/5.
                 opts['ftol'] = min_tol
 
             fit_func = bigauss_func if bigauss_fit else gauss_func
