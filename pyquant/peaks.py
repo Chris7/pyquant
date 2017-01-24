@@ -257,7 +257,7 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
 def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_size=0, filter=False, bigauss_fit=False,
                  rt_peak=None, mrm=False, max_peaks=4, debug=False, peak_width_start=2, snr=0, zscore=0, amplitude_filter=0,
                  peak_width_end=4, baseline_correction=False, rescale=True, fit_negative=False, percentile_filter=0, micro=False,
-                 fit_opts=None, smooth=False, r2_cutoff=None):
+                 method_opts=None, smooth=False, r2_cutoff=None):
 
     if micro:
         baseline_correction = False
@@ -583,7 +583,21 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 continue
 
             args = (segment_x, segment_y, baseline_correction)
-            opts = fit_opts or {'maxiter': 1000}
+            opts = method_opts or {'maxiter': 1000}
+
+            # Because the amplitude of peaks can vary wildly, we have to make sure our tolerance matters for the
+            # smallest peaks. i.e. if we are fitting two peaks, one with an amplitude of 20M and another with 10000,
+            # changes in the smaller peak will be below our tolerance and the minimization routine can ignore them
+
+            if 'ftol' not in opts:
+                min_tol = 1e-10
+                for i, j in zip(segment_bounds, segment_guess):
+                    if i[0] and i[0] < min_tol:
+                        min_tol = i[0]/5.
+                    if j and j < min_tol:
+                        min_tol = j/5.
+                opts['ftol'] = min_tol
+
             fit_func = bigauss_func if bigauss_fit else gauss_func
 
             routines = ['SLSQP', 'TNC', 'L-BFGS-B']
