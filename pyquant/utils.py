@@ -105,14 +105,14 @@ def get_scans_under_peaks(rt_scan_map, found_peaks):
     return scans
 
 
-def select_window(x, index, size):
+def select_window(data, index, size):
     left = index - size
     right = index + size
     if left < 0:
         left = 0
-    if right >= len(x) - 1:
+    if right >= len(data) - 1:
         right = -1
-    return x[left:] if right == -1 else x[left:right+1]
+    return data[left:] if right == -1 else data[left:right+1]
 
 
 def find_common_peak_mean(found_peaks):
