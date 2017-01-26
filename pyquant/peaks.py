@@ -262,6 +262,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     if micro:
         baseline_correction = False
 
+    rel_peak_constraint = (0.0 if baseline_correction else 0.5)
     original_max = np.abs(ydata_original).max() if fit_negative else ydata_original.max()
     amplitude_filter /= original_max
     ydata = ydata_original / original_max
@@ -486,7 +487,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 if right >= len(xdata) - 1:
                     right = len(xdata) - 1
                 bnds.extend([
-                    (-1.01, rel_peak*0.5) if rel_peak < 0 and fit_negative else (rel_peak*0.5, 1.01),
+                    (-1.01, rel_peak*rel_peak_constraint) if rel_peak < 0 and fit_negative else (rel_peak*rel_peak_constraint, 1.01),
                     (peak_left, peak_right) if micro else (xdata[left], xdata[right]),
                     (min_spacing, peak_range)
                 ])
@@ -498,7 +499,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 left = 0
                 right = len(xdata) - 1
                 bnds.extend([
-                    (-1.01, rel_peak*0.5) if rel_peak < 0 and fit_negative else (rel_peak*0.5, 1.01),
+                    (-1.01, rel_peak*rel_peak_constraint) if rel_peak < 0 and fit_negative else (rel_peak*rel_peak_constraint, 1.01),
                     (peak_left, peak_right) if micro else (xdata[0], xdata[-1]),
                     (min_spacing, peak_range)
                 ])
