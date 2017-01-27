@@ -422,7 +422,8 @@ def merge_peaks(peaks_found, debug=False):
 
 def find_possible_peaks(xdata, ydata, ydata_peaks, peak_find_method=PEAK_FINDING_REL_MAX, min_dist=0, local_filter_size=0,
                  rt_peak=None, max_peaks=4, peak_width_start=2, snr=0, zscore=0, amplitude_filter=0,
-                 peak_width_end=4, fit_negative=False, percentile_filter=0, micro=False, min_slope=None):
+                 peak_width_end=4, fit_negative=False, percentile_filter=0, micro=False, min_slope=None,
+                 min_peak_side_width=None):
     PEAK_METHODS = {
         PEAK_FINDING_REL_MAX: partial(
             find_peaks_rel_max,
@@ -434,6 +435,7 @@ def find_possible_peaks(xdata, ydata, ydata_peaks, peak_find_method=PEAK_FINDING
             find_peaks_derivative,
             min_peak_width=min_dist,
             min_slope=min_slope,
+            min_peak_side_width=min_peak_side_width
         ),
     }
     abs_ydata = np.abs(ydata)
