@@ -546,7 +546,7 @@ def find_peaks_rel_max(xdata, ydata, ydata_peaks=None, peak_width_start=2, peak_
     return peaks_found
 
 
-def find_peaks_derivative(xdata, ydata, ydata_peaks=None, slope_cutoff=None, rel_peak_height=None, min_peak_side_width=None,
+def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_peak_height=None, min_peak_side_width=None,
                           max_peak_side_width=np.inf, min_peak_width=5, max_peak_width=np.inf):
     # The general strategy here is to identify where the derivative crosses the zero point, and
     # pick out when the sign of the derivative changes in a manner consistent with a peak.
@@ -606,7 +606,7 @@ def find_peaks_derivative(xdata, ydata, ydata_peaks=None, slope_cutoff=None, rel
             (center_y / left_y),
             (center_y / right_y),
         ]))
-        if slope < slope_cutoff:
+        if slope < min_slope:
             logger.debug('not sloped enough')
             continue
         if rel_peak < rel_peak_height:

@@ -259,7 +259,7 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
 def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_size=0, filter=False, bigauss_fit=False,
                  rt_peak=None, mrm=False, max_peaks=4, debug=False, peak_width_start=2, snr=0, zscore=0, amplitude_filter=0,
                  peak_width_end=4, baseline_correction=False, rescale=True, fit_negative=False, percentile_filter=0, micro=False,
-                 method_opts=None, smooth=False, r2_cutoff=None, peak_find_method=PEAK_FINDING_REL_MAX):
+                 method_opts=None, smooth=False, r2_cutoff=None, peak_find_method=PEAK_FINDING_REL_MAX, min_slope=None):
 
     if micro:
         baseline_correction = False
@@ -297,6 +297,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         percentile_filter=percentile_filter,
         local_filter_size=local_filter_size,
         micro=micro,
+        min_slope=min_slope,
     )
 
     # Next, for fitting multiple peaks, we want to divide up the space so we are not fitting peaks that
