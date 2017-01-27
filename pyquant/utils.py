@@ -1,15 +1,20 @@
 import copy
 import os
-import six
 import sys
 import warnings
 from collections import Counter
+from functools import partial
 from itertools import combinations
 from operator import itemgetter
 
+import six
 import numpy as np
 import pandas as pd
 from scipy.misc import comb
+from scipy.signal import convolve, gaussian
+
+from . import PEAK_FINDING_DERIVATIVE, PEAK_FINDING_REL_MAX
+from .logger import logger
 
 if six.PY3:
     xrange = range
@@ -413,3 +418,208 @@ def merge_peaks(peaks_found, debug=False):
                 final_peaks[next_width] = peaks_found[next_width]
 
     return final_peaks
+
+
+def find_possible_peaks(xdata, ydata, ydata_peaks, peak_find_method=PEAK_FINDING_REL_MAX, min_dist=0, local_filter_size=0,
+                 rt_peak=None, max_peaks=4, peak_width_start=2, snr=0, zscore=0, amplitude_filter=0,
+                 peak_width_end=4, fit_negative=False, percentile_filter=0, micro=False):
+    PEAK_METHODS = {
+        PEAK_FINDING_REL_MAX: partial(
+            find_peaks_rel_max,
+            peak_width_start=peak_width_start,
+            peak_width_end=peak_width_end,
+            micro=micro,
+        ),
+        PEAK_FINDING_DERIVATIVE: partial(
+            find_peaks_derivative,
+            min_peak_width=min_dist,
+        ),
+    }
+    abs_ydata = np.abs(ydata)
+    possible_peaks = PEAK_METHODS[peak_find_method](xdata, ydata, ydata_peaks=ydata_peaks)
+
+    for peak_width, peak_info in six.iteritems(possible_peaks):
+        row_peaks, minima = peak_info['peaks'], peak_info['minima']
+        if snr or zscore:
+            ydata_peaks_std = np.std(ydata_peaks)
+            ydata_peaks_median = np.median(ydata_peaks)
+            if local_filter_size:
+                new_peaks = []
+                lost_peaks = {}
+                for row_peak in row_peaks:
+                    selection = np.abs(select_window(ydata_peaks, row_peak, local_filter_size))
+                    ydata_row_peak = np.abs(ydata_peaks[row_peak])
+                    local_std = np.std(selection)
+                    local_snr = ydata_row_peak / local_std
+                    local_zscore = (ydata_row_peak - np.median(selection)) / local_std
+                    add_peak = (snr == 0 or local_snr > snr) and \
+                               (zscore == 0 or local_zscore >= zscore)
+                    if add_peak:
+                        new_peaks.append(row_peak)
+                    else:
+                        lost_peaks[row_peak] = {'snr': local_snr, 'zs': local_zscore}
+                logger.debug('{} peaks lost to filtering\n{}\n'.format(len(row_peaks) - len(new_peaks), lost_peaks))
+                row_peaks = np.array(new_peaks, dtype=int)
+            else:
+                if snr:
+                    logger.debug('{} peaks lost to SNR\n'.format(sum(ydata_peaks[row_peaks] / ydata_peaks_std < snr)))
+                if zscore:
+                    logger.debug('{} peaks lost to zscore\n'.format(
+                            sum((ydata_peaks[row_peaks] - ydata_peaks_median) / ydata_peaks_std < zscore)))
+                if snr:
+                    row_peaks = row_peaks[np.abs(ydata_peaks[row_peaks]) / ydata_peaks_std >= snr]
+                if zscore:
+                    row_peaks = row_peaks[
+                        (np.abs(ydata_peaks[row_peaks]) - ydata_peaks_median) / ydata_peaks_std >= zscore]
+
+        if amplitude_filter != 0:
+            logger.debug(
+                '{} peaks lost to amp filter\n{}\n'.format(sum(abs_ydata[row_peaks] < amplitude_filter),
+                                                           row_peaks[abs_ydata[row_peaks] < amplitude_filter]))
+            row_peaks = row_peaks[np.abs(ydata_peaks[row_peaks]) >= amplitude_filter]
+
+        if percentile_filter:
+            logger.debug('{} peaks lost to percentile filter\n{}\n'.format(
+                sum(np.abs(ydata_peaks) < np.percentile(np.abs(ydata_peaks), percentile_filter),
+                    row_peaks[np.abs(ydata_peaks) >= np.percentile(abs_ydata, percentile_filter)])))
+            row_peaks = row_peaks[np.abs(ydata_peaks[row_peaks]) >= np.percentile(abs_ydata, percentile_filter)]
+        # Max peaks is to avoid spending a significant amount of time fitting bad data. It can lead to problems
+        # if the user is searching the entire ms spectra because of the number of peaks possible to find
+        if max_peaks != -1 and row_peaks.size > max_peaks:
+            # pick the top n peaks for max_peaks
+            if rt_peak:
+                # If the user specified a retention time as a guide, select the n peaks closest
+                row_peaks = np.sort(np.abs(xdata[row_peaks] - rt_peak)[:max_peaks])
+            else:
+                # this selects the row peaks in ydata, reversed the sorting order (to be greatest to least), then
+                # takes the number of peaks we allow and then sorts those peaks
+                row_peaks = np.sort(row_peaks[np.argsort(
+                    np.abs(ydata_peaks[row_peaks]) if fit_negative else ydata_peaks[row_peaks])[::-1]][:max_peaks])
+
+        possible_peaks[peak_width] = {'peaks': row_peaks, 'minima': minima}
+
+    return merge_peaks(possible_peaks)
+
+
+def find_peaks_rel_max(xdata, ydata, ydata_peaks=None, peak_width_start=2, peak_width_end=4, micro=False):
+    ydata_peaks = ydata_peaks if ydata_peaks is not None else ydata
+    if peak_width_start > peak_width_end:
+        peak_width_end = peak_width_start + 1
+    peak_width = peak_width_start
+    final_peak = False
+    peaks_found = {}
+    while peak_width <= peak_width_end or final_peak:
+        row_peaks = np.array(argrelextrema(np.abs(ydata_peaks), np.greater, order=peak_width)[0], dtype=int)
+        if not row_peaks.size:
+            row_peaks = np.array([np.argmax(np.abs(ydata))], dtype=int)
+        if len(row_peaks) == 1:
+            # We don't need to look for a final peak, we already found a global maximum peak with no other peaks
+            final_peak = None
+        logger.debug('peak indices: {}\n'.format(row_peaks))
+
+        if ydata_peaks.size:
+            minima = np.where(ydata_peaks == 0)[0].tolist()
+        else:
+            minima = []
+        minima.extend(
+            [i for i in argrelextrema(np.abs(ydata_peaks), np.less, order=peak_width)[0] if
+             i not in minima and i not in row_peaks]
+        )
+        minima.sort()
+
+        peaks_found[peak_width] = {
+            'peaks': row_peaks,
+            'minima': minima
+        }
+
+
+
+        peaks_found[peak_width] = {'peaks': row_peaks, 'minima': minima}
+        peak_width += 1
+        if peak_width > peak_width_end:
+            if final_peak:
+                final_peak = False
+            elif final_peak is not None and not micro:
+                final_peak = True
+                peak_width = len(xdata)
+
+    return peaks_found
+
+
+def find_peaks_derivative(xdata, ydata, ydata_peaks=None, slope_cutoff=None, rel_peak_height=None, min_peak_side_width=None,
+                          max_peak_side_width=np.inf, min_peak_width=5, max_peak_width=np.inf):
+    # The general strategy here is to identify where the derivative crosses the zero point, and
+    # pick out when the sign of the derivative changes in a manner consistent with a peak.
+    # A peak using this approach would like look (pw=peak width):
+    #
+    #          |     left p.w   |  right p.w.  |
+    #    ++--+-++++++++++++++++++--------------+++++++++++
+    #                           ^ peak max
+    #
+    #
+    # We first take the derivative of the data and smooth the derivative to reduce noise
+    ydata_peaks = ydata_peaks if ydata_peaks is not None else ydata
+    ydata = np.abs(ydata)
+    smoothed_deriv = convolve(np.diff(ydata), gaussian(10, 1), mode='same')
+    signs = np.sign(smoothed_deriv)
+    # Next, we identify crossing points
+    cross_points = []
+    for i in xrange(len(signs) - 1):
+        if signs[i] != signs[i + 1]:
+            cross_points.append(i)
+
+    # Pad the ends to deal with the first and last peaks found
+    cross_points.insert(0, 0)
+    cross_points.append(len(signs))
+    # Next, we compare crossing points to identify peaks and constrain it using some criteria:
+    # slope, peak width
+    peaks_found = {'peaks': [], 'minima': []}
+    for i in xrange(1, len(cross_points) - 1):
+        left, center, right = cross_points[i - 1], cross_points[i], cross_points[i + 1]
+        left_x, center_x, right_x = xdata[left], xdata[center], xdata[right]
+        left_y, center_y, right_y = ydata[left], ydata[center], ydata[right]
+
+        logger.debug('Looking at peak %s', (left, center, right, left_x, center_x, right_x, left_y, center_y, right_y))
+
+        # Most basic assumption -- does it look like a peak?
+        if not left_y < center_y > right_y:
+            logger.debug('%s doesnt look like a peak', center_x)
+            continue
+
+        # Does it meet our peak width criteria?
+        left_peak_width = center - left
+        right_peak_width = right - center
+        if not (min_peak_side_width <= left_peak_width <= max_peak_side_width and min_peak_side_width <= right_peak_width <= max_peak_side_width):
+            logger.debug('peak half not wide enough')
+            continue
+
+        peak_width = right - left
+        if not (min_peak_width < peak_width < max_peak_width):
+            logger.debug('peak not wide enough')
+            continue
+
+        slope = max(np.abs([
+            (center_y - left_y) / (center_x - left_x),
+            (center_y - right_y) / (center_x - right_x),
+        ]))
+        rel_peak = max(np.abs([
+            (center_y / left_y),
+            (center_y / right_y),
+        ]))
+        if slope < slope_cutoff:
+            logger.debug('not sloped enough')
+            continue
+        if rel_peak < rel_peak_height:
+            logger.debug('not tall enough')
+            continue
+
+        peaks_found['peaks'].append(center)
+        peaks_found['minima'].append(left)
+        peaks_found['minima'].append(right)
+
+    peaks_found['peaks'] = np.array(peaks_found['peaks'])
+    peaks_found['minima'] = np.array(peaks_found['minima'])
+
+    # We return our peaks like:
+    # { peak_search_width: {'peaks': [], 'minima': []}} to be consistent with other peak finding routines
+    return {min_peak_width: peaks_found}

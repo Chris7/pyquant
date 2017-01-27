@@ -10,6 +10,7 @@ from pyquant.tests.utils import timer
 from pyquant.tests.mixins import GaussianMixin
 from pyquant import peaks
 from pyquant import cpeaks
+from pyquant import PEAK_FINDING_DERIVATIVE, PEAK_FINDING_REL_MAX
 
 def get_gauss_value(x, amp, mu, std):
     return amp*np.exp(-(x - mu)**2/(2*std**2))
@@ -33,11 +34,15 @@ class GaussianTests(GaussianMixin, unittest.TestCase):
     @timer
     def test_peak_fitting(self):
         # first, a simple case
-        params, residual = peaks.findAllPeaks(self.x, self.one_gauss,)
-        np.testing.assert_allclose(params, self.one_gauss_params, atol=self.std/2)
+        params, residual = peaks.findAllPeaks(self.x, self.one_gauss, )
+        np.testing.assert_allclose(params, self.one_gauss_params, atol=self.std / 2)
+        params, residual = peaks.findAllPeaks(self.x, self.one_gauss, peak_find_method=PEAK_FINDING_DERIVATIVE)
+        np.testing.assert_allclose(params, self.one_gauss_params, atol=self.std / 2)
+
         params, residual = peaks.findAllPeaks(self.x, self.two_gauss)
-        # print(self.two_gauss, ',',peaks.gauss_ndim(self.x, params))
-        np.testing.assert_allclose(params, self.two_gauss_params, atol=self.std/2)
+        np.testing.assert_allclose(params, self.two_gauss_params, atol=self.std / 2)
+        params, residual = peaks.findAllPeaks(self.x, self.two_gauss, peak_find_method=PEAK_FINDING_DERIVATIVE)
+        np.testing.assert_allclose(params, self.two_gauss_params, atol=self.std / 2)
         failures = 0
         for i in range(10):
             self.noisy_two_gauss = self.two_gauss + np.random.normal(0, 0.05, size=len(self.two_gauss))
