@@ -624,7 +624,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     best_fit = np.array(best_fit)
     peak_func = bigauss_ndim if bigauss_fit else gauss_ndim
     # Get rid of peaks with low r^2
-    if micro and r2_cutoff is not None:
+    if not micro and r2_cutoff is not None:
         final_fit = np.array([])
         for peak_index in xrange(0, len(best_fit), step_size):
 
