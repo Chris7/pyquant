@@ -549,8 +549,29 @@ def find_peaks_rel_max(xdata, ydata, ydata_peaks=None, peak_width_start=2, peak_
     return peaks_found
 
 
-def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_peak_height=None, min_peak_side_width=None,
+def get_cross_points(data, pad=True):
+    cross_points = []
+    signs = np.sign(data)
+    for i in xrange(len(signs) - 1):
+        if signs[i] != signs[i + 1]:
+            cross_points.append(i)
+
+    if cross_points and pad:
+        # Pad the ends to deal with the first and last peaks found by prepending the crossing points array
+        # with the data point that has the closest opposite sign
+        if cross_points[0] != 0:
+            cross_points.insert(0, np.argmax(signs[:cross_points[0]] != signs[cross_points[0]]))
+
+        if cross_points[-1] != len(signs)-1:
+            cross_points.append(cross_points[-1] + np.argmax(signs[cross_points[-1] + 1:] != signs[cross_points[-1]]) + 1)
+
+    return cross_points
+
+def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_peak_height=1.05,
+                          min_peak_side_width=2,
                           max_peak_side_width=np.inf, min_peak_width=5, max_peak_width=np.inf):
+
+
     # The general strategy here is to identify where the derivative crosses the zero point, and
     # pick out when the sign of the derivative changes in a manner consistent with a peak.
     # A peak using this approach would like look (pw=peak width):
@@ -560,65 +581,63 @@ def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_pe
     #                           ^ peak max
     #
     #
-    # We first take the derivative of the data and smooth the derivative to reduce noise
-    ydata_peaks = ydata_peaks if ydata_peaks is not None else ydata
-    ydata = np.abs(ydata)
-    smoothed_deriv = convolve(np.diff(ydata), gaussian(10, 1), mode='same')
-    signs = np.sign(smoothed_deriv)
-    # Next, we identify crossing points
-    cross_points = []
-    for i in xrange(len(signs) - 1):
-        if signs[i] != signs[i + 1]:
-            cross_points.append(i)
 
-    # Pad the ends to deal with the first and last peaks found
-    cross_points.insert(0, 0)
-    cross_points.append(len(signs))
-    # Next, we compare crossing points to identify peaks and constrain it using some criteria:
-    # slope, peak width
     peaks_found = {'peaks': [], 'minima': []}
-    for i in xrange(1, len(cross_points) - 1):
-        left, center, right = cross_points[i - 1], cross_points[i], cross_points[i + 1]
-        left_x, center_x, right_x = xdata[left], xdata[center], xdata[right]
-        left_y, center_y, right_y = ydata[left], ydata[center], ydata[right]
+    ydata_peaks = ydata_peaks if ydata_peaks is not None else ydata
+    ydata = np.abs(ydata_peaks)
 
-        logger.debug('Looking at peak %s', (left, center, right, left_x, center_x, right_x, left_y, center_y, right_y))
+    # We first take the derivative of the data and smooth the derivative to reduce noise
+    smoothed_deriv = convolve(np.diff(ydata), gaussian(10, 1), mode='same')
+    cross_points = get_cross_points(smoothed_deriv)
 
-        # Most basic assumption -- does it look like a peak?
-        if not left_y < center_y > right_y:
-            logger.debug('%s doesnt look like a peak', center_x)
-            continue
+    if cross_points:
+        # Next, we compare crossing points to identify peaks and constrain it using some criteria:
+        # slope, peak width
+        for i in xrange(1, len(cross_points) - 1):
+            left, center, right = cross_points[i - 1], cross_points[i], cross_points[i + 1]
+            left_x, center_x, right_x = xdata[left], xdata[center], xdata[right]
+            left_y, center_y, right_y = ydata[left], ydata[center], ydata[right]
 
-        # Does it meet our peak width criteria?
-        left_peak_width = center - left
-        right_peak_width = right - center
-        if not (min_peak_side_width <= left_peak_width <= max_peak_side_width and min_peak_side_width <= right_peak_width <= max_peak_side_width):
-            logger.debug('peak half not wide enough')
-            continue
+            logger.debug('Looking at peak %s', (left, center, right, left_x, center_x, right_x, left_y, center_y, right_y))
 
-        peak_width = right - left
-        if not (min_peak_width < peak_width < max_peak_width):
-            logger.debug('peak not wide enough')
-            continue
+            # Most basic assumption -- does it look like a peak?
+            if not left_y < center_y > right_y:
+                logger.debug('%s doesnt look like a peak', center_x)
+                continue
 
-        slope = max(np.abs([
-            (center_y - left_y) / (center_x - left_x),
-            (center_y - right_y) / (center_x - right_x),
-        ]))
-        rel_peak = max(np.abs([
-            (center_y / left_y),
-            (center_y / right_y),
-        ]))
-        if slope < min_slope:
-            logger.debug('not sloped enough')
-            continue
-        if rel_peak < rel_peak_height:
-            logger.debug('not tall enough')
-            continue
+            # Does it meet our peak width criteria?
+            left_peak_width = center - left
+            right_peak_width = right - center
+            if not (min_peak_side_width <= left_peak_width <= max_peak_side_width and min_peak_side_width <= right_peak_width <= max_peak_side_width):
+                logger.debug('peak half not wide enough')
+                continue
 
-        peaks_found['peaks'].append(center)
-        peaks_found['minima'].append(left)
-        peaks_found['minima'].append(right)
+            peak_width = right - left
+            if not (min_peak_width < peak_width < max_peak_width):
+                logger.debug('peak not wide enough')
+                continue
+
+            slope = max(np.abs([
+                (center_y - left_y) / (center_x - left_x),
+                (center_y - right_y) / (center_x - right_x),
+            ]))
+
+            # Both sides of the peak shape must increase beyond a given threshold so we take the minima here
+            rel_peak = min(np.abs([
+                (center_y / left_y),
+                (center_y / right_y),
+            ]))
+
+            if slope < min_slope:
+                logger.debug('not sloped enough')
+                continue
+            if rel_peak < rel_peak_height:
+                logger.debug('not tall enough')
+                continue
+
+            peaks_found['peaks'].append(center)
+            peaks_found['minima'].append(left)
+            peaks_found['minima'].append(right)
 
     peaks_found['peaks'] = np.array(peaks_found['peaks'])
     peaks_found['minima'] = np.array(peaks_found['minima'])

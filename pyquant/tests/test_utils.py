@@ -64,6 +64,36 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         merged = utils.merge_peaks(peaks)
         self.assertDictEqual(merged, {1: {'minima': [0,5], 'peaks': [3,7,8]}, 7: {'minima': [0,5], 'peaks': [3,7]}})
 
+    def test_get_cross_points(self):
+        y = [1, 1, 1, 1, 1, 1, 1]
+        self.assertListEqual(utils.get_cross_points(y), [])
+
+        y = [1, 1, 1, 1, 1, -1, 1]
+        self.assertListEqual(utils.get_cross_points(y, pad=False), [4, 5])
+        self.assertListEqual(utils.get_cross_points(y, pad=True), [0, 4, 5, 6])
+
+        y = [1, -1, 1]
+        self.assertListEqual(utils.get_cross_points(y, pad=False), [0, 1])
+        self.assertListEqual(utils.get_cross_points(y, pad=True), [0, 1, 2])
+
+    def test_find_peaks_derivative(self):
+        import pickle
+        data = pickle.load(open(os.path.join(self.data_dir, 'peak_data.pickle')))
+        x, y = data['large_range']
+        peaks = utils.find_peaks_derivative(x, y)
+        peaks = peaks.values()[0]
+
+        np.testing.assert_array_equal(
+            peaks['peaks'],
+            np.array([357, 377, 432, 1668, 1754, 1811, 1835, 1911, 2008, 2398, 2576, 2952, 3170])
+        )
+        np.testing.assert_array_equal(
+            peaks['minima'],
+            np.array([337, 364, 364, 423, 423, 694, 1654, 1679, 1730, 1775, 1797,
+                      1826, 1826, 1845, 1901, 1930, 1992, 2025, 2370, 2410, 2484, 2610,
+                      2905, 2997, 3156, 3188]),
+        )
+
 
 if __name__ == '__main__':
     unittest.main()
