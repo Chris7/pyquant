@@ -433,8 +433,8 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                     slope = (ydata[right] - ydata[left]) / (xdata[right] - xdata[left])
                     intercept = ((ydata[right] - slope * xdata[right]) + (ydata[left] - slope * xdata[left])) / 2
                     guess.extend([slope, intercept])
-                    bnds.extend([(slope * 2, 0) if slope < 0 else (0, slope * 2),
-                                 (intercept * 2, 0) if intercept < 0 else (0, intercept * 2)])
+                    bnds.extend([(None, None),
+                                 (None, None)])
 
         if not guess:
             average = np.average(xdata, weights=np.abs(ydata))
@@ -448,8 +448,8 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 slope = (ydata[-1] - ydata[0]) / (xdata[-1] - xdata[0])
                 intercept = ((ydata[-1] - slope * xdata[-1]) + (ydata[0] - slope * xdata[0])) / 2
                 guess.extend([slope, intercept])
-                bnds.extend([(slope * 2, 0) if slope < 0 else (0, slope * 2),
-                             (intercept * 2, 0) if intercept < 0 else (0, intercept * 2)])
+                bnds.extend([(None, None),
+                             (None, None)])
 
         if not bnds:
             bnds.extend([(None, None) for i in guess])
