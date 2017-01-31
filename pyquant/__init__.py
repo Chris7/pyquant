@@ -77,6 +77,7 @@ quant_parameters.add_argument('--no-contaminant-detection', help='Disables routi
 
 peak_parameters = pyquant_parser.add_argument_group('Peak Fitting Parameters')
 peak_parameters.add_argument('--peak-find-method', help='The method to use to identify peaks within data. For LC-MS, relative-max is usually best. For smooth data, derivative is better.', type=str, choices=(PEAK_FINDING_REL_MAX, PEAK_FINDING_DERIVATIVE), default=PEAK_FINDING_REL_MAX)
+peak_parameters.add_argument('--gap-interpolation', help='This interpolates missing data in scans. The parameter should be a number that is the maximal gap size to fill (ie 2 means a gap of 2 scans). Can be useful for low intensity LC-MS data.', type=int, default=0)
 peak_parameters.add_argument('--remove-baseline', help='Fit a separate line for the baseline of each peak.', action='store_true')
 peak_parameters.add_argument('--peak-cutoff', help='The threshold from the initial retention time a peak can fall by before being discarded', type=float, default=0.05)
 peak_parameters.add_argument('--max-peaks', help='The maximal number of peaks to detect per scan. A lower value can help with very noisy data.', type=int, default=-1)

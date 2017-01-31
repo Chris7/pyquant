@@ -120,7 +120,7 @@ def select_window(data, index, size):
     return data[left:] if right == -1 else data[left:right+1]
 
 
-def find_common_peak_mean(found_peaks):
+def find_common_peak_mean(found_peaks, tie_breaker_time=None):
     # We want to find the peak that is common across multiple scans. This is acheived by the following logic.
     # Suppose we have 3 scans providing peaks. To find our reference, it is likely the peak that occurrs across
     # all scans. A problem that we have to face is the x axis is not guaranteed the same between scans, so we need to
@@ -169,10 +169,27 @@ def find_common_peak_mean(found_peaks):
         # there is only 1 ion w/ peaks, just pick the biggest peak
         means = [sorted(list(new_peaks.values())[0], key=itemgetter('total'), reverse=True)[0].get('mean')]
     else:
-        most_likely_peak = sorted(peak_overlaps, key=itemgetter(1, 2), reverse=True)[0]
-        means = [i[1] for i in potential_peaks[most_likely_peak[0]]['overlaps']]
+        sorted_peaks = sorted(peak_overlaps, key=itemgetter(1, 2), reverse=True)
+        first_likely_peak = sorted_peaks[0]
+        most_likely_peaks = [first_likely_peak]
+        if len(sorted_peaks) > 1:
+            for likely_peak in sorted_peaks[1:]:
+                if likely_peak[1:] == first_likely_peak[1:]:
+                    most_likely_peaks.append(likely_peak)
+                else:
+                    break
+        # If we have equi-probable peaks, choose the one that is closest to the tie-breaker time, otherwise return the first
+        if tie_breaker_time is not None:
+            tie_breaker_distances = [((key, peak_index), np.abs(tie_breaker_time - new_peaks[key][peak_index]['mean']))
+                                     for (key, peak_index), overlaps, intensity in most_likely_peaks]
+            tie_breaker_distances.sort(key=itemgetter(1))
+            most_likely_peak = tie_breaker_distances[0][0]
+        else:
+            most_likely_peak = most_likely_peaks[0][0]
+
+        means = [i[1] for i in potential_peaks[most_likely_peak]['overlaps']]
         # add in the mean of the initial peak
-        means.append(new_peaks[most_likely_peak[0][0]][most_likely_peak[0][1]].get('mean'))
+        means.append(new_peaks[most_likely_peak[0]][most_likely_peak[1]].get('mean'))
     return float(sum(means)) / len(means)
 
 
@@ -786,3 +803,18 @@ def estimate_peak_parameters(xdata, ydata, row_peaks, minima_array, fit_negative
         bnds.extend([(None, None) for i in guess])
 
     return guess, bnds
+
+
+def interpolate_data(x, y, gap_limit=2):
+    from scipy.interpolate import interp1d
+    x, y = np.array(x), np.array(y)
+    pos_indices = np.where(y > 0)[0]
+    if pos_indices.size >= 2:
+        mapper = interp1d(x[pos_indices], y[pos_indices])
+        gaps = np.diff(pos_indices)
+        to_fill = np.where((gaps > 1) & (gaps <= gap_limit + 1))[0]
+        for index in to_fill:
+            left = pos_indices[index] + 1
+            right = pos_indices[index + 1]
+            y[left:right] = mapper(x[left:right])
+    return y

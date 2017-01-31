@@ -15,7 +15,7 @@ from pyquant.cpeaks import bigauss_func, gauss_func, bigauss_ndim, gauss_ndim, b
     gauss_jac, find_nearest, find_nearest_index, find_nearest_indices, get_ppm
 from . import PEAK_FINDING_REL_MAX
 from .logger import logger
-from .utils import divide_peaks, find_possible_peaks, estimate_peak_parameters
+from .utils import divide_peaks, find_possible_peaks, estimate_peak_parameters, interpolate_data
 
 if os.environ.get('PYQUANT_DEV', False) == 'True':
     try:
@@ -260,10 +260,13 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                  rt_peak=None, mrm=False, max_peaks=4, debug=False, peak_width_start=2, snr=0, zscore=0, amplitude_filter=0,
                  peak_width_end=4, baseline_correction=False, rescale=True, fit_negative=False, percentile_filter=0, micro=False,
                  method_opts=None, smooth=False, r2_cutoff=None, peak_find_method=PEAK_FINDING_REL_MAX, min_slope=None,
-                 min_peak_side_width=3):
+                 min_peak_side_width=3, gap_interpolation=0):
 
     if micro:
         baseline_correction = False
+
+    if not micro and gap_interpolation:
+        ydata_original = interpolate_data(xdata, ydata_original, gap_limit=gap_interpolation)
 
     rel_peak_constraint = (0.0 if baseline_correction else 0.5)
     original_max = np.abs(ydata_original).max() if fit_negative else ydata_original.max()
@@ -338,10 +341,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         for chunk_index, right_break_point in enumerate(chunks):
             left_break_point = chunks[chunk_index - 1] if chunk_index != 0 else 0
             segment_x = xdata[left_break_point:right_break_point]
-            segment_y = ydata[left_break_point:right_break_point]
-
-            if segment_x.size < 3:
-                continue
+            segment_y = deepcopy(ydata[left_break_point:right_break_point])
 
             if not micro:
                 segment_max = segment_y.max()
@@ -363,7 +363,8 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                     else:
                         break
 
-
+            if not segment_row_peaks:
+                continue
 
             # Get peak parameter estimates and boundaries for this segment
             segment_guess, segment_bounds = estimate_peak_parameters(
@@ -501,7 +502,6 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         fits = fitted_segments[break_point]
         lowest_bic = np.inf
         best_segment_res = 0
-        best_segment_rss = 0
         for bic, res in fits:
             if bic < lowest_bic or (getattr(best_segment_res, '_contains_rt', False) != True and res._contains_rt == True):
                 if debug:
@@ -512,7 +512,6 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                     print('NEW BEST!', res, 'old was', best_segment_res)
                 best_segment_fit = np.copy(res.x)
                 best_segment_res = res
-                best_segment_rss = res.fun
                 lowest_bic = bic
             if debug:
                 sys.stderr.write('{} - best: {}\n'.format(res, best_segment_fit))

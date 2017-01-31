@@ -33,7 +33,7 @@ from pythomics.proteomics import config
 
 from . import PEAK_RESOLUTION_RT_MODE, PEAK_RESOLUTION_COMMON_MODE
 from . import peaks
-from .utils import calculate_theoretical_distribution, find_scan, find_prior_scan, find_next_scan, find_common_peak_mean, nanmean, find_common_peak_mean
+from .utils import calculate_theoretical_distribution, find_scan, find_prior_scan, find_next_scan, nanmean, find_common_peak_mean
 
 
 class Worker(Process):
@@ -105,6 +105,7 @@ class Worker(Process):
             'percentile_filter': self.parser_args.percentile_filter,
             'smooth': self.parser_args.xic_smooth,
             'r2_cutoff': self.parser_args.r2_cutoff,
+            'gap_interpolation': self.parser_args.gap_interpolation,
         }
 
     def get_calibrated_mass(self, mass):
@@ -928,7 +929,7 @@ class Worker(Process):
                             quant_vals[quant_label][isotope_index] = int_val
                     else:
                         # common_peak = self.replaceOutliers(combined_peaks, combined_data, debug=self.debug)
-                        common_peak = find_common_peak_mean(combined_peaks)
+                        common_peak = find_common_peak_mean(combined_peaks, tie_breaker_time=start_rt)
                         common_loc = peaks.find_nearest_index(xdata, common_peak)    # np.where(xdata==common_peak)[0][0]
                         for quant_label, quan_values in combined_peaks.items():
                             for index, values in quan_values.items():
@@ -1023,7 +1024,11 @@ class Worker(Process):
                                     # and to prevent areas with 2 data points from having negative R^2
                                     cf_data = np.hstack((0, cf_data, 0))
                                     ss_tot = np.sum((cf_data - nanmean(cf_data)) ** 2)
+                                    if ss_tot == 0:
+                                        continue
+
                                     ss_res = np.sum((cf_data - np.hstack((0, peaks.bigauss_ndim(xdata[curve_indices], peak_params), 0))) ** 2)
+
                                     coef_det = 1 - ss_res / ss_tot
                                     peak_info_dict = {
                                         'mean': mean,

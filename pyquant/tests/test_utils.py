@@ -97,6 +97,19 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
                       2905, 2997, 3156, 3188]),
         )
 
+    def test_interpolate_data(self):
+        y = [0, 0, 0, 6311371.403331924, 24368020.237973947, 33309587.186450623, 0, 0, 22678022.890094325,
+             12544950.520046625, 9621327.844190728, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        x = [23.6401, 23.6813, 23.7225, 23.7650, 23.8063, 23.8484, 23.8905, 23.9343, 23.9759, 24.0183, 24.0602, 24.1009,
+             24.1440, 24.1877, 24.2282, 24.2738, 24.3195, 24.3662, 24.4168, 24.4607, 24.5016, 24.5417, 24.5812, 24.6235,
+             24.7088, 24.7942]
+        interp_y = utils.interpolate_data(x, y, gap_limit=2)
+        self.assertNotEqual(interp_y[6], 0)
+        self.assertNotEqual(interp_y[7], 0)
+        self.assertItemsEqual(interp_y[:3], [0,0,0])
+        interp_y = utils.interpolate_data(x, y, gap_limit=1)
+        self.assertItemsEqual(interp_y[6:8], [0,0])
+
 
 if __name__ == '__main__':
     unittest.main()

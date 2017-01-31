@@ -17,7 +17,7 @@ class TestConvenience(FileMixins, TestCase):
         self.mq_file = os.path.join(self.data_dir, 'ecoli_mq_124_ms2.txt')
 
     def test_mq_convenience(self):
-        com = [self.executable, '--scan-file', self.ecoli_mzml, '-p', str(config.CORES), '-o', self.output, '--maxquant', '--tsv', self.mq_file, '--html', '--label-method', 'K4K8R6R10', '--sample', '0.1']
+        com = [self.executable, '--scan-file', self.ecoli_mzml, '-p', str(config.CORES), '-o', self.output, '--maxquant', '--tsv', self.mq_file, '--html', '--label-method', 'K4K8R6R10', '--sample', '0.1', '--gap-interpolation', '2']
         subprocess.call(com)
         pyquant = pd.read_table(self.output)
         label = 'Heavy'

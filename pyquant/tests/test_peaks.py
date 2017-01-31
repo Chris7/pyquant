@@ -43,28 +43,37 @@ class GaussianTests(GaussianMixin, unittest.TestCase):
         np.testing.assert_allclose(params, self.two_gauss_params, atol=self.std / 2)
         params, residual = peaks.findAllPeaks(self.x, self.two_gauss, peak_find_method=PEAK_FINDING_DERIVATIVE)
         np.testing.assert_allclose(params, self.two_gauss_params, atol=self.std / 2)
-        failures = 0
-        for i in range(10):
-            self.noisy_two_gauss = self.two_gauss + np.random.normal(0, 0.05, size=len(self.two_gauss))
-            params, residual = peaks.findAllPeaks(self.x, self.noisy_two_gauss, rt_peak=None, filter=True, max_peaks=30, bigauss_fit=True, snr=1)
-            # we compare just the means here because the amplitude and variance can change too much due to the noise for reliable testing, but manual
-            # inspect reveals the fits to be accurate
-            try:
-                np.testing.assert_allclose(params[1::4], self.two_gauss_params[1::3], atol=self.std/2)
-            except AssertionError:
-                failures += 1
-        self.assertLess(failures, 3)
+        params, residual = peaks.findAllPeaks(self.x, self.noisy_two_gauss, rt_peak=None, filter=True, max_peaks=30, bigauss_fit=True, snr=1)
+        np.testing.assert_allclose(params[1::4], self.two_gauss_params[1::3], atol=self.std/2)
 
-class FittingTests(unittest.TestCase):
+    def test_targeted_search(self):
+        # We should not find anything where there are no peaks
+        res, residual = peaks.targeted_search(self.x, self.two_gauss, self.x[2], attempts=2, peak_finding_kwargs={'max_peaks': 2})
+        self.assertIsNone(res)
+
+        # Should find the peak when we are in its area
+        res, residual = peaks.targeted_search(self.x, self.two_gauss, self.two_gauss_params[1])
+        self.assertIsNotNone(res)
+
+    def test_experimental(self):
+        # Experimental data
+        x, y = self.peak_data['offset_fit']
+        params, residual = peaks.findAllPeaks(x, y, bigauss_fit=True, filter=True)
+        np.testing.assert_allclose(
+            params,
+            np.array([
+                13919467.24591236, 46.81315296619535, 0.07191695966867907, 0.28366603443872157,
+                3810381.539348229, 47.59589691571616, 0.0956141776293823, 0.14987608719716855,
+                2875049.3535169736, 47.814168289613384, 0.02039999999999864, 0.8506165022544128,
+                1497094.0179009268, 49.52627093232067, 0.022850000000001813, 0.22106374146478588
+            ]),
+            atol=10
+        )
+
+
+class MathTests(GaussianMixin, unittest.TestCase):
     def setUp(self):
-        super(FittingTests, self).setUp()
-        self.amp, self.mu, self.std, self.mu2 = 1., 0., 1., 3.
-        self.one_gauss_params = np.array([self.amp, self.mu, self.std], dtype=np.float)
-        self.two_gauss_params = np.array([self.amp, self.mu, self.std, self.amp, self.mu2, self.std], dtype=np.float)
-        self.x = np.array(np.linspace(-5, 5, 101), dtype=np.float)
-        self.one_gauss = peaks.gauss_ndim(self.x, self.one_gauss_params)
-        self.two_gauss = peaks.gauss_ndim(self.x, self.two_gauss_params)
-
+        super(MathTests, self).setUp()
         self.std_2, self.std2_2 = 0.5, 0.75
         self.one_bigauss_params = np.array([self.amp, self.mu, self.std, self.std_2], dtype=np.float)
         self.two_bigauss_params = np.array([self.amp, self.mu, self.std, self.std_2, self.amp, self.mu2, self.std, self.std2_2], dtype=np.float)
@@ -141,15 +150,6 @@ class FittingTests(unittest.TestCase):
                     sympy_hessian = sum([deriv.subs(dict(subs, **{'x': xi, 'y': yi})) for xi, yi in zip(gauss_x, gauss_y)])
                     pq_hess = hessian[var_index, var_index2]
                     np.testing.assert_allclose(pq_hess, np.array(sympy_hessian, dtype=float), err_msg='d{}d{} - pq: {}, sympy: {}'.format(var, var2, pq_hess, sympy_hessian), atol=1e-4)
-
-    def test_targeted_search(self):
-        # We should not find anything where there are no peaks
-        res, residual = peaks.targeted_search(self.x, self.two_gauss, self.x[2], attempts=2, peak_finding_kwargs={'max_peaks': 2})
-        self.assertIsNone(res)
-
-        # Should find the peak when we are in its area
-        res, residual = peaks.targeted_search(self.x, self.two_gauss, self.two_gauss_params[1])
-        self.assertIsNotNone(res)
 
 
 if __name__ == '__main__':
