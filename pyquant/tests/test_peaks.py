@@ -144,7 +144,7 @@ class FittingTests(unittest.TestCase):
 
     def test_targeted_search(self):
         # We should not find anything where there are no peaks
-        res, residual = peaks.targeted_search(self.x, self.two_gauss, self.x[2], attempts=3, peak_finding_kwargs={'max_peaks': 2})
+        res, residual = peaks.targeted_search(self.x, self.two_gauss, self.x[2], attempts=2, peak_finding_kwargs={'max_peaks': 2})
         self.assertIsNone(res)
 
         # Should find the peak when we are in its area

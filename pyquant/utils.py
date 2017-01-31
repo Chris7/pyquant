@@ -656,3 +656,133 @@ def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_pe
     # We return our peaks like:
     # { peak_search_width: {'peaks': [], 'minima': []}} to be consistent with other peak finding routines
     return {min_peak_width: peaks_found}
+
+
+def estimate_peak_parameters(xdata, ydata, row_peaks, minima_array, fit_negative=False, rel_peak_constraint=0, micro=False,
+                             bigauss_fit=False, baseline_correction=False):
+    guess = []
+    bnds = []
+    last_peak = -1
+    skip_peaks = set([])
+    fitted_peaks = []
+    min_spacing = min(np.diff(xdata))/2
+    peak_range = xdata[-1] - xdata[0]
+    for peak_num, peak_index in enumerate(row_peaks):
+        if peak_index in skip_peaks:
+            continue
+        next_peak = len(xdata) if peak_index == row_peaks[-1] else row_peaks[peak_num + 1]
+        fitted_peaks.append(peak_index)
+        rel_peak = ydata[peak_index]
+        # bounds for fitting the peak mean
+        peak_left = xdata[peak_index - 1]
+        peak_right = xdata[peak_index + 1] if peak_index + 1 < len(xdata) else xdata[-1]
+        # find the points around it to estimate the std of the peak
+        if minima_array.size:
+            left = np.searchsorted(minima_array, peak_index) - 1
+            left_stop = np.searchsorted(minima_array, last_peak) if last_peak != -1 else -1
+            if left == -1:
+                left = 0 if last_peak != -1 else last_peak + 1
+            elif left == left_stop:
+                if last_peak == -1:
+                    left = 0
+                else:
+                    left = minima_array[left]
+            elif left_stop > left:
+                # We are at the last minima, set our left bound to the last peak if it is greater than
+                # the left minima, otherwise set to the left minima
+                minima_index = minima_array[left]
+                left = last_peak if last_peak > minima_index else minima_index
+            else:
+                left = minima_array[left]
+            last_peak = peak_index
+            right = np.searchsorted(minima_array, peak_index)
+            if right >= minima_array.size:
+                right = minima_array[-1]
+            else:
+                try:
+                    right = minima_array[right]
+                except:
+                    print(right, ydata, minima_array, peak_index)
+            if right > next_peak:
+                right = next_peak
+            if right < peak_index:
+                right = next_peak
+            if right >= len(xdata) - 1:
+                right = len(xdata) - 1
+            bnds.extend([
+                (-1.01, rel_peak * rel_peak_constraint) if rel_peak < 0 and fit_negative else (
+                rel_peak * rel_peak_constraint, 1.01),
+                (peak_left, peak_right) if micro else (xdata[left], xdata[right]),
+                (min_spacing, peak_range)
+            ])
+            if bigauss_fit:
+                bnds.extend([(min_spacing, peak_range)])
+            peak_values = ydata[left:right]
+            peak_indices = xdata[left:right]
+        else:
+            left = 0
+            right = len(xdata) - 1
+            bnds.extend([
+                (-1.01, rel_peak * rel_peak_constraint) if rel_peak < 0 and fit_negative else (
+                rel_peak * rel_peak_constraint, 1.01),
+                (peak_left, peak_right) if micro else (xdata[0], xdata[-1]),
+                (min_spacing, peak_range)
+            ])
+            if bigauss_fit:
+                bnds.extend([(
+                    min_spacing,
+                    peak_range)
+                ])
+            peak_values = ydata[left:right + 1]
+            peak_indices = xdata[left:right + 1]
+
+        logger.debug('bounds are {}'.format((peak_index, left, right, peak_values.tolist(), peak_indices.tolist(), bnds)))
+
+        if peak_values.any():
+            average = np.average(peak_indices, weights=np.abs(peak_values))
+            variance = np.sqrt(np.average((peak_indices - average) ** 2, weights=np.abs(peak_values)))
+            if variance == 0:
+                # we have a singular peak if variance == 0, so set the variance to half of the x/y spacing
+                if peak_index >= 1:
+                    variance = np.abs(xdata[peak_index] - xdata[peak_index - 1])
+                elif peak_index < len(xdata):
+                    variance = np.abs(xdata[peak_index + 1] - xdata[peak_index])
+                else:
+                    # we have only 1 data point, most RT's fall into this width
+                    variance = 0.05
+        else:
+            variance = 0.05
+            average = xdata[peak_index]
+        if variance is not None and variance < min_spacing:
+            variance = min_spacing
+        if variance is not None:
+            if bigauss_fit:
+                guess.extend([rel_peak, xdata[peak_index], variance, variance])
+            else:
+                guess.extend([rel_peak, xdata[peak_index], variance])
+            if baseline_correction:
+                slope = (ydata[right] - ydata[left]) / (xdata[right] - xdata[left])
+                intercept = ((ydata[right] - slope * xdata[right]) + (ydata[left] - slope * xdata[left])) / 2
+                guess.extend([slope, intercept])
+                bnds.extend([(None, None),
+                             (None, None)])
+
+    if not guess:
+        average = np.average(xdata, weights=np.abs(ydata))
+        variance = np.sqrt(np.average((xdata - average) ** 2, weights=np.abs(ydata)))
+        if variance == 0:
+            variance = 0.05
+        guess = [max(ydata), average, variance]
+        if bigauss_fit:
+            guess.extend([variance])
+        if baseline_correction:
+            slope = (ydata[-1] - ydata[0]) / (xdata[-1] - xdata[0])
+            intercept = ((ydata[-1] - slope * xdata[-1]) + (ydata[0] - slope * xdata[0])) / 2
+            guess.extend([slope, intercept])
+            bnds.extend([(None, None),
+                         (None, None)])
+
+    if not bnds:
+        bnds.extend([(None, None) for i in guess])
+
+    return guess, bnds
