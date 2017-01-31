@@ -76,6 +76,9 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         self.assertListEqual(utils.get_cross_points(y, pad=False), [0, 1])
         self.assertListEqual(utils.get_cross_points(y, pad=True), [0, 1, 2])
 
+        y = [1, 1, 1, 1, -1, -1, -1, -1]
+        self.assertListEqual(utils.get_cross_points(y, pad=True), [0, 3, 7])
+
     def test_find_peaks_derivative(self):
         import pickle
         data = pickle.load(open(os.path.join(self.data_dir, 'peak_data.pickle')))

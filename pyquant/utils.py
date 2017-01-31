@@ -563,7 +563,11 @@ def get_cross_points(data, pad=True):
             cross_points.insert(0, np.argmax(signs[:cross_points[0]] != signs[cross_points[0]]))
 
         if cross_points[-1] != len(signs)-1:
-            cross_points.append(cross_points[-1] + np.argmax(signs[cross_points[-1] + 1:] != signs[cross_points[-1]]) + 1)
+            not_equal = signs[cross_points[-1] + 1:] != signs[cross_points[-1]+1]
+            if not_equal.any():
+                cross_points.append(cross_points[-1] + np.argmax(not_equal) + 1)
+            else:
+                cross_points.append(len(signs)-1)
 
     return cross_points
 
@@ -589,6 +593,13 @@ def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_pe
     # We first take the derivative of the data and smooth the derivative to reduce noise
     smoothed_deriv = convolve(np.diff(ydata), gaussian(10, 1), mode='same')
     cross_points = get_cross_points(smoothed_deriv)
+    # Because we take the difference, we need to figure out whether the left or right is the true peak for crosses.
+    # By default, cross points returns the left side
+    for i in xrange(len(cross_points)):
+        index = cross_points[i]
+        if index < len(cross_points):
+            if ydata[index] < ydata[index+1]:
+                cross_points[i] = index+1
 
     if cross_points:
         # Next, we compare crossing points to identify peaks and constrain it using some criteria:

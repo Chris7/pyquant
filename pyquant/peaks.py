@@ -365,9 +365,14 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 else:
                     left = minima_array[left]
                 last_peak = peak_index
-                right = minima_array[np.searchsorted(minima_array, peak_index)]
-                if right >= minima_array[-1]:
+                right = np.searchsorted(minima_array, peak_index)
+                if right >= minima_array.size:
                     right = minima_array[-1]
+                else:
+                    try:
+                        right = minima_array[right]
+                    except:
+                        print(right, ydata, minima_array, peak_index)
                 if right > next_peak:
                     right = next_peak
                 if right < peak_index:
