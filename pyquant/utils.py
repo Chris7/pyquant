@@ -500,8 +500,9 @@ def find_possible_peaks(xdata, ydata, ydata_peaks, peak_find_method=PEAK_FINDING
 
         if percentile_filter:
             logger.debug('{} peaks lost to percentile filter\n{}\n'.format(
-                sum(np.abs(ydata_peaks) < np.percentile(np.abs(ydata_peaks), percentile_filter),
-                    row_peaks[np.abs(ydata_peaks) >= np.percentile(abs_ydata, percentile_filter)])))
+                sum(np.abs(ydata_peaks[row_peaks]) < np.percentile(abs_ydata, percentile_filter)),
+                row_peaks[np.abs(ydata_peaks[row_peaks]) < np.percentile(abs_ydata, percentile_filter)]
+            ))
             row_peaks = row_peaks[np.abs(ydata_peaks[row_peaks]) >= np.percentile(abs_ydata, percentile_filter)]
         # Max peaks is to avoid spending a significant amount of time fitting bad data. It can lead to problems
         # if the user is searching the entire ms spectra because of the number of peaks possible to find
