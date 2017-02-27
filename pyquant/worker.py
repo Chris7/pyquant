@@ -360,10 +360,11 @@ class Worker(Process):
                 precursors[silac_label]['theoretical_mz'] = theo_mz
                 data[silac_label] = copy.deepcopy(silac_dict)
             if not precursors:
-                precursors['Precursor']['uncalibrated_mz'] = precursor
-                precursors['Precursor']['calibrated_mz'] = self.get_calibrated_mass(precursor)
-                precursors['Precursor']['theoretical_mz'] = precursor
-                data['Precursor'] = copy.deepcopy(silac_dict)
+                precursors['']['uncalibrated_mz'] = precursor
+                precursors['']['calibrated_mz'] = self.get_calibrated_mass(precursor)
+                precursors['']['theoretical_mz'] = precursor
+                data[''] = copy.deepcopy(silac_dict)
+
             precursors = OrderedDict(
                 sorted(precursors.items(), key=cmp_to_key(lambda x, y: int(x[1]['uncalibrated_mz'] - y[1]['uncalibrated_mz']))))
             shift_maxes = {i: max([j['uncalibrated_mz'], j['calibrated_mz'], j['theoretical_mz']]) for i, j in
