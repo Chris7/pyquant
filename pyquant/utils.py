@@ -510,7 +510,7 @@ def find_possible_peaks(xdata, ydata, ydata_peaks, peak_find_method=PEAK_FINDING
             # pick the top n peaks for max_peaks
             if rt_peak:
                 # If the user specified a retention time as a guide, select the n peaks closest
-                row_peaks = np.sort(np.abs(xdata[row_peaks] - rt_peak)[:max_peaks])
+                row_peaks = np.sort(row_peaks[np.argsort(np.abs(xdata[row_peaks] - rt_peak)[:max_peaks])])
             else:
                 # this selects the row peaks in ydata, reversed the sorting order (to be greatest to least), then
                 # takes the number of peaks we allow and then sorts those peaks
