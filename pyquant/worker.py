@@ -706,7 +706,6 @@ class Worker(Process):
                             merged_y,
                             start_rt,
                             attempts=4,
-                            stepsize=self.bigauss_stepsize,
                             peak_finding_kwargs=self.peak_finding_kwargs
                         )
 

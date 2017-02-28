@@ -635,21 +635,30 @@ def within_tolerance(arr, tolerance):
             return 1
     return 0
 
-def targeted_search(merged_x, merged_y, x_value, attempts=4, stepsize=3, peak_finding_kwargs=None):
+def targeted_search(merged_x, merged_y, x_value, attempts=4, max_peak_distance=1., peak_finding_kwargs=None):
     rt_attempts = 0
     fitting_y = np.copy(merged_y)
-    peak_finding_kwargs = peak_finding_kwargs or {}
+    find_peaks_kwargs = {
+        'filter': False,
+        'bigauss_fit': True,
+        'rt_peak': x_value,
+    }
+    if peak_finding_kwargs:
+        assert isinstance(peak_finding_kwargs, dict), 'peak_finding_kwargs must be a dictionary'
+        find_peaks_kwargs.update(peak_finding_kwargs)
     debug = peak_finding_kwargs.get('debug')
     found_rt = False
+    stepsize = 3
+    if find_peaks_kwargs.get('bigauss_fit'):
+        stepsize += 1
+    if find_peaks_kwargs.get('baseline_correction'):
+        stepsize += 2
     while rt_attempts < attempts and not found_rt:
         logger.debug('MERGED PEAK FINDING ATTEMPT %s', rt_attempts)
         res, residual = findAllPeaks(
             merged_x,
             fitting_y,
-            filter=False,
-            bigauss_fit=True,
-            rt_peak=x_value,
-            **peak_finding_kwargs
+            **find_peaks_kwargs
         )
         if not res.any():
             return (None, np.inf)
@@ -660,9 +669,9 @@ def targeted_search(merged_x, merged_y, x_value, attempts=4, stepsize=3, peak_fi
             # get the closest peak
             nearest_peak = \
             sorted([(i, np.abs(x_value - i)) for i in res[1::stepsize]], key=itemgetter(1))[0][0]
-            # this is tailored to massa spectrometry elution profiles at the moment, and only evaluates for situtations where the rt and peak
+            # this is tailored to mass spectrometry elution profiles at the moment, and only evaluates for situtations where the rt and peak
             # are no further than a minute apart.
-            if np.abs(nearest_peak - x_value) < 1:
+            if np.abs(nearest_peak - x_value) < max_peak_distance:
                 rt_index = find_nearest_index(merged_x, x_value)
                 peak_index = find_nearest_index(merged_x, nearest_peak)
                 if rt_index < 0:
