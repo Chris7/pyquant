@@ -481,24 +481,24 @@ def find_possible_peaks(xdata, ydata, ydata_peaks, peak_find_method=PEAK_FINDING
                 logger.debug('{} peaks lost to filtering\n{}\n'.format(len(row_peaks) - len(new_peaks), lost_peaks))
                 row_peaks = np.array(new_peaks, dtype=int)
             else:
-                if snr:
+                if snr and row_peaks.any():
                     logger.debug('{} peaks lost to SNR\n'.format(sum(ydata_peaks[row_peaks] / ydata_peaks_std < snr)))
-                if zscore:
+                if zscore and row_peaks.any():
                     logger.debug('{} peaks lost to zscore\n'.format(
                             sum((ydata_peaks[row_peaks] - ydata_peaks_median) / ydata_peaks_std < zscore)))
-                if snr:
+                if snr and row_peaks.any():
                     row_peaks = row_peaks[np.abs(ydata_peaks[row_peaks]) / ydata_peaks_std >= snr]
-                if zscore:
+                if zscore and row_peaks.any():
                     row_peaks = row_peaks[
                         (np.abs(ydata_peaks[row_peaks]) - ydata_peaks_median) / ydata_peaks_std >= zscore]
 
-        if amplitude_filter != 0:
+        if amplitude_filter != 0 and row_peaks.any():
             logger.debug(
                 '{} peaks lost to amp filter\n{}\n'.format(sum(abs_ydata[row_peaks] < amplitude_filter),
                                                            row_peaks[abs_ydata[row_peaks] < amplitude_filter]))
             row_peaks = row_peaks[np.abs(ydata_peaks[row_peaks]) >= amplitude_filter]
 
-        if percentile_filter:
+        if percentile_filter and row_peaks.any():
             logger.debug('{} peaks lost to percentile filter\n{}\n'.format(
                 sum(np.abs(ydata_peaks[row_peaks]) < np.percentile(abs_ydata, percentile_filter)),
                 row_peaks[np.abs(ydata_peaks[row_peaks]) < np.percentile(abs_ydata, percentile_filter)]
