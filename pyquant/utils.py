@@ -637,7 +637,14 @@ def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_pe
             # Does it meet our peak width criteria?
             left_peak_width = center - left
             right_peak_width = right - center
-            if not (min_peak_side_width <= left_peak_width <= max_peak_side_width and min_peak_side_width <= right_peak_width <= max_peak_side_width):
+            if not (
+                    (
+                      (min_peak_side_width <= left_peak_width <= max_peak_side_width) or
+                      (min_peak_side_width > left) # This allows us to find peaks that start at the edges of our data
+                    ) and (
+                      (min_peak_side_width <= right_peak_width <= max_peak_side_width) or
+                      ( (len(ydata) - 1) < right + min_peak_side_width) # This allows us to find peaks that start at the edges of our data
+                )):
                 logger.debug('peak half not wide enough')
                 continue
 
