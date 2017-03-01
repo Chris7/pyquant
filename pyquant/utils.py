@@ -695,18 +695,20 @@ def erode_direction(peaks_found, peak_heights, start, increment, distance):
 
 
 def merge_close_peaks(peaks_found, ydata, distance=2):
-    peak_heights = ydata[peaks_found]
-    sort_order = np.argsort(peak_heights)[::-1]
     new_peaks = []
     removed_peaks = set([])
-    for sort_index, peak_index in enumerate(sort_order):
-        peak = peaks_found[peak_index]
-        if peak in removed_peaks:
-            continue
-        new_peaks.append(peak_index)
+    if peaks_found.any():
+        peak_heights = ydata[peaks_found]
+        sort_order = np.argsort(peak_heights)[::-1]
 
-        removed_peaks |= erode_direction(peaks_found, peak_heights, peak_index, 1, distance)
-        removed_peaks |= erode_direction(peaks_found, peak_heights, peak_index, -1, distance)
+        for sort_index, peak_index in enumerate(sort_order):
+            peak = peaks_found[peak_index]
+            if peak in removed_peaks:
+                continue
+            new_peaks.append(peak_index)
+
+            removed_peaks |= erode_direction(peaks_found, peak_heights, peak_index, 1, distance)
+            removed_peaks |= erode_direction(peaks_found, peak_heights, peak_index, -1, distance)
 
     return np.array([i for i in peaks_found if i not in removed_peaks])
 

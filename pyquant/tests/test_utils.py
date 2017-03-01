@@ -122,6 +122,9 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         merged = utils.merge_close_peaks(np.array([2, 7, 12]), ty, distance=6)
         np.testing.assert_array_equal(merged, np.array([7]))
 
+        merged = utils.merge_close_peaks(np.array([]), ty, distance=6)
+        np.testing.assert_array_equal(merged, np.array([]))
+
 
 if __name__ == '__main__':
     unittest.main()
