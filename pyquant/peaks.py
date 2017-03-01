@@ -643,6 +643,7 @@ def targeted_search(merged_x, merged_y, x_value, attempts=4, max_peak_distance=1
         'bigauss_fit': True,
         'rt_peak': x_value,
     }
+    peak_finding_kwargs = peak_finding_kwargs or {}
     if peak_finding_kwargs:
         assert isinstance(peak_finding_kwargs, dict), 'peak_finding_kwargs must be a dictionary'
         find_peaks_kwargs.update(peak_finding_kwargs)
