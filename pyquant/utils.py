@@ -437,7 +437,7 @@ def merge_peaks(peaks_found, debug=False):
     return final_peaks
 
 
-def find_possible_peaks(xdata, ydata, ydata_peaks, peak_find_method=PEAK_FINDING_REL_MAX, min_dist=0, local_filter_size=0,
+def find_possible_peaks(xdata, ydata, ydata_peaks, peak_find_method=PEAK_FINDING_REL_MAX, min_dist=None, local_filter_size=0,
                  rt_peak=None, max_peaks=4, peak_width_start=2, snr=0, zscore=0, amplitude_filter=0,
                  peak_width_end=4, fit_negative=False, percentile_filter=0, micro=False, min_slope=None,
                  min_peak_side_width=None):
@@ -450,7 +450,6 @@ def find_possible_peaks(xdata, ydata, ydata_peaks, peak_find_method=PEAK_FINDING
         ),
         PEAK_FINDING_DERIVATIVE: partial(
             find_peaks_derivative,
-            min_peak_width=min_dist,
             min_slope=min_slope,
             min_peak_side_width=min_peak_side_width
         ),
@@ -460,6 +459,8 @@ def find_possible_peaks(xdata, ydata, ydata_peaks, peak_find_method=PEAK_FINDING
 
     for peak_width, peak_info in six.iteritems(possible_peaks):
         row_peaks, minima = peak_info['peaks'], peak_info['minima']
+        if min_dist:
+            row_peaks = merge_close_peaks(row_peaks, ydata, distance=min_dist)
         if snr or zscore:
             ydata_peaks_std = np.std(ydata_peaks)
             ydata_peaks_median = np.median(ydata_peaks)
@@ -553,8 +554,6 @@ def find_peaks_rel_max(xdata, ydata, ydata_peaks=None, peak_width_start=2, peak_
             'minima': minima
         }
 
-
-
         peaks_found[peak_width] = {'peaks': row_peaks, 'minima': minima}
         peak_width += 1
         if peak_width > peak_width_end:
@@ -590,8 +589,8 @@ def get_cross_points(data, pad=True):
     return cross_points
 
 def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_peak_height=1.05,
-                          min_peak_side_width=2,
-                          max_peak_side_width=np.inf, min_peak_width=5, max_peak_width=np.inf):
+                          min_peak_side_width=2, max_peak_side_width=np.inf,
+                          min_peak_width=5, max_peak_width=np.inf):
 
 
     # The general strategy here is to identify where the derivative crosses the zero point, and
@@ -681,6 +680,35 @@ def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_pe
     # We return our peaks like:
     # { peak_search_width: {'peaks': [], 'minima': []}} to be consistent with other peak finding routines
     return {min_peak_width: peaks_found}
+
+
+def erode_direction(peaks_found, peak_heights, start, increment, distance):
+    peak = peaks_found[start]
+    peak_height = peak_heights[start]
+    next_index = start + increment
+    peaks_to_remove = set([])
+    while (next_index >= 0 and next_index < len(peaks_found)) and np.abs(
+            peak - peaks_found[next_index]) < distance and peak_height != peak_heights[next_index]:
+        peaks_to_remove.add(peaks_found[next_index])
+        next_index += increment
+    return peaks_to_remove
+
+
+def merge_close_peaks(peaks_found, ydata, distance=2):
+    peak_heights = ydata[peaks_found]
+    sort_order = np.argsort(peak_heights)[::-1]
+    new_peaks = []
+    removed_peaks = set([])
+    for sort_index, peak_index in enumerate(sort_order):
+        peak = peaks_found[peak_index]
+        if peak in removed_peaks:
+            continue
+        new_peaks.append(peak_index)
+
+        removed_peaks |= erode_direction(peaks_found, peak_heights, peak_index, 1, distance)
+        removed_peaks |= erode_direction(peaks_found, peak_heights, peak_index, -1, distance)
+
+    return np.array([i for i in peaks_found if i not in removed_peaks])
 
 
 def estimate_peak_parameters(xdata, ydata, row_peaks, minima_array, fit_negative=False, rel_peak_constraint=0, micro=False,

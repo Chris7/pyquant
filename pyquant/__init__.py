@@ -89,7 +89,7 @@ peak_parameters.add_argument('--filter-width', help='The window size for snr/zsc
 peak_parameters.add_argument('--r2-cutoff', help='The minimal R^2 for a peak to be kept. Should be a value between 0 and 1', type=float, default=None)
 peak_parameters.add_argument('--intensity-filter', help='Filter peaks whose peak are below a given intensity.', type=float, default=0)
 peak_parameters.add_argument('--percentile-filter', help='Filter peaks whose peak are below a given percentile of the data.', type=float, default=0)
-peak_parameters.add_argument('--min-peak-separation', help='Peaks separated by less than this distance will be combined. For very crisp data, set this to 2. (minimal value is 1)', type=int, default=4)
+peak_parameters.add_argument('--min-peak-separation', help='Peaks separated by less than this distance will be combined. For very crisp data, set this to a lower number. (minimal value is 1)', type=int, default=5)
 peak_parameters.add_argument('--disable-peak-filtering', help='This will disable smoothing of data prior to peak finding. If you have very good LC, this may be used to identify small peaks.', action='store_true')
 peak_parameters.add_argument('--merge-isotopes', help='Merge Isotopologues together prior to fitting.', action='store_true')
 peak_parameters.add_argument('--peak-resolution-mode', help='The method to use to resolve peaks across multiple XICs', choices=(PEAK_RESOLUTION_RT_MODE, PEAK_RESOLUTION_COMMON_MODE), type=str, default='common-peak')

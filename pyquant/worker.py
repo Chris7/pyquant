@@ -98,7 +98,7 @@ class Worker(Process):
             'debug': self.debug,
             'snr': self.parser_args.snr_filter,
             'amplitude_filter': self.parser_args.intensity_filter,
-            'peak_width_start': self.parser_args.min_peak_separation or 1,
+            'min_dist': self.parser_args.min_peak_separation,
             'baseline_correction': self.parser_args.remove_baseline,
             'zscore': self.parser_args.zscore_filter,
             'local_filter_size': self.parser_args.filter_width,

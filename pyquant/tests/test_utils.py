@@ -110,6 +110,18 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         interp_y = utils.interpolate_data(x, y, gap_limit=1)
         self.assertItemsEqual(interp_y[6:8], [0,0])
 
+    def test_merge_close_peaks(self):
+        ty = np.array([0, 1, 2, 1, 0, 1, 2, 3, 2, 1, 0, 1, 3, 3])
+        merged = utils.merge_close_peaks(np.array([7, 12]), ty, distance=6)
+        np.testing.assert_array_equal(merged, np.array([7, 12]))
+
+        merged = utils.merge_close_peaks(np.array([2, 7, 12]), ty, distance=5)
+        np.testing.assert_array_equal(merged, np.array([2, 7, 12]))
+
+        ty = np.array([0, 1, 2, 1, 0, 1, 2, 4, 2, 1, 0, 1, 3, 3])
+        merged = utils.merge_close_peaks(np.array([2, 7, 12]), ty, distance=6)
+        np.testing.assert_array_equal(merged, np.array([7]))
+
 
 if __name__ == '__main__':
     unittest.main()
