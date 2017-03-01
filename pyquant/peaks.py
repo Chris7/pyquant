@@ -8,14 +8,13 @@ import numpy as np
 import six
 from pythomics.proteomics.config import CARBON_NEUTRON
 from scipy import optimize
-from scipy.interpolate import interp1d
-from scipy.signal import convolve, gaussian, kaiser, savgol_filter
+from scipy.signal import convolve, kaiser
 
 from pyquant.cpeaks import bigauss_func, gauss_func, bigauss_ndim, gauss_ndim, bigauss_jac,\
-    gauss_jac, find_nearest, find_nearest_index, find_nearest_indices, get_ppm
+    gauss_jac, find_nearest, find_nearest_index, get_ppm
 from . import PEAK_FINDING_REL_MAX
 from .logger import logger
-from .utils import divide_peaks, find_possible_peaks, estimate_peak_parameters, interpolate_data
+from .utils import divide_peaks, find_possible_peaks, estimate_peak_parameters, interpolate_data, savgol_smooth
 
 if os.environ.get('PYQUANT_DEV', False) == 'True':
     try:
@@ -275,17 +274,8 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     ydata_peaks = np.copy(ydata)
 
     if smooth and len(ydata) > 5:
-        window_size = len(ydata) / 10.
-        if window_size < 5:
-            window_size = 5
+        ydata_peaks = savgol_smooth(ydata_peaks)
 
-        if window_size > len(ydata):
-            window_size = len(ydata)
-
-        if not window_size % 2:
-            window_size -= 1
-
-        ydata_peaks = savgol_filter(ydata_peaks, window_size, 3)
 
     if filter or peak_boost:
         if len(ydata) >= 5:

@@ -11,7 +11,7 @@ import six
 import numpy as np
 import pandas as pd
 from scipy.misc import comb
-from scipy.signal import convolve, gaussian
+from scipy.signal import savgol_filter
 
 from . import PEAK_FINDING_DERIVATIVE, PEAK_FINDING_REL_MAX
 from .logger import logger
@@ -608,7 +608,7 @@ def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_pe
     ydata = np.abs(ydata_peaks)
 
     # We first take the derivative of the data and smooth the derivative to reduce noise
-    smoothed_deriv = convolve(np.diff(ydata), gaussian(10, 1), mode='same')
+    smoothed_deriv = savgol_smooth(np.diff(ydata))
     cross_points = get_cross_points(smoothed_deriv)
     # Because we take the difference, we need to figure out whether the left or right is the true peak for crosses.
     # By default, cross points returns the left side
@@ -856,3 +856,17 @@ def interpolate_data(x, y, gap_limit=2):
             right = pos_indices[index + 1]
             y[left:right] = mapper(x[left:right])
     return y
+
+
+def savgol_smooth(ydata):
+    window_size = len(ydata) / 10.
+    if window_size < 5:
+        window_size = 5
+
+    if window_size > len(ydata):
+        window_size = len(ydata)
+
+    if not window_size % 2:
+        window_size -= 1
+
+    return savgol_filter(ydata_peaks, window_size, 3)
