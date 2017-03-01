@@ -615,7 +615,7 @@ def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_pe
     # By default, cross points returns the left side
     for i in xrange(len(cross_points)):
         index = cross_points[i]
-        if index < len(cross_points):
+        if index < len(ydata):
             if ydata[index] < ydata[index+1]:
                 cross_points[i] = index+1
 
