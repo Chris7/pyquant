@@ -9,7 +9,7 @@ import six
 from pythomics.proteomics.config import CARBON_NEUTRON
 from scipy import optimize
 from scipy.interpolate import interp1d
-from scipy.signal import convolve, gaussian, kaiser
+from scipy.signal import convolve, gaussian, kaiser, savgol_filter
 
 from pyquant.cpeaks import bigauss_func, gauss_func, bigauss_ndim, gauss_ndim, bigauss_jac,\
     gauss_jac, find_nearest, find_nearest_index, find_nearest_indices, get_ppm
@@ -256,7 +256,7 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
 
     return {'envelope': env_dict, 'micro_envelopes': micro_dict, 'ppms': ppm_dict}
 
-def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_size=0, filter=False, bigauss_fit=False,
+def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_size=0, filter=False, peak_boost=False, bigauss_fit=False,
                  rt_peak=None, mrm=False, max_peaks=4, debug=False, peak_width_start=3, snr=0, zscore=0, amplitude_filter=0,
                  peak_width_end=4, baseline_correction=False, rescale=True, fit_negative=False, percentile_filter=0, micro=False,
                  method_opts=None, smooth=False, r2_cutoff=None, peak_find_method=PEAK_FINDING_REL_MAX, min_slope=None,
@@ -275,9 +275,19 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     ydata_peaks = np.copy(ydata)
 
     if smooth and len(ydata) > 5:
-        ydata_peaks = convolve(ydata_peaks, gaussian(10, 1), mode='same')
+        window_size = len(ydata) / 10.
+        if window_size < 5:
+            window_size = 5
 
-    if filter:
+        if window_size > len(ydata):
+            window_size = len(ydata)
+
+        if not window_size % 2:
+            window_size -= 1
+
+        ydata_peaks = savgol_filter(ydata_peaks, window_size, 3)
+
+    if filter or peak_boost:
         if len(ydata) >= 5:
             ydata_peaks = convolve(ydata_peaks, kaiser(10, 12), mode='same')
 
