@@ -869,4 +869,4 @@ def savgol_smooth(ydata):
     if not window_size % 2:
         window_size -= 1
 
-    return savgol_filter(ydata_peaks, window_size, 3)
+    return savgol_filter(ydata, window_size, 3)
