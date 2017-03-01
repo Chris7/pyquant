@@ -859,7 +859,7 @@ def interpolate_data(x, y, gap_limit=2):
 
 
 def savgol_smooth(ydata):
-    window_size = len(ydata) / 10.
+    window_size = int(len(ydata) / 10)
     if window_size < 5:
         window_size = 5
 
