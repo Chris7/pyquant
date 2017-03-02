@@ -440,7 +440,7 @@ def merge_peaks(peaks_found, debug=False):
 def find_possible_peaks(xdata, ydata, ydata_peaks, peak_find_method=PEAK_FINDING_REL_MAX, min_dist=None, local_filter_size=0,
                  rt_peak=None, max_peaks=4, peak_width_start=2, snr=0, zscore=0, amplitude_filter=0,
                  peak_width_end=4, fit_negative=False, percentile_filter=0, micro=False, min_slope=None,
-                 min_peak_side_width=None):
+                 min_peak_side_width=None, min_peak_width=5):
     PEAK_METHODS = {
         PEAK_FINDING_REL_MAX: partial(
             find_peaks_rel_max,
@@ -451,7 +451,8 @@ def find_possible_peaks(xdata, ydata, ydata_peaks, peak_find_method=PEAK_FINDING
         PEAK_FINDING_DERIVATIVE: partial(
             find_peaks_derivative,
             min_slope=min_slope,
-            min_peak_side_width=min_peak_side_width
+            min_peak_side_width=min_peak_side_width,
+            min_peak_width=min_peak_width,
         ),
     }
     abs_ydata = np.abs(ydata)
@@ -590,7 +591,7 @@ def get_cross_points(data, pad=True):
 
 def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_peak_height=1.05,
                           min_peak_side_width=2, max_peak_side_width=np.inf,
-                          min_peak_width=5, max_peak_width=np.inf):
+                          min_peak_width=None, max_peak_width=np.inf):
 
 
     # The general strategy here is to identify where the derivative crosses the zero point, and
@@ -606,6 +607,11 @@ def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_pe
     peaks_found = {'peaks': [], 'minima': []}
     ydata_peaks = ydata_peaks if ydata_peaks is not None else ydata
     ydata = np.abs(ydata_peaks)
+
+    if min_peak_width is None:
+        max_peak_width = int(len(ydata) / 2)
+        if min_peak_width > 5:
+            min_peak_width = 5
 
     # We first take the derivative of the data and smooth the derivative to reduce noise
     smoothed_deriv = savgol_smooth(np.diff(ydata))
