@@ -335,6 +335,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         row_peaks = peak_info['peaks']
         if not row_peaks.any():
             continue
+
         minima_array = np.array(peak_info['minima'], dtype=np.long)
         # Now that we have estimated the parameters for fitting all the data, we divide it up into
         # chunks and fit each segment. The choice to fit all parameters first is to prevent cases
