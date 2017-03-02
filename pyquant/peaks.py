@@ -10,12 +10,6 @@ from pythomics.proteomics.config import CARBON_NEUTRON
 from scipy import optimize
 from scipy.signal import convolve, kaiser
 
-from pyquant.cpeaks import bigauss_func, gauss_func, bigauss_ndim, gauss_ndim, bigauss_jac,\
-    gauss_jac, find_nearest, find_nearest_index, get_ppm
-from . import PEAK_FINDING_REL_MAX
-from .logger import logger
-from .utils import divide_peaks, find_possible_peaks, estimate_peak_parameters, interpolate_data, savgol_smooth
-
 if os.environ.get('PYQUANT_DEV', False) == 'True':
     try:
         import pyximport; pyximport.install(setup_args={'include_dirs': np.get_include()}, reload_support=True)
@@ -23,6 +17,12 @@ if os.environ.get('PYQUANT_DEV', False) == 'True':
         import traceback
         traceback.print_exc()
         pass
+
+from pyquant.cpeaks import bigauss_func, gauss_func, bigauss_ndim, gauss_ndim, bigauss_jac,\
+    gauss_jac, find_nearest, find_nearest_index, get_ppm
+from . import PEAK_FINDING_REL_MAX
+from .logger import logger
+from .utils import divide_peaks, find_possible_peaks, estimate_peak_parameters, interpolate_data, savgol_smooth
 
 if six.PY3:
     xrange = range
