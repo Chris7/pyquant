@@ -354,6 +354,8 @@ def perform_ml(data, mass_labels):
 
                 nd.replace([-np.inf, np.inf, 'NA'], np.nan, inplace=True)
                 non_na_data = nd.dropna().index
+                if not len(non_na_data):
+                    continue
                 nd.loc[non_na_data, :] = scale(nd.loc[non_na_data, :].values)
 
                 mixed_confidence = '{}/{} Confidence'.format(label1, label2)

@@ -31,7 +31,7 @@ class GaussianMixin(object):
         self.amp, self.mu, self.std, self.mu2 = 1., 0., 1., 3.
         self.one_gauss_params = np.array([self.amp, self.mu, self.std], dtype=np.float)
         self.two_gauss_params = np.array([self.amp, self.mu, self.std, self.amp, self.mu2, self.std], dtype=np.float)
-        self.peak_data = pickle.load(open(os.path.join(DATA_DIR, 'peak_data.pickle')))
+        self.peak_data = pickle.load(open(os.path.join(DATA_DIR, 'peak_data.pickle'), 'rb'))
         self.x = self.peak_data['one_gauss'][0]
         self.one_gauss = self.peak_data['one_gauss'][1]
         self.two_gauss = self.peak_data['two_gauss'][1]
