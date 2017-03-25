@@ -31,6 +31,7 @@ from .reader import Reader
 from .worker import Worker
 from .utils import find_prior_scan, get_scans_under_peaks, naninfmean, naninfsum, perform_ml
 from . import peaks
+from pyquant.cpeaks import find_nearest_indices
 
 
 description = """
@@ -624,7 +625,7 @@ def run_pyquant():
                 ions_found = []
                 added = set([])
                 for ion_set in ions:
-                    for ion_index, (ion, nearest_mz_index) in enumerate(zip(ion_set, peaks.find_nearest_indices(scan_mzs, np.array(ion_set, dtype=np.float)))):
+                    for ion_index, (ion, nearest_mz_index) in enumerate(zip(ion_set, find_nearest_indices(scan_mzs, np.array(ion_set, dtype=np.float)))):
                         nearest_mz = scan_mzs[nearest_mz_index]
                         found_ions = []
                         if peaks.get_ppm(ion, nearest_mz) < ion_tolerance:
