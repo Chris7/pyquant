@@ -611,7 +611,7 @@ def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_pe
     ydata = np.abs(ydata_peaks)
 
     if min_peak_width is None:
-        max_peak_width = int(len(ydata) / 2)
+        min_peak_width = int(len(ydata) / 2)
         if min_peak_width > 5:
             min_peak_width = 5
 

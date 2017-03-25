@@ -1,9 +1,11 @@
 __author__ = 'chris'
+import pickle
 import os
 import unittest
 
 import numpy as np
 import pandas as pd
+import six
 
 from pyquant import utils
 from pyquant.tests.mixins import GaussianMixin
@@ -80,8 +82,7 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         self.assertListEqual(utils.get_cross_points(y, pad=True), [0, 3, 7])
 
     def test_find_peaks_derivative(self):
-        import pickle
-        data = pickle.load(open(os.path.join(self.data_dir, 'peak_data.pickle')))
+        data = pickle.load(open(os.path.join(self.data_dir, 'peak_data.pickle'), 'rb'), encoding='latin1')
         x, y = data['large_range']
         peaks = utils.find_peaks_derivative(x, y)
         peaks = peaks.values()[0]
@@ -106,9 +107,9 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         interp_y = utils.interpolate_data(x, y, gap_limit=2)
         self.assertNotEqual(interp_y[6], 0)
         self.assertNotEqual(interp_y[7], 0)
-        self.assertItemsEqual(interp_y[:3], [0,0,0])
+        six.assertCountEqual(interp_y[:3], [0,0,0])
         interp_y = utils.interpolate_data(x, y, gap_limit=1)
-        self.assertItemsEqual(interp_y[6:8], [0,0])
+        six.assertCountEqual(interp_y[6:8], [0,0])
 
     def test_merge_close_peaks(self):
         ty = np.array([0, 1, 2, 1, 0, 1, 2, 3, 2, 1, 0, 1, 3, 3])
