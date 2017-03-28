@@ -593,7 +593,7 @@ def get_cross_points(data, pad=True):
 
 def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_peak_height=1.05,
                           min_peak_side_width=2, max_peak_side_width=np.inf,
-                          min_peak_width=None, max_peak_width=np.inf):
+                          min_peak_width=None, max_peak_width=np.inf, smooth=True):
 
 
     # The general strategy here is to identify where the derivative crosses the zero point, and
@@ -616,7 +616,8 @@ def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_pe
             min_peak_width = 5
 
     # We first take the derivative of the data and smooth the derivative to reduce noise
-    smoothed_deriv = savgol_smooth(np.diff(ydata))
+    deriv = np.diff(ydata)
+    smoothed_deriv = savgol_smooth(deriv) if smooth else deriv
     cross_points = get_cross_points(smoothed_deriv)
     # Because we take the difference, we need to figure out whether the left or right is the true peak for crosses.
     # By default, cross points returns the left side
@@ -671,7 +672,7 @@ def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_pe
                 (center_y / right_y),
             ]))
 
-            if slope < min_slope:
+            if min_slope is not None and slope < min_slope:
                 logger.debug('not sloped enough')
                 continue
             if rel_peak < rel_peak_height:
@@ -866,10 +867,12 @@ def interpolate_data(x, y, gap_limit=2):
     return y
 
 
-def savgol_smooth(ydata):
+def savgol_smooth(ydata, max_window=10):
     window_size = int(len(ydata) / 10)
     if window_size < 5:
         window_size = 5
+    elif window_size > max_window:
+        window_size = max_window
 
     if window_size > len(ydata):
         window_size = len(ydata)

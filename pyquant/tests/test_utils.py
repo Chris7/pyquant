@@ -82,10 +82,11 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         self.assertListEqual(utils.get_cross_points(y, pad=True), [0, 3, 7])
 
     def test_find_peaks_derivative(self):
-        data = pickle.load(open(os.path.join(self.data_dir, 'peak_data.pickle'), 'rb'), encoding='latin1')
+        with open(os.path.join(self.data_dir, 'peak_data.pickle'), 'rb') as peak_file:
+            data = pickle.load(peak_file, encoding='latin1') if six.PY3 else pickle.load(peak_file)
         x, y = data['large_range']
-        peaks = utils.find_peaks_derivative(x, y)
-        peaks = peaks.values()[0]
+        peaks = utils.find_peaks_derivative(x, y, smooth=False)
+        peaks = next(iter(peaks.values()))
 
         np.testing.assert_array_equal(
             peaks['peaks'],
@@ -93,9 +94,9 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         )
         np.testing.assert_array_equal(
             peaks['minima'],
-            np.array([337,  364,  364,  423,  423,  695, 1654, 1680, 1730, 1776, 1797,
-               1827, 1827, 1846, 1901, 1930, 1992, 2026, 2371, 2411, 2485, 2610,
-               2905, 2998, 3157, 3189]),
+            np.array([ 337,  366,  366,  423,  423,  667, 1654, 1678, 1732, 1774, 1798,
+               1825, 1825, 1844, 1901, 1930, 1992, 2024, 2369, 2409, 2543, 2608,
+               2905, 2996, 3155, 3187]),
         )
 
     def test_interpolate_data(self):
@@ -107,9 +108,9 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         interp_y = utils.interpolate_data(x, y, gap_limit=2)
         self.assertNotEqual(interp_y[6], 0)
         self.assertNotEqual(interp_y[7], 0)
-        six.assertCountEqual(interp_y[:3], [0,0,0])
+        six.assertCountEqual(self, interp_y[:3], [0,0,0])
         interp_y = utils.interpolate_data(x, y, gap_limit=1)
-        six.assertCountEqual(interp_y[6:8], [0,0])
+        six.assertCountEqual(self, interp_y[6:8], [0,0])
 
     def test_merge_close_peaks(self):
         ty = np.array([0, 1, 2, 1, 0, 1, 2, 3, 2, 1, 0, 1, 3, 3])
