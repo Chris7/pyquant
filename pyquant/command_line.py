@@ -29,7 +29,7 @@ except ImportError:
 
 from .reader import Reader
 from .worker import Worker
-from .utils import find_prior_scan, get_scans_under_peaks, naninfmean, naninfsum, perform_ml
+from .utils import find_prior_scan, get_scans_under_peaks, naninfmean, naninfsum, perform_ml, get_formatted_mass
 from . import peaks
 from pyquant.cpeaks import find_nearest_indices
 
@@ -493,9 +493,9 @@ def run_pyquant():
     for silac_label, silac_masses in mass_labels.items():
         for mass, aas in six.iteritems(silac_masses):
             try:
-                silac_shifts[mass] |= aas
+                silac_shifts[get_formatted_mass(mass)] |= aas
             except:
-                silac_shifts[mass] = aas
+                silac_shifts[get_formatted_mass(mass)] = aas
 
     for filename in raw_files.keys():
         raw_scans = raw_files[filename]
@@ -869,7 +869,7 @@ def run_pyquant():
                     shift = 0
                     for mod in filter(lambda x: x, mods.split('|')):
                         aa, pos, mass, _ = mod.split(',', 3)
-                        mass = float('{0:0.5f}'.format(float(mass)))
+                        mass = get_formatted_mass(mass)
                         if aa in silac_shifts.get(mass, {}):
                             shift += mass
                     mass_shift += (float(shift)/float(charge))

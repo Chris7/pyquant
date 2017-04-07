@@ -882,3 +882,13 @@ def savgol_smooth(ydata, max_window=10):
         window_size -= 1
 
     return savgol_filter(ydata, window_size, 3)
+
+
+def get_formatted_mass(mass):
+    """
+    This helps with looking up masses in a dictionary by mass by ensuring the values 0.3 and 0.30 are represented
+    the same
+    :param mass:
+    :return:
+    """
+    return float('{0:0.6f}'.format(float(mass)))

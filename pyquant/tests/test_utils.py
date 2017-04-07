@@ -127,6 +127,12 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         merged = utils.merge_close_peaks(np.array([]), ty, distance=6)
         np.testing.assert_array_equal(merged, np.array([]))
 
+    def test_get_formatted_mass(self):
+        self.assertEqual(utils.get_formatted_mass('0.123'), utils.get_formatted_mass(0.123))
+        self.assertEqual(utils.get_formatted_mass('0.12300'), utils.get_formatted_mass(0.123))
+        self.assertEqual(utils.get_formatted_mass('123.12300'), utils.get_formatted_mass(123.123))
+        self.assertEqual(utils.get_formatted_mass('123.12300'), utils.get_formatted_mass(123.1230000))
+
 
 if __name__ == '__main__':
     unittest.main()
