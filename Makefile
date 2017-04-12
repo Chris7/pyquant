@@ -2,6 +2,11 @@ testenv:
 	pip install -r requirements.txt
 	pip install -e .
 
+release:
+	rm dist/*
+	python setup.py sdist
+	twine upload dist/*
+
 test:
 	nosetests --with-coverage --cover-erase --cover-package=pyquant pyquant.tests
 	coverage report --omit=pyquant/tests*
