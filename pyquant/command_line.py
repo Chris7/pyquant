@@ -379,7 +379,7 @@ def run_pyquant():
             ('label', 'Peak Label'),
             ('auc', 'Peak Area'),
             ('amp', 'Peak Max'),
-            ('mean', 'Peak Center'),
+            ('peak_mean', 'Peak Center'),
             ('peak_width', 'RT Width'),
             ('mean_diff', 'Mean Offset'),
             ('snr', 'SNR'),
@@ -408,6 +408,7 @@ def run_pyquant():
         if args.peaks_n == 1:
             RESULT_ORDER.extend([
                 ('{}_peak_width'.format(label), '{}RT Width'.format(label_key), partial(naninfmean, empty=0)),
+                ('{}_peak_mean'.format(label), '{}Peak Center'.format(label_key), partial(naninfmean, empty=np.NaN)),
                 ('{}_mean_diff'.format(label), '{}Mean Offset'.format(label_key), partial(naninfmean, empty=np.NaN)),
             ])
 
@@ -982,9 +983,7 @@ def run_pyquant():
                                     'precursor': result.get('{}_precursor'.format(label_name)),
                                     'ms1': result.get('ms1')
                                 })] |= scans[isotope_index][xic_peak_index]
-                            if args.peaks_n != 1:
-                                peak_report.append(list(map(str, (xic_peak_info.get(i[0], 'NA') for i in PEAK_REPORTING))))
-                            else:
+                            if args.peaks_n == 1:
                                 # TODO: fix this terrible loop
                                 for i, v in enumerate(RESULT_ORDER):
                                     for j in xic_peak_info:
@@ -993,6 +992,9 @@ def run_pyquant():
                                                 xic_peak_summary[i].append(xic_peak_info[j])
                                             except KeyError:
                                                 xic_peak_summary[i] = [xic_peak_info[j]]
+                            else:
+                                peak_report.append(list(map(str, (xic_peak_info.get(i[0], 'NA') for i in PEAK_REPORTING))))
+
 
                     if args.peaks_n == 1:
                         for index, values in six.iteritems(xic_peak_summary):

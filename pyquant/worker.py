@@ -1038,7 +1038,7 @@ class Worker(Process):
 
                                     coef_det = 1 - ss_res / ss_tot
                                     peak_info_dict = {
-                                        'mean': mean,
+                                        'peak_mean': mean,
                                         'std': std,
                                         'std2': std2,
                                         'amp': amp,
