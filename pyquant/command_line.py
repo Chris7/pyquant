@@ -110,10 +110,10 @@ def run_pyquant():
         label_info = pd.read_table(args.label_scheme.name, sep='\t', header=None, dtype='str')
         try:
             label_info.columns = ['Label', 'AA', 'Mass', 'UserName']
-            name_mapping = dict([(v['Label'],v['UserName']) for i,v in label_info.iterrows()])
+            name_mapping = dict([(v['Label'], v['UserName']) for i,v in label_info.iterrows()])
         except ValueError:
             label_info.columns = ['Label', 'AA', 'Mass']
-            name_mapping = dict([(v['Label'],v['Label']) for i,v in label_info.iterrows()])
+            name_mapping = dict([(v['Label'], v['Label']) for i,v in label_info.iterrows()])
         for group_name, group_info in label_info.groupby('Label'):
             masses = {}
             label_name = name_mapping.get(group_name, group_name)

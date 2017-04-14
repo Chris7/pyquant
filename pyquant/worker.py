@@ -421,7 +421,6 @@ class Worker(Process):
                             if full_scan is not None:
                                 scan_resolution = get_scan_resolution(full_scan)
                                 if scan_resolution < self.min_resolution:
-                                    print(current_scan, 'has too low resolution', scan_resolution)
                                     self.scans_to_skip[current_scan] = True
                                     continue
                             if self.mrm:
