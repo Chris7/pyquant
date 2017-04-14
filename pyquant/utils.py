@@ -918,5 +918,5 @@ def get_scan_resolution(scan):
         print('no peaks in ', scan)
         return 0
 
-    fwhm = peaks[2]*2.335
+    fwhm = peaks[2]*2.355
     return peaks[1]/fwhm
