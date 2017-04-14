@@ -133,6 +133,14 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         self.assertEqual(utils.get_formatted_mass('123.12300'), utils.get_formatted_mass(123.123))
         self.assertEqual(utils.get_formatted_mass('123.12300'), utils.get_formatted_mass(123.1230000))
 
+    def test_get_scan_resolution(self):
+        with open(os.path.join(self.data_dir, 'peak_data.pickle'), 'rb') as peak_file:
+            data = pickle.load(peak_file, encoding='latin1') if six.PY3 else pickle.load(peak_file)
+        x, y = data['low_res_scan']
+        scan = pd.Series(y, index=x)
+        resolution = utils.get_scan_resolution(scan)
+        self.assertAlmostEqual(resolution, 30720.544274635457)
+
 
 if __name__ == '__main__':
     unittest.main()

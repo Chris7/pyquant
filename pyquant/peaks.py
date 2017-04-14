@@ -13,7 +13,7 @@ from scipy.signal import convolve, kaiser
 if os.environ.get('PYQUANT_DEV', False) == 'True':
     try:
         import pyximport; pyximport.install(setup_args={'include_dirs': np.get_include()}, reload_support=True)
-    except:
+    except Exception as e:
         import traceback
         traceback.print_exc()
         pass

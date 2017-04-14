@@ -10,7 +10,7 @@ import signal
 import sys
 from collections import defaultdict, OrderedDict
 from functools import partial
-from multiprocessing import Queue
+from multiprocessing import Queue, Manager
 from string import Template
 
 import pandas as pd
@@ -237,7 +237,7 @@ def run_pyquant():
             else:
                 try:
                     raw_files[i[file_col]].append(d)
-                except:
+                except Exception as e:
                     raw_files[i[file_col]] = [d]
     elif input_found == 'ms':
         if not (args.label_scheme or args.label_method):
@@ -314,7 +314,7 @@ def run_pyquant():
                         continue
                     try:
                         ions_of_interest.append(i.strip())
-                    except:
+                    except Exception as e:
                         import traceback; traceback.print_exc()
             if args.msn_ion:
                 ions_of_interest += args.msn_ion
@@ -494,7 +494,7 @@ def run_pyquant():
         for mass, aas in six.iteritems(silac_masses):
             try:
                 silac_shifts[get_formatted_mass(mass)] |= aas
-            except:
+            except Exception as e:
                 silac_shifts[get_formatted_mass(mass)] = aas
 
     for filename in raw_files.keys():
@@ -769,16 +769,20 @@ def run_pyquant():
                 best_scan = sorted([(np.abs((rep_mapper.predict(j[1]['replicate_scan_rt']) if rep_mapper else j[1]['replicate_scan_rt'])-ion_rt), j[1]) for j in replicate_search_list[i]], key=operator.itemgetter(0))[0][1]
                 raw_scans.append(best_scan)
 
+        quant_msn_map = [i for i in msn_map if i[0] == msn_for_quant] if not args.mrm else msn_map
+        manager = Manager()
+        scan_mask = manager.dict()
+
         for i in xrange(threads):
             worker = Worker(queue=in_queue, results=result_queue, raw_name=filepath, mass_labels=mass_labels,
                             debug=args.debug, html=html, mono=not args.spread, precursor_ppm=args.precursor_ppm,
                             isotope_ppm=args.isotope_ppm, isotope_ppms=None, msn_rt_map=msn_rt_map, reporter_mode=reporter_mode,
                             reader_in=reader_in, reader_out=reader_outs[i], thread=i, quant_method=quant_method,
                             spline=spline, isotopologue_limit=isotopologue_limit, labels_needed=labels_needed,
-                            quant_msn_map=[i for i in msn_map if i[0] == msn_for_quant] if not args.mrm else msn_map,
+                            quant_msn_map=quant_msn_map,
                             overlapping_mz=overlapping_mz, min_resolution=args.min_resolution, min_scans=args.min_scans,
                             mrm_pair_info=mrm_pair_info, mrm=args.mrm, peak_cutoff=args.peak_cutoff, replicate=args.mva,
-                            ref_label=ref_label, max_peaks=args.max_peaks, parser_args=args)
+                            ref_label=ref_label, max_peaks=args.max_peaks, parser_args=args, scans_to_skip=scan_mask)
             workers.append(worker)
             worker.start()
 

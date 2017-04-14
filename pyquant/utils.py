@@ -365,7 +365,7 @@ def perform_ml(data, mass_labels):
                 conf_ass = classifier.predict_proba(nd.loc[non_na_data, :])[:, 1] * 10
                 data.loc[non_na_data, mixed_confidence] = conf_ass
 
-            except:
+            except Exception as e:
                 import traceback
                 sys.stderr.write(
                     'Unable to calculate statistics for {}/{}.\n Traceback: {}'.format(label1, label2, traceback.format_exc()))
@@ -766,7 +766,7 @@ def estimate_peak_parameters(xdata, ydata, row_peaks, minima_array, fit_negative
             else:
                 try:
                     right = minima_array[right]
-                except:
+                except Exception as e:
                     print(right, ydata, minima_array, peak_index)
             if right > next_peak:
                 right = next_peak
@@ -892,3 +892,31 @@ def get_formatted_mass(mass):
     :return:
     """
     return float('{0:0.6f}'.format(float(mass)))
+
+
+def get_scan_resolution(scan):
+    """
+
+    :param scan: A scan series (pandas series)
+    :return:
+    """
+    from .peaks import findAllPeaks
+
+    max_peak = np.argmax(scan.values)
+
+    left = max_peak-30
+    right = max_peak+30
+    if left < 0:
+        left = 0
+    if right > len(scan):
+        right = len(scan)
+
+    x = scan.index.values[left:right].astype(float)
+    y = scan.values[left:right].astype(float)
+    peaks, residual = findAllPeaks(x, y, max_peaks=1)
+    if peaks is None or not peaks.any():
+        print('no peaks in ', scan)
+        return 0
+
+    fwhm = peaks[2]*2.335
+    return peaks[1]/fwhm
