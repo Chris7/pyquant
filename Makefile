@@ -3,7 +3,7 @@ testenv:
 	pip install -e .
 
 release:
-	rm dist/*
+	rm -f dist/*
 	python setup.py sdist
 	twine upload dist/*
 
