@@ -33,7 +33,7 @@ from pythomics.proteomics import config
 
 from . import PEAK_RESOLUTION_RT_MODE, PEAK_RESOLUTION_COMMON_MODE
 from . import peaks
-from .utils import calculate_theoretical_distribution, find_scan, find_prior_scan, find_next_scan, find_common_peak_mean, nanmean, find_common_peak_mean
+from .utils import calculate_theoretical_distribution, find_scan, find_prior_scan, find_next_scan, nanmean, find_common_peak_mean, get_scan_resolution
 
 
 class Worker(Process):
@@ -42,7 +42,7 @@ class Worker(Process):
                  reader_in=None, reader_out=None, thread=None, fitting_run=False, msn_rt_map=None, reporter_mode=False,
                  spline=None, isotopologue_limit=-1, labels_needed=1, overlapping_mz=False, min_resolution=0, min_scans=3,
                  quant_msn_map=None, mrm=False, mrm_pair_info=None, peak_cutoff=0.05, ratio_cutoff=0, replicate=False,
-                 ref_label=None, max_peaks=4, parser_args=None):
+                 ref_label=None, max_peaks=4, parser_args=None, scans_to_skip=None):
         super(Worker, self).__init__()
         self.precision = precision
         self.precursor_ppm = precursor_ppm
@@ -91,6 +91,8 @@ class Worker(Process):
         self.report_ratios = not self.parser_args.no_ratios
         self.bigauss_stepsize = 6 if self.parser_args.remove_baseline else 4
 
+        self.scans_to_skip = scans_to_skip or {}
+
         # This is a convenience object to pass to the findAllPeaks function since it is called quite a few times
 
         self.peak_finding_kwargs = {
@@ -98,13 +100,14 @@ class Worker(Process):
             'debug': self.debug,
             'snr': self.parser_args.snr_filter,
             'amplitude_filter': self.parser_args.intensity_filter,
-            'peak_width_start': self.parser_args.min_peak_separation or 1,
+            'min_dist': self.parser_args.min_peak_separation,
             'baseline_correction': self.parser_args.remove_baseline,
             'zscore': self.parser_args.zscore_filter,
             'local_filter_size': self.parser_args.filter_width,
             'percentile_filter': self.parser_args.percentile_filter,
             'smooth': self.parser_args.xic_smooth,
             'r2_cutoff': self.parser_args.r2_cutoff,
+            'gap_interpolation': self.parser_args.gap_interpolation,
         }
 
     def get_calibrated_mass(self, mass):
@@ -168,12 +171,12 @@ class Worker(Process):
                 classifier.fit(np.array([hx, hy, hy2]).T if self.mrm else fit_data)
                 fitted = True
                 # x_mean, x_std1, x_std2 = classifier.location_
-            except:
+            except Exception as e:
                 try:
                     classifier = OneClassSVM(nu=0.95 * 0.15 + 0.05, kernel=str('linear'), degree=1, random_state=0)
                     classifier.fit(np.array([hx, hy, hy2]).T if self.mrm else fit_data)
                     fitted = True
-                except:
+                except Exception as e:
                     if debug:
                         print(traceback.format_exc(), data)
         x_mean, x_std1, x_std2 = np.median(data, axis=0)
@@ -253,7 +256,7 @@ class Worker(Process):
         # Summation is the correct choice here because we are combining values of a precision higher than we care about.
         try:
             return res.groupby(level=0).sum() if not res.empty else None
-        except:
+        except Exception as e:
             print('Converting scan error {}\n{}\n{}\n'.format(traceback.format_exc(), res, scan))
 
     def getScan(self, ms1, start=None, end=None):
@@ -359,10 +362,11 @@ class Worker(Process):
                 precursors[silac_label]['theoretical_mz'] = theo_mz
                 data[silac_label] = copy.deepcopy(silac_dict)
             if not precursors:
-                precursors['Precursor']['uncalibrated_mz'] = precursor
-                precursors['Precursor']['calibrated_mz'] = self.get_calibrated_mass(precursor)
-                precursors['Precursor']['theoretical_mz'] = precursor
-                data['Precursor'] = copy.deepcopy(silac_dict)
+                precursors['']['uncalibrated_mz'] = precursor
+                precursors['']['calibrated_mz'] = self.get_calibrated_mass(precursor)
+                precursors['']['theoretical_mz'] = precursor
+                data[''] = copy.deepcopy(silac_dict)
+
             precursors = OrderedDict(
                 sorted(precursors.items(), key=cmp_to_key(lambda x, y: int(x[1]['uncalibrated_mz'] - y[1]['uncalibrated_mz']))))
             shift_maxes = {i: max([j['uncalibrated_mz'], j['calibrated_mz'], j['theoretical_mz']]) for i, j in
@@ -386,7 +390,6 @@ class Worker(Process):
             # our rt might sometimes be an approximation, such as from X!Tandem which requires some transformations
             initial_scan = find_scan(self.quant_msn_map, ms1)
             current_scan = None
-            scans_to_skip = set([])
             not_found = 0
             if self.mrm:
                 mrm_label = mrm_labels.pop() if mrm_info is not None else 'Light'
@@ -409,21 +412,27 @@ class Worker(Process):
                 found = set([])
                 current_scan_intensity = 0
                 if current_scan is not None:
-                    if current_scan in scans_to_skip:
+                    if current_scan in self.scans_to_skip:
                         continue
                     else:
-                        df, scan_params = self.getScan(
-                          current_scan,
-                          start=None if self.mrm else lowest_precursor_mz,
-                          end=None if self.mrm else highest_precursor_mz
-                        )
-                        # check if it's a low res scan, if so skip it
-                        if self.min_resolution and df is not None:
-                            scan_resolution = np.average(
-                                df.index[1:] / np.array([df.index[i] - df.index[i - 1] for i in xrange(1, len(df))]))
-                            if scan_resolution < self.min_resolution:
-                                scans_to_skip.add(current_scan)
-                                continue
+                        if self.min_resolution:
+                            full_scan, scan_params = self.getScan(current_scan)
+                            # check if it's a low res scan, if so skip it
+                            if full_scan is not None:
+                                scan_resolution = get_scan_resolution(full_scan)
+                                if scan_resolution < self.min_resolution:
+                                    self.scans_to_skip[current_scan] = True
+                                    continue
+                            if self.mrm:
+                                df = full_scan
+                            else:
+                                df = full_scan.ix[(full_scan.index >= lowest_precursor_mz) & (full_scan.index <= highest_precursor_mz)]
+                        else:
+                            df, scan_params = self.getScan(
+                              current_scan,
+                              start=None if self.mrm else lowest_precursor_mz,
+                              end=None if self.mrm else highest_precursor_mz
+                            )
                     if df is not None:
                         labels_found = set([])
                         xdata = df.index.values.astype(float)
@@ -628,7 +637,7 @@ class Worker(Process):
                     else:
                         try:
                             new_col = self.msn_rt_map.iloc[self.msn_rt_map.searchsorted(combined_data.columns[-1]) + 1].values[0]
-                        except:
+                        except Exception as e:
                             if self.debug:
                                 print(combined_data.columns)
                                 print(self.msn_rt_map)
@@ -671,7 +680,7 @@ class Worker(Process):
                     for counter, (index, row) in enumerate(isotope_group):
                         try:
                             title = 'Scan {} RT {}'.format(self.msn_rt_map[self.msn_rt_map == index].index[0], index)
-                        except:
+                        except Exception as e:
                             title = '{}'.format(index)
                         if index in isotope_figure_mapper:
                             isotope_base = isotope_figure_mapper[index]
@@ -704,7 +713,6 @@ class Worker(Process):
                             merged_y,
                             start_rt,
                             attempts=4,
-                            stepsize=self.bigauss_stepsize,
                             peak_finding_kwargs=self.peak_finding_kwargs
                         )
 
@@ -856,7 +864,7 @@ class Worker(Process):
                                 if data_window.any():
                                     try:
                                         background = np.percentile(data_window, 0.8)
-                                    except:
+                                    except Exception as e:
                                         background = np.percentile(ydata, 0.8)
                                     mean = nanmean(data_window)
                                     if background < mean:
@@ -928,7 +936,7 @@ class Worker(Process):
                             quant_vals[quant_label][isotope_index] = int_val
                     else:
                         # common_peak = self.replaceOutliers(combined_peaks, combined_data, debug=self.debug)
-                        common_peak = find_common_peak_mean(combined_peaks)
+                        common_peak = find_common_peak_mean(combined_peaks, tie_breaker_time=start_rt)
                         common_loc = peaks.find_nearest_index(xdata, common_peak)    # np.where(xdata==common_peak)[0][0]
                         for quant_label, quan_values in combined_peaks.items():
                             for index, values in quan_values.items():
@@ -996,13 +1004,13 @@ class Worker(Process):
 
                                     try:
                                         int_val = integrate.simps(peaks.bigauss_ndim(xr, peak_params), x=xr) if self.quant_method == 'integrate' else ydata[(xdata > left) & (xdata < right)].sum()
-                                    except:
+                                    except Exception as e:
                                         if self.debug:
                                             print(traceback.format_exc())
                                             print(xr, peak_params)
                                     try:
                                         total_int = integrate.simps(ydata[left_index:right_index], x=xdata[left_index:right_index])
-                                    except:
+                                    except Exception as e:
                                         if self.debug:
                                             print(traceback.format_exc())
                                             print(left_index, right_index, xdata, ydata)
@@ -1023,10 +1031,14 @@ class Worker(Process):
                                     # and to prevent areas with 2 data points from having negative R^2
                                     cf_data = np.hstack((0, cf_data, 0))
                                     ss_tot = np.sum((cf_data - nanmean(cf_data)) ** 2)
+                                    if ss_tot == 0:
+                                        continue
+
                                     ss_res = np.sum((cf_data - np.hstack((0, peaks.bigauss_ndim(xdata[curve_indices], peak_params), 0))) ** 2)
+
                                     coef_det = 1 - ss_res / ss_tot
                                     peak_info_dict = {
-                                        'mean': mean,
+                                        'peak_mean': mean,
                                         'std': std,
                                         'std2': std2,
                                         'amp': amp,
@@ -1134,7 +1146,7 @@ class Worker(Process):
                                 try:
                                     if self.ratio_cutoff and not pd.isnull(ratio) and np.abs(np.log2(ratio)) > self.ratio_cutoff:
                                         write_html = True
-                                except:
+                                except Exception as e:
                                     pass
                             result_dict.update({'{}_{}_ratio'.format(silac_label1, silac_label2): ratio})
 
@@ -1164,11 +1176,11 @@ class Worker(Process):
             del result_dict
             del combined_data
             del isotopes_chosen
-        except:
+        except Exception as e:
             print('ERROR encountered. Please report at https://github.com/Chris7/pyquant/issues:\n {}'.format(traceback.format_exc()))
             try:
                 self.results.put(result_dict)
-            except:
+            except Exception as e:
                 pass
             return
 

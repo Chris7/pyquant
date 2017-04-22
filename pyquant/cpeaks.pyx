@@ -19,7 +19,7 @@ cpdef np.ndarray[FLOAT_t, ndim=1] gauss(np.ndarray[FLOAT_t, ndim=1] x, FLOAT_t a
     cdef np.ndarray[FLOAT_t, ndim=1] y = amp*np.exp(-(x - mu)**2/(2*std**2))
     return y
 
-cpdef np.ndarray[FLOAT_t, ndim=1] adjust_baseline(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] mus, FLOAT_t slope, FLOAT_t intercept, INT_t index):#np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] mus, float slope, float intercept, int index):
+cdef np.ndarray[FLOAT_t, ndim=1] adjust_baseline(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] mus, FLOAT_t slope, FLOAT_t intercept, INT_t index):#np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] mus, float slope, float intercept, int index):
     cdef np.ndarray[FLOAT_t, ndim=1] y
     cdef INT_t left, right
 
