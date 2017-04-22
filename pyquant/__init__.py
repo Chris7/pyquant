@@ -1,6 +1,9 @@
 __author__ = 'chris'
+import pkg_resources  # part of setuptools
 import argparse
 from pythomics.proteomics import config
+
+version = pkg_resources.require('pyquant-ms')[0].version
 
 description = """
 This will quantify labeled peaks (such as SILAC) in ms1 spectra. It relies solely on the distance between peaks,
@@ -10,7 +13,10 @@ This will quantify labeled peaks (such as SILAC) in ms1 spectra. It relies solel
 PEAK_RESOLUTION_RT_MODE = 'rt'
 PEAK_RESOLUTION_COMMON_MODE = 'common-peak'
 
-pyquant_parser = argparse.ArgumentParser(description=description)
+PEAK_FINDING_REL_MAX = 'relative-max'
+PEAK_FINDING_DERIVATIVE = 'derivative'
+
+pyquant_parser = argparse.ArgumentParser(prog='PyQuant v{}'.format(version), description=description)
 pyquant_parser.add_argument('-p', help="Threads to run", type=int, default=1)
 pyquant_parser.add_argument('--theo-xic', help=argparse.SUPPRESS, action='store_true')
 
@@ -73,6 +79,8 @@ quant_parameters.add_argument('--no-mass-accuracy-correction', help='Disables th
 quant_parameters.add_argument('--no-contaminant-detection', help='Disables routine to check if an ion is a contaminant of a nearby peptide (checks if its a likely isotopologue).', action='store_true')
 
 peak_parameters = pyquant_parser.add_argument_group('Peak Fitting Parameters')
+peak_parameters.add_argument('--peak-find-method', help='The method to use to identify peaks within data. For LC-MS, relative-max is usually best. For smooth data, derivative is better.', type=str, choices=(PEAK_FINDING_REL_MAX, PEAK_FINDING_DERIVATIVE), default=PEAK_FINDING_REL_MAX)
+peak_parameters.add_argument('--gap-interpolation', help='This interpolates missing data in scans. The parameter should be a number that is the maximal gap size to fill (ie 2 means a gap of 2 scans). Can be useful for low intensity LC-MS data.', type=int, default=0)
 peak_parameters.add_argument('--remove-baseline', help='Fit a separate line for the baseline of each peak.', action='store_true')
 peak_parameters.add_argument('--peak-cutoff', help='The threshold from the initial retention time a peak can fall by before being discarded', type=float, default=0.05)
 peak_parameters.add_argument('--max-peaks', help='The maximal number of peaks to detect per scan. A lower value can help with very noisy data.', type=int, default=-1)
@@ -84,7 +92,7 @@ peak_parameters.add_argument('--filter-width', help='The window size for snr/zsc
 peak_parameters.add_argument('--r2-cutoff', help='The minimal R^2 for a peak to be kept. Should be a value between 0 and 1', type=float, default=None)
 peak_parameters.add_argument('--intensity-filter', help='Filter peaks whose peak are below a given intensity.', type=float, default=0)
 peak_parameters.add_argument('--percentile-filter', help='Filter peaks whose peak are below a given percentile of the data.', type=float, default=0)
-peak_parameters.add_argument('--min-peak-separation', help='Peaks separated by less than this distance will be combined. For very crisp data, set this to 2. (minimal value is 1)', type=int, default=4)
+peak_parameters.add_argument('--min-peak-separation', help='Peaks separated by less than this distance will be combined. For very crisp data, set this to a lower number. (minimal value is 1)', type=int, default=5)
 peak_parameters.add_argument('--disable-peak-filtering', help='This will disable smoothing of data prior to peak finding. If you have very good LC, this may be used to identify small peaks.', action='store_true')
 peak_parameters.add_argument('--merge-isotopes', help='Merge Isotopologues together prior to fitting.', action='store_true')
 peak_parameters.add_argument('--peak-resolution-mode', help='The method to use to resolve peaks across multiple XICs', choices=(PEAK_RESOLUTION_RT_MODE, PEAK_RESOLUTION_COMMON_MODE), type=str, default='common-peak')

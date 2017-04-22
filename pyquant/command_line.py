@@ -10,7 +10,7 @@ import signal
 import sys
 from collections import defaultdict, OrderedDict
 from functools import partial
-from multiprocessing import Queue
+from multiprocessing import Queue, Manager
 from string import Template
 
 import pandas as pd
@@ -29,8 +29,9 @@ except ImportError:
 
 from .reader import Reader
 from .worker import Worker
-from .utils import find_prior_scan, get_scans_under_peaks, naninfmean, naninfsum, perform_ml
+from .utils import find_prior_scan, get_scans_under_peaks, naninfmean, naninfsum, perform_ml, get_formatted_mass
 from . import peaks
+from pyquant.cpeaks import find_nearest_indices
 
 
 description = """
@@ -109,10 +110,10 @@ def run_pyquant():
         label_info = pd.read_table(args.label_scheme.name, sep='\t', header=None, dtype='str')
         try:
             label_info.columns = ['Label', 'AA', 'Mass', 'UserName']
-            name_mapping = dict([(v['Label'],v['UserName']) for i,v in label_info.iterrows()])
+            name_mapping = dict([(v['Label'], v['UserName']) for i,v in label_info.iterrows()])
         except ValueError:
             label_info.columns = ['Label', 'AA', 'Mass']
-            name_mapping = dict([(v['Label'],v['Label']) for i,v in label_info.iterrows()])
+            name_mapping = dict([(v['Label'], v['Label']) for i,v in label_info.iterrows()])
         for group_name, group_info in label_info.groupby('Label'):
             masses = {}
             label_name = name_mapping.get(group_name, group_name)
@@ -236,7 +237,7 @@ def run_pyquant():
             else:
                 try:
                     raw_files[i[file_col]].append(d)
-                except:
+                except Exception as e:
                     raw_files[i[file_col]] = [d]
     elif input_found == 'ms':
         if not (args.label_scheme or args.label_method):
@@ -313,7 +314,7 @@ def run_pyquant():
                         continue
                     try:
                         ions_of_interest.append(i.strip())
-                    except:
+                    except Exception as e:
                         import traceback; traceback.print_exc()
             if args.msn_ion:
                 ions_of_interest += args.msn_ion
@@ -378,7 +379,7 @@ def run_pyquant():
             ('label', 'Peak Label'),
             ('auc', 'Peak Area'),
             ('amp', 'Peak Max'),
-            ('mean', 'Peak Center'),
+            ('peak_mean', 'Peak Center'),
             ('peak_width', 'RT Width'),
             ('mean_diff', 'Mean Offset'),
             ('snr', 'SNR'),
@@ -407,6 +408,7 @@ def run_pyquant():
         if args.peaks_n == 1:
             RESULT_ORDER.extend([
                 ('{}_peak_width'.format(label), '{}RT Width'.format(label_key), partial(naninfmean, empty=0)),
+                ('{}_peak_mean'.format(label), '{}Peak Center'.format(label_key), partial(naninfmean, empty=np.NaN)),
                 ('{}_mean_diff'.format(label), '{}Mean Offset'.format(label_key), partial(naninfmean, empty=np.NaN)),
             ])
 
@@ -492,9 +494,9 @@ def run_pyquant():
     for silac_label, silac_masses in mass_labels.items():
         for mass, aas in six.iteritems(silac_masses):
             try:
-                silac_shifts[mass] |= aas
-            except:
-                silac_shifts[mass] = aas
+                silac_shifts[get_formatted_mass(mass)] |= aas
+            except Exception as e:
+                silac_shifts[get_formatted_mass(mass)] = aas
 
     for filename in raw_files.keys():
         raw_scans = raw_files[filename]
@@ -624,7 +626,7 @@ def run_pyquant():
                 ions_found = []
                 added = set([])
                 for ion_set in ions:
-                    for ion_index, (ion, nearest_mz_index) in enumerate(zip(ion_set, peaks.find_nearest_indices(scan_mzs, np.array(ion_set, dtype=np.float)))):
+                    for ion_index, (ion, nearest_mz_index) in enumerate(zip(ion_set, find_nearest_indices(scan_mzs, np.array(ion_set, dtype=np.float)))):
                         nearest_mz = scan_mzs[nearest_mz_index]
                         found_ions = []
                         if peaks.get_ppm(ion, nearest_mz) < ion_tolerance:
@@ -768,16 +770,20 @@ def run_pyquant():
                 best_scan = sorted([(np.abs((rep_mapper.predict(j[1]['replicate_scan_rt']) if rep_mapper else j[1]['replicate_scan_rt'])-ion_rt), j[1]) for j in replicate_search_list[i]], key=operator.itemgetter(0))[0][1]
                 raw_scans.append(best_scan)
 
+        quant_msn_map = [i for i in msn_map if i[0] == msn_for_quant] if not args.mrm else msn_map
+        manager = Manager()
+        scan_mask = manager.dict()
+
         for i in xrange(threads):
             worker = Worker(queue=in_queue, results=result_queue, raw_name=filepath, mass_labels=mass_labels,
                             debug=args.debug, html=html, mono=not args.spread, precursor_ppm=args.precursor_ppm,
                             isotope_ppm=args.isotope_ppm, isotope_ppms=None, msn_rt_map=msn_rt_map, reporter_mode=reporter_mode,
                             reader_in=reader_in, reader_out=reader_outs[i], thread=i, quant_method=quant_method,
                             spline=spline, isotopologue_limit=isotopologue_limit, labels_needed=labels_needed,
-                            quant_msn_map=[i for i in msn_map if i[0] == msn_for_quant] if not args.mrm else msn_map,
+                            quant_msn_map=quant_msn_map,
                             overlapping_mz=overlapping_mz, min_resolution=args.min_resolution, min_scans=args.min_scans,
                             mrm_pair_info=mrm_pair_info, mrm=args.mrm, peak_cutoff=args.peak_cutoff, replicate=args.mva,
-                            ref_label=ref_label, max_peaks=args.max_peaks, parser_args=args)
+                            ref_label=ref_label, max_peaks=args.max_peaks, parser_args=args, scans_to_skip=scan_mask)
             workers.append(worker)
             worker.start()
 
@@ -868,7 +874,7 @@ def run_pyquant():
                     shift = 0
                     for mod in filter(lambda x: x, mods.split('|')):
                         aa, pos, mass, _ = mod.split(',', 3)
-                        mass = float('{0:0.5f}'.format(float(mass)))
+                        mass = get_formatted_mass(mass)
                         if aa in silac_shifts.get(mass, {}):
                             shift += mass
                     mass_shift += (float(shift)/float(charge))
@@ -977,9 +983,7 @@ def run_pyquant():
                                     'precursor': result.get('{}_precursor'.format(label_name)),
                                     'ms1': result.get('ms1')
                                 })] |= scans[isotope_index][xic_peak_index]
-                            if args.peaks_n != 1:
-                                peak_report.append(list(map(str, (xic_peak_info.get(i[0], 'NA') for i in PEAK_REPORTING))))
-                            else:
+                            if args.peaks_n == 1:
                                 # TODO: fix this terrible loop
                                 for i, v in enumerate(RESULT_ORDER):
                                     for j in xic_peak_info:
@@ -988,6 +992,9 @@ def run_pyquant():
                                                 xic_peak_summary[i].append(xic_peak_info[j])
                                             except KeyError:
                                                 xic_peak_summary[i] = [xic_peak_info[j]]
+                            else:
+                                peak_report.append(list(map(str, (xic_peak_info.get(i[0], 'NA') for i in PEAK_REPORTING))))
+
 
                     if args.peaks_n == 1:
                         for index, values in six.iteritems(xic_peak_summary):
