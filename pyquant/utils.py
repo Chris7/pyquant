@@ -913,10 +913,12 @@ def get_scan_resolution(scan):
 
     x = scan.index.values[left:right].astype(float)
     y = scan.values[left:right].astype(float)
-    peaks, residual = findAllPeaks(x, y, max_peaks=1)
+    peaks, residual = findAllPeaks(x, y, peak_width_start=1, max_peaks=-1)
     if peaks is None or not peaks.any():
         print('no peaks in ', scan)
         return 0
 
-    fwhm = peaks[2]*2.355
-    return peaks[1]/fwhm
+    largest_peak = np.argmax(peaks[0::3])
+
+    fwhm = peaks[2+largest_peak*3]*2.355
+    return peaks[1+largest_peak*3]/fwhm
