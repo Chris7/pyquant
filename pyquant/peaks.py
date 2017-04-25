@@ -346,6 +346,9 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             segment_x = xdata[left_break_point:right_break_point]
             segment_y = deepcopy(ydata[left_break_point:right_break_point])
 
+            if not segment_y.any():
+                continue
+
             if not micro:
                 segment_max = segment_y.max()
                 segment_y /= segment_max
