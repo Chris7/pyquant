@@ -16,7 +16,7 @@ PEAK_RESOLUTION_COMMON_MODE = 'common-peak'
 PEAK_FINDING_REL_MAX = 'relative-max'
 PEAK_FINDING_DERIVATIVE = 'derivative'
 
-pyquant_parser = argparse.ArgumentParser(prog='PyQuant v{}'.format(version), description=description)
+pyquant_parser = argparse.ArgumentParser(prog='PyQuant v{}'.format(version), description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 pyquant_parser.add_argument('-p', help="Threads to run", type=int, default=1)
 pyquant_parser.add_argument('--theo-xic', help=argparse.SUPPRESS, action='store_true')
 
@@ -100,8 +100,9 @@ peak_parameters.add_argument('--peak-resolution-mode', help='The method to use t
 
 xic_parameters = pyquant_parser.add_argument_group('XIC Options')
 xic_parameters.add_argument('--xic-snr', help='When the SNR of the XIC falls below this, stop searching for more data. Useful for escaping from noisy shoulders and contaminants.', type=float, default=1.0)
+xic_parameters.add_argument('--xic-missing-ion-count', help='This specifies how many consequtive scans an ion can be missing for until it is no longer considered.', type=int, default=1)
 xic_parameters.add_argument('--xic-window-size', help='When the number of scans in a given direction from the initial datapoint of an XIC passes this, stop. Default is -1 (disabled). Useful for removing contaminants', type=int, default=-1)
-xic_parameters.add_argument('--xic-smooth', help='Prior to fitting, apply a smooth data with a Gaussian filter.', action='store_true')
+xic_parameters.add_argument('--xic-smooth', help='Prior to fitting, smooth data with a Gaussian filter.', action='store_true')
 xic_parameters.add_argument('--export-msn', help='This will export spectra of a given MSN that were used to provide the quantification.', action='store_false')
 
 

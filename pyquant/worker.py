@@ -50,7 +50,7 @@ class Worker(Process):
         self.queue = queue
         self.reader_in, self.reader_out = reader_in, reader_out
         self.msn_rt_map = pd.Series(msn_rt_map)
-        self.msn_rt_map.sort()
+        self.msn_rt_map.sort_values(inplace=True)
         self.results = results
         self.mass_labels = {'Light': {}} if mass_labels is None else mass_labels
         self.shifts = {0: "Light"}
@@ -90,6 +90,7 @@ class Worker(Process):
         self.filter_peaks = not self.parser_args.disable_peak_filtering
         self.report_ratios = not self.parser_args.no_ratios
         self.bigauss_stepsize = 6 if self.parser_args.remove_baseline else 4
+        self.xic_missing_ion_count = self.parser_args.xic_missing_ion_count
 
         self.scans_to_skip = scans_to_skip or {}
 
@@ -565,7 +566,7 @@ class Worker(Process):
                 all_data_intensity[delta].append(current_scan_intensity)
                 if not found or ((np.abs(ms_index) > 7 and self.low_snr(all_data_intensity[delta], thresh=self.parser_args.xic_snr)) or (self.parser_args.xic_window_size != -1 and np.abs(ms_index) >= self.parser_args.xic_window_size)):
                     not_found += 1
-                    if current_scan is None or (not_found >= 2 and not self.parser_args.msn_all_scans):
+                    if current_scan is None or (not_found > self.xic_missing_ion_count and not self.parser_args.msn_all_scans):
                         not_found = 0
                         if delta == -1:
                             delta = 1
@@ -1177,7 +1178,7 @@ class Worker(Process):
             del combined_data
             del isotopes_chosen
         except Exception as e:
-            print('ERROR encountered. Please report at https://github.com/Chris7/pyquant/issues:\n {}'.format(traceback.format_exc()))
+            print('ERROR encountered. Please report at https://github.com/Chris7/pyquant/issues:\n {}\nParameters: {}'.format(traceback.format_exc(), params))
             try:
                 self.results.put(result_dict)
             except Exception as e:
