@@ -50,7 +50,7 @@ class Worker(Process):
         self.queue = queue
         self.reader_in, self.reader_out = reader_in, reader_out
         self.msn_rt_map = pd.Series(msn_rt_map)
-        self.msn_rt_map.sort()
+        self.msn_rt_map.sort_values(inplace=True)
         self.results = results
         self.mass_labels = {'Light': {}} if mass_labels is None else mass_labels
         self.shifts = {0: "Light"}
@@ -1177,7 +1177,7 @@ class Worker(Process):
             del combined_data
             del isotopes_chosen
         except Exception as e:
-            print('ERROR encountered. Please report at https://github.com/Chris7/pyquant/issues:\n {}'.format(traceback.format_exc()))
+            print('ERROR encountered. Please report at https://github.com/Chris7/pyquant/issues:\n {}\nParameters: {}'.format(traceback.format_exc(), params))
             try:
                 self.results.put(result_dict)
             except Exception as e:
