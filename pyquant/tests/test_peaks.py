@@ -1,19 +1,39 @@
 __author__ = 'chris'
+import os
 import unittest
+import cPickle as pickle
 from random import randint, random
 
 import numpy as np
+import six
 from six.moves import xrange
 from sympy import symbols, diff, exp, Piecewise
 
 from pyquant.tests.utils import timer
-from pyquant.tests.mixins import GaussianMixin
+from pyquant.tests.mixins import FileMixins, GaussianMixin
 from pyquant import peaks
 from pyquant import cpeaks
 from pyquant import PEAK_FINDING_DERIVATIVE, PEAK_FINDING_REL_MAX
 
 def get_gauss_value(x, amp, mu, std):
     return amp*np.exp(-(x - mu)**2/(2*std**2))
+
+
+class PeakFindingTests(FileMixins, unittest.TestCase):
+    def test_segmenty_negatives(self):
+        # Regression where a mostly positive dataset with negatives led to -inf values in the data array
+        # due to np.max(segment_y) being 0 since all data was negative
+        with open(os.path.join(self.data_dir, 'peak_data.pickle'), 'rb') as peak_file:
+            data = pickle.load(peak_file, encoding='latin1') if six.PY3 else pickle.load(peak_file)
+
+        x, y = data['invalid_operands']
+        params, res = peaks.findAllPeaks(x, y, max_peaks=-1, bigauss_fit=True, peak_find_method='derivative')
+        means = params[1::4]
+        desired = np.array([
+            0.14030404,  0.33,  1.47497931,  1.79698942,  2.17996798, 2.73129448,
+            3.22956056,  3.56304131,  4.61746204,  5.2967131, 5.84880824
+        ])
+        np.testing.assert_allclose(means, desired=desired, atol=0.1)
 
 class GaussianTests(GaussianMixin, unittest.TestCase):
 

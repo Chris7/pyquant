@@ -158,8 +158,11 @@ cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_ndim(np.ndarray[FLOAT_t, ndim=1] xdata
     cdef np.ndarray[FLOAT_t, ndim=1] sigmasr
     amps, mus, sigmasl, sigmasr = params[::4], params[1::4], params[2::4], params[3::4]
     cdef np.ndarray[FLOAT_t, ndim=1] data = np.zeros(len(xdata))
+    cdef np.ndarray[FLOAT_t, ndim=1] fit = np.zeros(len(xdata))
     for amp, mu, sigma1, sigma2 in zip(amps, mus, sigmasl, sigmasr):
-        data += bigauss(xdata, amp, mu, sigma1, sigma2)
+        fit = bigauss(xdata, amp, mu, sigma1, sigma2)
+        if fit.shape[0] == data.shape[0]:
+            data += bigauss(xdata, amp, mu, sigma1, sigma2)
     return data
 
 cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_bl_ndim(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] params):
@@ -172,14 +175,19 @@ cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_bl_ndim(np.ndarray[FLOAT_t, ndim=1] xd
     cdef np.ndarray[INT_t, ndim=1] sort_order
     cdef FLOAT_t amp, mu, sigma1, sigma2
     cdef np.ndarray[FLOAT_t, ndim=1] data = np.zeros(len(xdata))
+    cdef np.ndarray[FLOAT_t, ndim=1] fit = np.zeros(len(xdata))
+    cdef np.ndarray[FLOAT_t, ndim=1] baseline = np.zeros(len(xdata))
 
     amps, mus, sigmasl, sigmasr, slopes, intercepts = params[::6], params[1::6], params[2::6], params[3::6], params[4::6], params[5::6]
     sort_order = np.argsort(mus)
 
     for index in sort_order:
         amp, mu, sigma1, sigma2 = amps[index], mus[index], sigmasl[index], sigmasr[index]
-        data += bigauss(xdata, amp, mu, sigma1, sigma2)
-        data += adjust_baseline(xdata, mus, slopes[index], intercepts[index], index)
+        fit = bigauss(xdata, amp, mu, sigma1, sigma2)
+        baseline = adjust_baseline(xdata, mus, slopes[index], intercepts[index], index)
+        if fit.shape[0] == data.shape[0] and baseline.shape[0] == data.shape[0]:
+            data += fit
+            data += baseline
     return data
 
 

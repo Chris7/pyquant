@@ -350,7 +350,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 continue
 
             if not micro:
-                segment_max = segment_y.max()
+                segment_max = np.abs(segment_y).max()
                 segment_y /= segment_max
 
             segment_row_peaks = []
@@ -508,6 +508,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         fits = fitted_segments[break_point]
         lowest_bic = np.inf
         best_segment_res = 0
+        best_segment_fit = None
         for bic, res in fits:
             if bic < lowest_bic or (getattr(best_segment_res, '_contains_rt', False) != True and res._contains_rt == True):
                 if debug:
@@ -521,7 +522,10 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 lowest_bic = bic
             if debug:
                 sys.stderr.write('{} - best: {}\n'.format(res, best_segment_fit))
-        best_fit += best_segment_fit.tolist()
+        else:
+            if best_segment_fit is None:
+                return np.array([]), np.inf
+            best_fit += best_segment_fit.tolist()
 
     best_fit = np.array(best_fit)
     peak_func = bigauss_ndim if bigauss_fit else gauss_ndim
