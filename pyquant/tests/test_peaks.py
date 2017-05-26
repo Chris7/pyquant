@@ -1,11 +1,11 @@
 __author__ = 'chris'
 import os
 import unittest
-import cPickle as pickle
 from random import randint, random
 
 import numpy as np
 import six
+import six.moves.cPickle as pickle
 from six.moves import xrange
 from sympy import symbols, diff, exp, Piecewise
 
