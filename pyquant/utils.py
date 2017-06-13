@@ -103,7 +103,7 @@ def get_scans_under_peaks(rt_scan_map, found_peaks):
     for peak_isotope, isotope_peak_data in six.iteritems(found_peaks):
         scans[peak_isotope] = {}
         for xic_peak_index, xic_peak_params in six.iteritems(isotope_peak_data):
-            mean, stdl, stdr = xic_peak_params['mean'], xic_peak_params['std'], xic_peak_params['std2']
+            mean, stdl, stdr = xic_peak_params['peak_mean'], xic_peak_params['std'], xic_peak_params['std2']
             left, right = mean - 2 * stdl, mean + 2 * stdr
             scans[peak_isotope][xic_peak_index] = set(
                 rt_scan_map[(rt_scan_map.index >= left) & (rt_scan_map.index <= right)].values)
