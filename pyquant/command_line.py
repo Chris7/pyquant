@@ -1032,7 +1032,7 @@ def run_pyquant():
     out.flush()
     out.close()
     # fix the header if we need to. We reopen the file because Windows doesn't like it when we read on a file with 'w+'
-    if args.peaks_n != 1:
+    if args.peaks_n != 1 and out != sys.stdout:
         tmp_file = '{}_ot'.format(out_path)
         with open(out.name, 'r') as out:
             with open(tmp_file, 'w') as o:

@@ -26,6 +26,9 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         self.assertListEqual(selection, [5, 6, 7, 8, 9])
         selection = utils.select_window(x, 8, 20)
         self.assertListEqual(selection, x)
+        # Make sure we don't break if a float is passed
+        selection = utils.select_window(x, 8, 20.0)
+        self.assertListEqual(selection, x)
 
     def test_divide_peaks(self):
         chunks = utils.divide_peaks(self.one_gauss)
