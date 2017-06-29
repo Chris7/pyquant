@@ -66,7 +66,11 @@
                 <code>docker run -v /home/chris/msexperiment:/msexperiment chrismit7/pyquant --search-file /msexperiment/search_file.msf -o /msexperiment/pyquant_results</code>
               </p>
             <h4><strong>Mac/Linux</strong></h4>
-              <p>For mac and linux OS's, <code>pip install pyquant-ms</code> should be sufficient to install PyQuant (provided you have pip installed).</p>
+              <p>For Mac and Linux OS's, PyQuant is installable via the standard python packaging tool, pip.</p>
+              <code>
+                pip install Cython
+                pip install pyquant-ms
+              </code>
             <h4><strong>Windows</strong></h4>
               <em>The easiest way</em>
               <p>Use <a href="https://www.docker.com">Docker</a></p>
@@ -321,7 +325,7 @@ def find_vcvarsall(version):
             <p>Here are some common cases and the commands used to run the given analysis</p>
             <dl class="dl-horizontal">
               <dt>SILAC</dt>
-              <dd><code>--search-file xxx_evidence.txt --label-method K8R10 --maxquant</code></dd>
+              <dd><code>--tsv xxx_evidence.txt --label-method K8R10 --maxquant</code></dd>
             </dl>
             <dl class="dl-horizontal">
               <dt>MS<sup>3</sup> based TMT</dt>
