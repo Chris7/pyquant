@@ -42,8 +42,8 @@ class PeakFindingTests(FileMixins, unittest.TestCase):
         params, res = peaks.findAllPeaks(x, y, max_peaks=-1, bigauss_fit=True, peak_find_method=PEAK_FINDING_DERIVATIVE)
         means = params[1::4]
         desired = np.array([
-            0.14030404,  0.33,  1.47497931,  1.79698942,  2.17996798, 2.73129448,
-            3.22956056,  3.56304131,  4.61746204,  5.2967131, 5.84880824
+            0.13515435795212014, 0.33, 1.474992882679938, 1.799090776628427, 2.1804381077669395, 2.6350000000000002,
+            3.227084689771589, 3.617021549048893, 4.903333333333333, 5.296162908137783, 5.8366172292356175
         ])
         np.testing.assert_allclose(means, desired=desired, atol=0.1)
 
@@ -90,7 +90,7 @@ class GaussianTests(GaussianMixin, unittest.TestCase):
     def test_experimental(self):
         # Experimental data
         x, y = self.peak_data['offset_fit']
-        params, residual = peaks.findAllPeaks(x, y, bigauss_fit=True, filter=True)
+        params, residual = peaks.findAllPeaks(x, y, bigauss_fit=True, filter=True, debug=True, chunk_factor=1.0)
         np.testing.assert_allclose(
             params,
             np.array([
@@ -99,7 +99,7 @@ class GaussianTests(GaussianMixin, unittest.TestCase):
                 2875049.3535169736, 47.814168289613384, 0.02039999999999864, 0.8506165022544128,
                 1497094.0179009268, 49.52627093232067, 0.022850000000001813, 0.22106374146478588
             ]),
-            atol=10
+            atol=10,
         )
 
 

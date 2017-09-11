@@ -259,7 +259,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                  rt_peak=None, mrm=False, max_peaks=4, debug=False, peak_width_start=3, snr=0, zscore=0, amplitude_filter=0,
                  peak_width_end=4, baseline_correction=False, rescale=True, fit_negative=False, percentile_filter=0, micro=False,
                  method_opts=None, smooth=False, r2_cutoff=None, peak_find_method=PEAK_FINDING_REL_MAX, min_slope=None,
-                 min_peak_side_width=3, gap_interpolation=0, min_peak_width=None):
+                 min_peak_side_width=3, gap_interpolation=0, min_peak_width=None, chunk_factor=0.1):
 
     if micro:
         baseline_correction = False
@@ -310,7 +310,11 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
 
     # Next, for fitting multiple peaks, we want to divide up the space so we are not fitting peaks that
     # have no chance of actually impacting one another.
-    chunks = divide_peaks(np.abs(ydata_peaks), min_sep=5 if 5 > peak_width_end else peak_width_end)
+    chunks = divide_peaks(
+        np.abs(ydata_peaks),
+        min_sep=5 if 5 > peak_width_end else peak_width_end,
+        chunk_factor=chunk_factor
+    )
     if not chunks.any() or chunks[-1] != len(ydata_peaks):
         chunks = np.hstack((chunks, len(ydata_peaks)))
 
@@ -448,12 +452,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 res = sorted(results, key=attrgetter('fun'))[0]
             n = len(segment_x)
             k = len(res.x)
-            # this is actually incorrect, but works better...
-            # bic = n*np.log(res.fun/n)+k+np.log(n)
-            if bigauss_fit:
-                bic = 2 * k + 2 * np.log(res.fun / n)
-            else:
-                bic = res.fun
+            bic = n * np.log(res.fun / n) + k * np.log(n)
             res.bic = bic
 
             for index, value in enumerate(res.x[2::step_size]):

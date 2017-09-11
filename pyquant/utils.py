@@ -204,10 +204,16 @@ def nanmean(arr, empty=0):
         return empty
 
 
-def divide_peaks(peaks, min_sep=5):
+def divide_peaks(peaks, min_sep=5, chunk_factor=0.1):
     # We divide up the list of peaks to reduce the number of dimensions each fitting routine is working on
     # to improve convergence speeds
-    chunks = argrelextrema(np.abs(peaks), np.less, order=min_sep)[0]
+    chunks = argrelextrema(
+        np.abs(peaks),
+        # To account for peak overlaps, we need to ensure we do not separate peaks where their tails
+        # are overlapping by a significant amount
+        lambda x, y: np.less(x, y*chunk_factor),
+        order=min_sep
+    )[0]
     return chunks
 
 
