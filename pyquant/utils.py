@@ -593,7 +593,7 @@ def get_cross_points(data, pad=True):
 
     return cross_points
 
-def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_peak_height=1.05,
+def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_peak_height=None,
                           min_peak_side_width=2, max_peak_side_width=np.inf,
                           min_peak_width=None, max_peak_width=np.inf, smooth=True):
 
@@ -607,7 +607,7 @@ def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_pe
     #                           ^ peak max
     #
     #
-
+    rel_peak_height = rel_peak_height if rel_peak_height is not None else 1.05
     peaks_found = {'peaks': [], 'minima': []}
     ydata_peaks = ydata_peaks if ydata_peaks is not None else ydata
     ydata = np.abs(ydata_peaks)
