@@ -500,12 +500,17 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             #     best_fit = np.copy(res.x)
             #     best_rss = res.fun
 
-            fitted_segments[chunk_index].append((bic, res))
+            fitted_segments[(peak_width, chunk_index)].append((bic, res))
 
     # Figure out the best set of fits
-    best_fit = []
-    for break_point in sorted(fitted_segments.keys()):
-        fits = fitted_segments[break_point]
+    segment_order = sorted(fitted_segments.keys(), key=itemgetter(0, 1))
+    best_fits = {peak_width: {
+        'fit': [],
+        'residual': 0,
+    } for (peak_width, chunk_index) in segment_order}
+    for key in segment_order:
+        peak_width = key[0]
+        fits = fitted_segments[key]
         lowest_bic = np.inf
         best_segment_res = 0
         best_segment_fit = None
@@ -525,9 +530,14 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         else:
             if best_segment_fit is None:
                 return np.array([]), np.inf
-            best_fit += best_segment_fit.tolist()
+            best_fits[peak_width]['fit'] += best_segment_fit.tolist()
+            best_fits[peak_width]['residual'] += lowest_bic
 
-    best_fit = np.array(best_fit)
+    best_fit = np.array(sorted(
+        ((best_fits[key[0]]['residual'], best_fits[key[0]]['fit']) for key in segment_order),
+        key=itemgetter(0)
+    )[0][1])
+
     peak_func = bigauss_ndim if bigauss_fit else gauss_ndim
     # Get rid of peaks with low r^2
     if not micro and r2_cutoff is not None:

@@ -20,6 +20,18 @@ def get_gauss_value(x, amp, mu, std):
 
 
 class PeakFindingTests(FileMixins, unittest.TestCase):
+    def test_max_peaks(self):
+        # Regression where relative-max is reporting 2 peaks when max_peaks is set to 1. This occurred
+        # because we enforced max_peaks for each peak width when using the relative-max setting. Thus,
+        # the max peak for each peak width was combined to the final peak report. The update was to
+        # pick the peak_width with the lowest BIC.
+        with open(os.path.join(self.data_dir, 'peak_data.pickle'), 'rb') as peak_file:
+            data = pickle.load(peak_file, encoding='latin1') if six.PY3 else pickle.load(peak_file)
+
+        x, y = data['max_peaks_relative-max']
+        params, residual = peaks.findAllPeaks(x, y, max_peaks=1, peak_find_method=PEAK_FINDING_REL_MAX)
+        self.assertEqual(len(params), 3)
+
     def test_segmenty_negatives(self):
         # Regression where a mostly positive dataset with negatives led to -inf values in the data array
         # due to np.max(segment_y) being 0 since all data was negative
@@ -27,7 +39,7 @@ class PeakFindingTests(FileMixins, unittest.TestCase):
             data = pickle.load(peak_file, encoding='latin1') if six.PY3 else pickle.load(peak_file)
 
         x, y = data['invalid_operands']
-        params, res = peaks.findAllPeaks(x, y, max_peaks=-1, bigauss_fit=True, peak_find_method='derivative')
+        params, res = peaks.findAllPeaks(x, y, max_peaks=-1, bigauss_fit=True, peak_find_method=PEAK_FINDING_DERIVATIVE)
         means = params[1::4]
         desired = np.array([
             0.14030404,  0.33,  1.47497931,  1.79698942,  2.17996798, 2.73129448,
