@@ -27,7 +27,7 @@ class ITraqTest(mixins.FileMixins, unittest.TestCase):
             if delta != 0 and delta < 300:
                 delta = 300
             self.assertAlmostEqual(i, j, delta=delta)
-        for i, j in zip([int(i) for i in data['116 Intensity'].values.tolist()], [1031, 15314, 0, 1045, 11381, 3350, 8577]):
+        for i, j in zip([int(i) for i in data['116 Intensity'].values.tolist()], [1031, 15314, 0, 94729, 11381, 3350, 8577]):
             delta = j * 0.1
             if delta != 0 and delta < 300:
                 delta = 300
