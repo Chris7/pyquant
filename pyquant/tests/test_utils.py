@@ -32,7 +32,7 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
 
     def test_divide_peaks(self):
         chunks = utils.divide_peaks(self.one_gauss)
-        two_gauss_chunks = utils.divide_peaks(self.two_gauss)
+        two_gauss_chunks = utils.divide_peaks(self.two_gauss, chunk_factor=1.0)
         self.assertEqual(len(chunks), 0)
         self.assertEqual(len(two_gauss_chunks), 1)
         self.assertEqual(two_gauss_chunks[0], 65)

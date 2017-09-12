@@ -204,10 +204,16 @@ def nanmean(arr, empty=0):
         return empty
 
 
-def divide_peaks(peaks, min_sep=5):
+def divide_peaks(peaks, min_sep=5, chunk_factor=0.1):
     # We divide up the list of peaks to reduce the number of dimensions each fitting routine is working on
     # to improve convergence speeds
-    chunks = argrelextrema(np.abs(peaks), np.less, order=min_sep)[0]
+    chunks = argrelextrema(
+        np.abs(peaks),
+        # To account for peak overlaps, we need to ensure we do not separate peaks where their tails
+        # are overlapping by a significant amount
+        lambda x, y: np.less(x, y*chunk_factor),
+        order=min_sep
+    )[0]
     return chunks
 
 
@@ -442,7 +448,7 @@ def merge_peaks(peaks_found, debug=False):
 def find_possible_peaks(xdata, ydata, ydata_peaks, peak_find_method=PEAK_FINDING_REL_MAX, min_dist=None, local_filter_size=0,
                  rt_peak=None, max_peaks=4, peak_width_start=2, snr=0, zscore=0, amplitude_filter=0,
                  peak_width_end=4, fit_negative=False, percentile_filter=0, micro=False, min_slope=None,
-                 min_peak_side_width=None, min_peak_width=5, smooth=False):
+                 min_peak_side_width=None, min_peak_width=5, smooth=False, min_peak_increase=1.05):
     PEAK_METHODS = {
         PEAK_FINDING_REL_MAX: partial(
             find_peaks_rel_max,
@@ -456,6 +462,7 @@ def find_possible_peaks(xdata, ydata, ydata_peaks, peak_find_method=PEAK_FINDING
             min_peak_side_width=min_peak_side_width,
             min_peak_width=min_peak_width,
             smooth=smooth,
+            rel_peak_height=min_peak_increase,
         ),
     }
     abs_ydata = np.abs(ydata)
@@ -592,7 +599,7 @@ def get_cross_points(data, pad=True):
 
     return cross_points
 
-def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_peak_height=1.05,
+def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_peak_height=None,
                           min_peak_side_width=2, max_peak_side_width=np.inf,
                           min_peak_width=None, max_peak_width=np.inf, smooth=True):
 
@@ -606,7 +613,7 @@ def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_pe
     #                           ^ peak max
     #
     #
-
+    rel_peak_height = rel_peak_height if rel_peak_height is not None else 1.05
     peaks_found = {'peaks': [], 'minima': []}
     ydata_peaks = ydata_peaks if ydata_peaks is not None else ydata
     ydata = np.abs(ydata_peaks)

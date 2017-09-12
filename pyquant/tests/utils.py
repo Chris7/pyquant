@@ -1,10 +1,8 @@
 import os
-import six
-# import plotly.plotly as py
-# import plotly
-# plotly.tools.set_credentials_file(username=os.environ.get('plotly_username'), api_key=os.environ.get('plotly_api_key'))
-# from plotly.graph_objs import Scatter
 from functools import wraps
+
+import six
+from six.moves import cPickle as pickle
 
 def timer(func):
     @wraps(func)
@@ -14,12 +12,16 @@ def timer(func):
         val = func(*args, **kwargs)
         elapsed = time.time()-start
         print('{} evaluated in {}'.format(func.func_name if six.PY2 else func.__name__, elapsed))
-        # trace = Scatter(
-        #     x=os.environ.get('TRAVIS_BUILD_NUMBER', 1),
-        #     y=elapsed,
-        #     name=func.func_name
-        # )
-        # data = [trace]
-        # py.plot(data, filename='pyquant_stats_{}'.format(func.func_name), fileopt='extend', auto_open=False)
         return val
     return inner
+
+def update_pickle(key, data, overwrite=False):
+    base_dir = os.path.split(__file__)[0]
+    pickle_file = os.path.join(base_dir, 'data', 'peak_data.pickle')
+    with open(pickle_file, 'rb') as f:
+        p = pickle.load(f)
+    if key in p and not overwrite:
+        raise Exception('{} already exists. Pass overwrite=True to overwrite existing data.'.format(key))
+    p[key] = data
+    with open(pickle_file, 'wb') as o:
+        pickle.dump(p, o)

@@ -7,6 +7,12 @@ release:
 	python setup.py sdist
 	twine upload dist/*
 
+docker-build:
+	docker build -t chrismit7/pyquant .
+
+docker-release:
+	docker push chrismit7/pyquant
+
 test:
 	nosetests --with-coverage --cover-erase --cover-package=pyquant pyquant.tests
 	coverage report --omit=pyquant/tests*

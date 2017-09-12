@@ -23,7 +23,7 @@ os.chdir(os.path.normpath(os.path.join(os.path.abspath(__file__), os.pardir)))
 
 setup(
     name='pyquant-ms',
-    version='0.1.49',
+    version='0.2.0',
     packages=find_packages(),
     scripts=['scripts/pyQuant'],
     entry_points={'console_scripts': ['pyQuant = pyquant.command_line:run_pyquant',]},
