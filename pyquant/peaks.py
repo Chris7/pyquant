@@ -532,11 +532,12 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 return np.array([]), np.inf
             best_fits[peak_width]['fit'] += best_segment_fit.tolist()
             best_fits[peak_width]['residual'] += lowest_bic
+            best_fits[peak_width]['contains_rt'] = not best_segment_res._contains_rt # this is so it sorts lower
 
     best_fit = np.array(sorted(
-        ((best_fits[key[0]]['residual'], best_fits[key[0]]['fit']) for key in segment_order),
-        key=itemgetter(0)
-    )[0][1])
+        ((best_fits[key[0]]['contains_rt'], best_fits[key[0]]['residual'], best_fits[key[0]]['fit']) for key in segment_order),
+        key=itemgetter(0, 1)
+    )[0][2])
 
     peak_func = bigauss_ndim if bigauss_fit else gauss_ndim
     # Get rid of peaks with low r^2

@@ -69,10 +69,26 @@ cpdef np.ndarray[FLOAT_t, ndim=1] gauss_bl_ndim(np.ndarray[FLOAT_t, ndim=1] xdat
     return data
 
 cpdef FLOAT_t gauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, int baseline_correction):
+    if any([np.isnan(i) for i in guess]):
+        return np.inf
+    cdef int step_size = 5 if baseline_correction else 3
+    cdef int index
+    cdef int data_index
+    cdef FLOAT_t mu, sigma1, lb, rb
+    cdef FLOAT_t residual = 0
     cdef np.ndarray[FLOAT_t, ndim=1] data = gauss_bl_ndim(xdata, guess) if baseline_correction else gauss_ndim(xdata, guess)
-    # absolute deviation as our distance metric. Empirically found to give better results than
-    # residual sum of squares for this data.
-    cdef FLOAT_t residual = sum((ydata-data)**2)
+
+    for index in xrange(1, guess.shape[0], step_size):
+        mu, sigma1 = guess[index:index+2]
+        lb = mu - sigma1 * 3
+        rb = mu + sigma1 * 3
+        for data_index in xrange(0, xdata.shape[0]):
+            if xdata[data_index] < lb:
+                continue
+            elif xdata[data_index] > rb:
+                break
+            residual += (ydata[data_index]-data[data_index])**2
+
     return residual
 
 cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_jac(np.ndarray[FLOAT_t, ndim=1] params, np.ndarray[FLOAT_t, ndim=1] x, np.ndarray[FLOAT_t, ndim=1] y, baseline_correction):
@@ -174,6 +190,7 @@ cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_bl_ndim(np.ndarray[FLOAT_t, ndim=1] xd
     cdef np.ndarray[FLOAT_t, ndim=1] intercepts
     cdef np.ndarray[INT_t, ndim=1] sort_order
     cdef FLOAT_t amp, mu, sigma1, sigma2
+    cdef int index
     cdef np.ndarray[FLOAT_t, ndim=1] data = np.zeros(len(xdata))
     cdef np.ndarray[FLOAT_t, ndim=1] fit = np.zeros(len(xdata))
     cdef np.ndarray[FLOAT_t, ndim=1] baseline = np.zeros(len(xdata))
@@ -194,8 +211,24 @@ cpdef np.ndarray[FLOAT_t, ndim=1] bigauss_bl_ndim(np.ndarray[FLOAT_t, ndim=1] xd
 cpdef FLOAT_t bigauss_func(np.ndarray[FLOAT_t, ndim=1] guess, np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, int baseline_correction):
     if any([np.isnan(i) for i in guess]):
         return np.inf
+    cdef int step_size = 6 if baseline_correction else 4
+    cdef int index
+    cdef int data_index
+    cdef FLOAT_t mu, sigma1, sigma2, lb, rb
+    cdef FLOAT_t residual = 0
     cdef np.ndarray[FLOAT_t, ndim=1] data = bigauss_bl_ndim(xdata, guess) if baseline_correction else bigauss_ndim(xdata, guess)
-    cdef FLOAT_t residual = sum((ydata-data)**2)
+
+    for index in xrange(1, guess.shape[0], step_size):
+        mu, sigma1, sigma2 = guess[index:index+3]
+        lb = mu - sigma1 * 3
+        rb = mu + sigma2 * 3
+        for data_index in xrange(0, xdata.shape[0]):
+            if xdata[data_index] < lb:
+                continue
+            elif xdata[data_index] > rb:
+                break
+            residual += (ydata[data_index]-data[data_index])**2
+
     return residual
 
 cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata,
