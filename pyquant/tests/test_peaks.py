@@ -32,6 +32,14 @@ class PeakFindingTests(FileMixins, unittest.TestCase):
         params, residual = peaks.findAllPeaks(x, y, max_peaks=1, peak_find_method=PEAK_FINDING_REL_MAX)
         self.assertEqual(len(params), 3)
 
+    def test_max_peaks_with_rt_peak_regression(self):
+        with open(os.path.join(self.data_dir, 'peak_data.pickle'), 'rb') as peak_file:
+            data = pickle.load(peak_file, encoding='latin1') if six.PY3 else pickle.load(peak_file)
+
+        x, y = data['max_peaks_rt-peak-regression']
+        params, residual = peaks.findAllPeaks(x, y, max_peaks=1, debug=True, rt_peak=360)
+        np.testing.assert_allclose(params[1], desired=365.78, atol=0.1)
+
     def test_segmenty_negatives(self):
         # Regression where a mostly positive dataset with negatives led to -inf values in the data array
         # due to np.max(segment_y) being 0 since all data was negative
