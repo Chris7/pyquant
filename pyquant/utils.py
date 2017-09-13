@@ -231,12 +231,9 @@ def divide_peaks(xdata, ydata, guess, bounds, step_size=4, bigauss_fit=False):
             mean_lb = bounds[index][0]
             left_std = guess[index+1]
             left_bound = mean_lb - 2*left_std
-            print('left bound is', left_bound)
-            print('closest xdata is', xdata[np.searchsorted(xdata, left_bound)], 'at', np.searchsorted(xdata, left_bound))
             # We substract one here because we are establishing the left boundary and by default, searchsorted gives us the
             # index that will preserve the sort order to the left
             chunks.append(relative_minima[np.searchsorted(relative_minima, np.searchsorted(xdata, left_bound)-1)-1])
-            print('added left chunk', left_bound, chunks[-1])
         mean_rb = bounds[index][1]
         right_std = guess[index+1] if not bigauss_fit else guess[index+2]
         right_bound = mean_rb + 2*right_std
@@ -252,15 +249,11 @@ def divide_peaks(xdata, ydata, guess, bounds, step_size=4, bigauss_fit=False):
                 right_bound = peak2_mean_rb + 2*peak2_right_std
             else:
                 # we've escaped!
-                print('right bound is', right_bound)
-                print('closest xdata is', xdata[np.searchsorted(xdata, right_bound)], 'at', np.searchsorted(xdata, right_bound))
                 right_chunk_bound = relative_minima[np.searchsorted(relative_minima, np.searchsorted(xdata, right_bound))]
                 chunks.append(right_chunk_bound)
-                print('added right chunk', right_bound, chunks[-1])
                 break
     if chunks[-1] != len(xdata):
         chunks.append(len(xdata))
-    print('chunks are', chunks, 'rel min is', relative_minima)
     return np.array(chunks)
 
 
