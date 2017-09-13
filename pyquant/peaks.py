@@ -259,7 +259,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                  rt_peak=None, mrm=False, max_peaks=4, debug=False, peak_width_start=3, snr=0, zscore=0, amplitude_filter=0,
                  peak_width_end=4, baseline_correction=False, rescale=True, fit_negative=False, percentile_filter=0, micro=False,
                  method_opts=None, smooth=False, r2_cutoff=None, peak_find_method=PEAK_FINDING_REL_MAX, min_slope=None,
-                 min_peak_side_width=3, gap_interpolation=0, min_peak_width=None, min_peak_increase=None, chunk_factor=0.1):
+                 min_peak_side_width=3, gap_interpolation=0, min_peak_width=None, min_peak_increase=None):
 
     if micro:
         baseline_correction = False
@@ -308,16 +308,6 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         min_peak_increase=min_peak_increase,
     )
 
-    # Next, for fitting multiple peaks, we want to divide up the space so we are not fitting peaks that
-    # have no chance of actually impacting one another.
-    chunks = divide_peaks(
-        np.abs(ydata_peaks),
-        min_sep=5 if 5 > peak_width_end else peak_width_end,
-        chunk_factor=chunk_factor
-    )
-    if not chunks.any() or chunks[-1] != len(ydata_peaks):
-        chunks = np.hstack((chunks, len(ydata_peaks)))
-
     logger.debug('found: {}\n'.format(final_peaks))
 
     step_size = 4 if bigauss_fit else 3
@@ -342,6 +332,27 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             continue
 
         minima_array = np.array(peak_info['minima'], dtype=np.long)
+
+        if not ydata.any():
+            continue
+
+        chunk_guess, chunk_bounds = estimate_peak_parameters(
+            xdata,
+            ydata,
+            row_peaks,
+            minima_array,
+            fit_negative=fit_negative,
+            rel_peak_constraint=rel_peak_constraint,
+            micro=micro,
+            bigauss_fit=bigauss_fit,
+            baseline_correction=baseline_correction
+        )
+
+        # We use our guesses to divide peaks up into separate chunks so we do not run into a combinatorial
+        # explosion of parameters to estimate. We divide up peaks so peaks that have no chance of impacting
+        # one another are not fit in the same routine.
+        chunks = divide_peaks(xdata, ydata_peaks, chunk_guess, chunk_bounds, bigauss_fit=bigauss_fit, step_size=step_size)
+
         # Now that we have estimated the parameters for fitting all the data, we divide it up into
         # chunks and fit each segment. The choice to fit all parameters first is to prevent cases
         # where a chunk is dividing two overlapping points and the variance estimate may be too low.
@@ -397,7 +408,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
 
             # Because the amplitude of peaks can vary wildly, we have to make sure our tolerance matters for the
             # smallest peaks. i.e. if we are fitting two peaks, one with an amplitude of 20M and another with 10000,
-            # changes in the smaller peak will be below our tolerance and the minimization routine can ignore them
+            # changes in the smaller peak will be below our tolerance and the minimization routine will ignore them
 
             if 'ftol' not in opts and not micro:
                 min_tol = 1e-10

@@ -204,17 +204,64 @@ def nanmean(arr, empty=0):
         return empty
 
 
-def divide_peaks(peaks, min_sep=5, chunk_factor=0.1):
-    # We divide up the list of peaks to reduce the number of dimensions each fitting routine is working on
-    # to improve convergence speeds
-    chunks = argrelextrema(
-        np.abs(peaks),
-        # To account for peak overlaps, we need to ensure we do not separate peaks where their tails
-        # are overlapping by a significant amount
-        lambda x, y: np.less(x, y*chunk_factor),
-        order=min_sep
+def divide_peaks(xdata, ydata, guess, bounds, step_size=4, bigauss_fit=False):
+    # First, we get our minima in the data to exclude noisy and areas of very low signal
+    # from the fits. If we have a large area of little signal in our data, it doesn't
+    # make sense to penalize our residual against this area
+    relative_minima = argrelextrema(
+        np.abs(ydata),
+        np.less,
+        order=5
     )[0]
-    return chunks
+    if 0 not in relative_minima:
+        relative_minima = np.insert(relative_minima, 0, 0)
+    if len(xdata) not in relative_minima:
+        relative_minima = np.append(relative_minima, len(xdata))
+
+    # This returns a series of breakpoints to divide xdata according to peak
+    # estimates
+    assigned_peaks = set([])
+    chunks = []
+    for index in xrange(1, len(guess), step_size):
+        if index in assigned_peaks:
+            continue
+        assigned_peaks.add(index)
+        if not chunks:
+            # initialize with the leftmost boundary
+            mean_lb = bounds[index][0]
+            left_std = guess[index+1]
+            left_bound = mean_lb - 2*left_std
+            print('left bound is', left_bound)
+            print('closest xdata is', xdata[np.searchsorted(xdata, left_bound)], 'at', np.searchsorted(xdata, left_bound))
+            # We substract one here because we are establishing the left boundary and by default, searchsorted gives us the
+            # index that will preserve the sort order to the left
+            chunks.append(relative_minima[np.searchsorted(relative_minima, np.searchsorted(xdata, left_bound)-1)-1])
+            print('added left chunk', left_bound, chunks[-1])
+        mean_rb = bounds[index][1]
+        right_std = guess[index+1] if not bigauss_fit else guess[index+2]
+        right_bound = mean_rb + 2*right_std
+        for index2 in xrange(index+step_size, len(guess), step_size):
+            peak2_mean_lb = bounds[index2][0]
+            peak2_left_std = guess[index2+1]
+            peak2_left_bound = peak2_mean_lb - 2*peak2_left_std
+            if peak2_left_bound < right_bound:
+                # Peaks are in the same chunk
+                assigned_peaks.add(index2)
+                peak2_mean_rb = bounds[index2][1]
+                peak2_right_std = guess[index2+1] if not bigauss_fit else guess[index2+2]
+                right_bound = peak2_mean_rb + 2*peak2_right_std
+            else:
+                # we've escaped!
+                print('right bound is', right_bound)
+                print('closest xdata is', xdata[np.searchsorted(xdata, right_bound)], 'at', np.searchsorted(xdata, right_bound))
+                right_chunk_bound = relative_minima[np.searchsorted(relative_minima, np.searchsorted(xdata, right_bound))]
+                chunks.append(right_chunk_bound)
+                print('added right chunk', right_bound, chunks[-1])
+                break
+    if chunks[-1] != len(xdata):
+        chunks.append(len(xdata))
+    print('chunks are', chunks, 'rel min is', relative_minima)
+    return np.array(chunks)
 
 
 def inffilter(arr):

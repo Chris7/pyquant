@@ -33,7 +33,7 @@ class PeakFindingTests(FileMixins, unittest.TestCase):
             data = pickle.load(peak_file, encoding='latin1') if six.PY3 else pickle.load(peak_file)
 
         x, y = data['max_peaks_rt-peak-regression']
-        params, residual = peaks.findAllPeaks(x, y, max_peaks=1, debug=True, rt_peak=360)
+        params, residual = peaks.findAllPeaks(x, y, max_peaks=1, rt_peak=360)
         np.testing.assert_allclose(params[1], desired=365.78, atol=0.1)
 
     def test_baseline_correction_derivative(self):
@@ -49,11 +49,11 @@ class PeakFindingTests(FileMixins, unittest.TestCase):
             rt_peak=328,
             peak_find_method='derivative',
         )
-        np.testing.assert_allclose(
-            params,
-            desired=np.array([1327.60, 330.15, 4.22, 5.09, -1597]),
-            atol=1
-        )
+        np.testing.assert_allclose(params[0], 1327, atol=10)
+        np.testing.assert_allclose(params[1], 330.15, atol=0.5)
+        np.testing.assert_allclose(params[2], 4.22, atol=0.5)
+        np.testing.assert_allclose(params[3], 5.09, atol=1)
+        np.testing.assert_allclose(params[4], -1597, atol=30)
 
 
     def test_segmenty_negatives(self):
@@ -104,16 +104,16 @@ class GaussianTests(GaussianMixin, unittest.TestCase):
     def test_experimental(self):
         # Experimental data
         x, y = self.peak_data['offset_fit']
-        params, residual = peaks.findAllPeaks(x, y, bigauss_fit=True, filter=True, debug=True, chunk_factor=1.0)
+        params, residual = peaks.findAllPeaks(x, y, bigauss_fit=True, filter=True)
         np.testing.assert_allclose(
-            params,
-            np.array([
-                13919467.24591236, 46.81315296619535, 0.07191695966867907, 0.28366603443872157,
-                3810381.539348229, 47.59589691571616, 0.0956141776293823, 0.14987608719716855,
-                2875049.3535169736, 47.814168289613384, 0.02039999999999864, 0.8506165022544128,
-                1497094.0179009268, 49.52627093232067, 0.022850000000001813, 0.22106374146478588
-            ]),
-            atol=10,
+            params[::4],
+            np.array([13219262, 3347200, 1880722, 1473766]),
+            rtol=0.01
+        )
+        np.testing.assert_allclose(
+            params[1::4],
+            np.array([46.82, 47.49, 48.14, 49.52]),
+            atol=0.2
         )
 
 if __name__ == '__main__':
