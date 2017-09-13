@@ -4,6 +4,8 @@ import os
 import numpy as np
 import six
 
+from pyquant.peaks import gauss_ndim
+
 BASE_DIR = os.path.split(os.path.abspath(__file__))[0]
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 
@@ -37,4 +39,11 @@ class GaussianMixin(object):
         self.x = self.peak_data['one_gauss'][0]
         self.one_gauss = self.peak_data['one_gauss'][1]
         self.two_gauss = self.peak_data['two_gauss'][1]
+        self.far_two_gauss_mu = -3
+        self.far_two_gauss_mu2 = 3
+        self.far_two_gauss_params = np.array([self.amp, self.far_two_gauss_mu, self.std, self.amp, self.far_two_gauss_mu2, self.std], dtype=np.float)
+        self.far_two_gauss = gauss_ndim(
+            self.x,
+            self.far_two_gauss_params
+        )
         self.noisy_two_gauss = self.peak_data['noisy_two_gauss'][1]

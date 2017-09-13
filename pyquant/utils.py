@@ -231,9 +231,11 @@ def divide_peaks(xdata, ydata, guess, bounds, step_size=4, bigauss_fit=False):
             mean_lb = bounds[index][0]
             left_std = guess[index+1]
             left_bound = mean_lb - 2*left_std
+            left_index = relative_minima[np.searchsorted(relative_minima, np.searchsorted(xdata, left_bound)-1)-1]
             # We substract one here because we are establishing the left boundary and by default, searchsorted gives us the
             # index that will preserve the sort order to the left
-            chunks.append(relative_minima[np.searchsorted(relative_minima, np.searchsorted(xdata, left_bound)-1)-1])
+            if left_index > 0:
+                chunks.append(left_index)
         mean_rb = bounds[index][1]
         right_std = guess[index+1] if not bigauss_fit else guess[index+2]
         right_bound = mean_rb + 2*right_std
@@ -252,8 +254,9 @@ def divide_peaks(xdata, ydata, guess, bounds, step_size=4, bigauss_fit=False):
                 right_chunk_bound = relative_minima[np.searchsorted(relative_minima, np.searchsorted(xdata, right_bound))]
                 chunks.append(right_chunk_bound)
                 break
-    if chunks[-1] != len(xdata):
+    if not chunks or chunks[-1] != len(xdata):
         chunks.append(len(xdata))
+
     return np.array(chunks)
 
 

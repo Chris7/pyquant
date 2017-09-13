@@ -31,11 +31,25 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         self.assertListEqual(selection, x)
 
     def test_divide_peaks(self):
-        chunks = utils.divide_peaks(self.one_gauss)
-        two_gauss_chunks = utils.divide_peaks(self.two_gauss)
-        self.assertEqual(len(chunks), 0)
-        self.assertEqual(len(two_gauss_chunks), 1)
-        self.assertEqual(two_gauss_chunks[0], 65)
+        guess, bounds = utils.estimate_peak_parameters(
+            self.x,
+            self.one_gauss,
+            np.array([np.searchsorted(self.x, self.mu)]),
+            np.array([])
+        )
+        chunks = utils.divide_peaks(self.x, self.one_gauss, guess, bounds, step_size=3)
+        self.assertEqual(len(chunks), 1)
+
+        guess, bounds = utils.estimate_peak_parameters(
+            self.x,
+            self.far_two_gauss,
+            np.array([np.searchsorted(self.x, self.far_two_gauss_mu), np.searchsorted(self.x, self.far_two_gauss_mu2)]),
+            np.array([np.searchsorted(self.x, -5), np.searchsorted(self.x, 0), np.searchsorted(self.x, 5)]),
+        )
+        chunks = utils.divide_peaks(self.x, self.far_two_gauss, guess, bounds, step_size=3)
+        self.assertEqual(len(chunks), 2)
+        self.assertEqual(chunks[0], 50)
+        self.assertEqual(chunks[1], 101)
 
     def test_calculate_theoretical_distribution(self):
         peptide = 'PEPTIDE'
@@ -181,7 +195,7 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
 
         scan = pd.Series(y, index=x)
         resolution = utils.get_scan_resolution(scan)
-        self.assertAlmostEqual(resolution, 90781.241173982111)
+        np.testing.assert_allclose(resolution, 90000, atol=5000)
 
 
 

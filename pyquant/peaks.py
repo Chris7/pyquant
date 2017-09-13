@@ -486,6 +486,9 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                     if rt_peak is not None and mean - lstd * 2 < rt_peak < mean + rstd * 2:
                         res._contains_rt = True
 
+            if debug:
+                print('fit is', res)
+
             if not micro:
                 # Rescale our data back
                 # Amplitude
