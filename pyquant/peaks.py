@@ -295,7 +295,6 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         snr=snr,
         zscore=zscore,
         rt_peak=rt_peak,
-        max_peaks=max_peaks,
         amplitude_filter=amplitude_filter,
         fit_negative=fit_negative,
         percentile_filter=percentile_filter,
@@ -532,11 +531,25 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 return np.array([]), np.inf
             best_fits[peak_width]['fit'] += best_segment_fit.tolist()
             best_fits[peak_width]['residual'] += lowest_bic
+            best_fits[peak_width]['contains_rt'] = not best_segment_res._contains_rt  # this is so it sorts lower
 
     best_fit = np.array(sorted(
-        ((best_fits[key[0]]['residual'], best_fits[key[0]]['fit']) for key in segment_order),
-        key=itemgetter(0)
-    )[0][1])
+        ((best_fits[key[0]]['contains_rt'], best_fits[key[0]]['residual'], best_fits[key[0]]['fit']) for key in segment_order),
+        key=itemgetter(0, 1)
+    )[0][2])
+
+    # If the user only wants a certain number of peaks, enforce that now
+    if max_peaks != -1:
+        # pick the top n peaks for max_peaks
+        if rt_peak:
+            means = best_fit[1::step_size]
+            # If the user specified a retention time as a guide, select the n peaks closest
+            peak_indices = np.argsort(np.abs(means - rt_peak))[:max_peaks]
+        else:
+            # Return the top n highest peaks
+            amplitudes = best_fit[0::step_size]
+            peak_indices = sorted(np.argsort(amplitudes)[::-1][:max_peaks])
+        best_fit = np.hstack((best_fit[i*step_size:(i+1)*step_size] for i in peak_indices))
 
     peak_func = bigauss_ndim if bigauss_fit else gauss_ndim
     # Get rid of peaks with low r^2
