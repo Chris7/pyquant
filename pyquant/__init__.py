@@ -16,6 +16,10 @@ PEAK_RESOLUTION_COMMON_MODE = 'common-peak'
 PEAK_FINDING_REL_MAX = 'relative-max'
 PEAK_FINDING_DERIVATIVE = 'derivative'
 
+PEAK_FIT_MODE_FAST = 'fast'
+PEAK_FIT_MODE_AVERAGE = 'average'
+PEAK_FIT_MODE_SLOW = 'slow'
+
 pyquant_parser = argparse.ArgumentParser(prog='PyQuant v{}'.format(version), description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 pyquant_parser.add_argument('-p', help="Threads to run", type=int, default=1)
 pyquant_parser.add_argument('--theo-xic', help=argparse.SUPPRESS, action='store_true')

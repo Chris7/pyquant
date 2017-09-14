@@ -9,7 +9,7 @@ import six.moves.cPickle as pickle
 from pyquant.tests.utils import timer
 from pyquant.tests.mixins import FileMixins, GaussianMixin
 from pyquant import peaks
-from pyquant import PEAK_FINDING_DERIVATIVE, PEAK_FINDING_REL_MAX
+from pyquant import PEAK_FINDING_DERIVATIVE, PEAK_FINDING_REL_MAX, PEAK_FIT_MODE_FAST
 
 def get_gauss_value(x, amp, mu, std):
     return amp*np.exp(-(x - mu)**2/(2*std**2))
@@ -25,7 +25,7 @@ class PeakFindingTests(FileMixins, unittest.TestCase):
             data = pickle.load(peak_file, encoding='latin1') if six.PY3 else pickle.load(peak_file)
 
         x, y = data['max_peaks_relative-max']
-        params, residual = peaks.findAllPeaks(x, y, max_peaks=1, peak_find_method=PEAK_FINDING_REL_MAX)
+        params, residual = peaks.findAllPeaks(x, y, max_peaks=1, peak_find_method=PEAK_FINDING_REL_MAX, fit_mode=PEAK_FIT_MODE_FAST)
         self.assertEqual(len(params), 3)
 
     def test_max_peaks_with_rt_peak_regression(self):
@@ -33,7 +33,7 @@ class PeakFindingTests(FileMixins, unittest.TestCase):
             data = pickle.load(peak_file, encoding='latin1') if six.PY3 else pickle.load(peak_file)
 
         x, y = data['max_peaks_rt-peak-regression']
-        params, residual = peaks.findAllPeaks(x, y, max_peaks=1, debug=True, rt_peak=360)
+        params, residual = peaks.findAllPeaks(x, y, max_peaks=1, rt_peak=360, fit_mode=PEAK_FIT_MODE_FAST)
         np.testing.assert_allclose(params[1], desired=365.78, atol=0.1)
 
     def test_baseline_correction_derivative(self):
@@ -48,11 +48,12 @@ class PeakFindingTests(FileMixins, unittest.TestCase):
             baseline_correction=True,
             rt_peak=328,
             peak_find_method='derivative',
+            fit_mode=PEAK_FIT_MODE_FAST,
         )
         np.testing.assert_allclose(
-            params,
-            desired=np.array([1327.60, 330.15, 4.22, 5.09, -1597]),
-            atol=1
+            params[:3],
+            desired=np.array([1320.60, 330.15, 4.22]),
+            atol=10
         )
 
 
@@ -104,14 +105,14 @@ class GaussianTests(GaussianMixin, unittest.TestCase):
     def test_experimental(self):
         # Experimental data
         x, y = self.peak_data['offset_fit']
-        params, residual = peaks.findAllPeaks(x, y, bigauss_fit=True, filter=True, debug=True, chunk_factor=1.0)
+        params, residual = peaks.findAllPeaks(x, y, bigauss_fit=True, filter=True)
         np.testing.assert_allclose(
             params,
             np.array([
-                13919467.24591236, 46.81315296619535, 0.07191695966867907, 0.28366603443872157,
-                3810381.539348229, 47.59589691571616, 0.0956141776293823, 0.14987608719716855,
-                2875049.3535169736, 47.814168289613384, 0.02039999999999864, 0.8506165022544128,
-                1497094.0179009268, 49.52627093232067, 0.022850000000001813, 0.22106374146478588
+                13219262.587656807, 46.821340819991505, 0.06523272363478014, 0.18374422913588656,
+                3347200.309180678, 47.497, 0.6166821402545103, 0.3817876338966981,
+                1880722.1582992678, 48.14756707645761, 0.17537885391522443, 0.4846763157315077,
+                1473766.5256005626, 49.52607160264086, 0.020199999999999108, 0.22250905781532157
             ]),
             atol=10,
         )
