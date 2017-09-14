@@ -206,7 +206,11 @@ def nanmean(arr, empty=0):
 
 def divide_peaks(peaks, min_sep=5, chunk_factor=0.1):
     # We divide up the list of peaks to reduce the number of dimensions each fitting routine is working on
-    # to improve convergence speeds
+    # to improve convergence speeds. Note -- this function can never rely on our peak estimates because we
+    # are very conservative in our peak initial parameter boundaries -- thus we can never really say whether
+    # two peaks are going to overlap. This function should instead find dead spots in the data where it is
+    # safe to split apart peaks because the overlap would be negligible.
+
     chunks = argrelextrema(
         np.abs(peaks),
         # To account for peak overlaps, we need to ensure we do not separate peaks where their tails
@@ -446,7 +450,7 @@ def merge_peaks(peaks_found, debug=False):
 
 
 def find_possible_peaks(xdata, ydata, ydata_peaks, peak_find_method=PEAK_FINDING_REL_MAX, min_dist=None, local_filter_size=0,
-                 rt_peak=None, max_peaks=4, peak_width_start=2, snr=0, zscore=0, amplitude_filter=0,
+                 rt_peak=None, peak_width_start=2, snr=0, zscore=0, amplitude_filter=0,
                  peak_width_end=4, fit_negative=False, percentile_filter=0, micro=False, min_slope=None,
                  min_peak_side_width=None, min_peak_width=5, smooth=False, min_peak_increase=1.05):
     PEAK_METHODS = {
@@ -516,18 +520,6 @@ def find_possible_peaks(xdata, ydata, ydata_peaks, peak_find_method=PEAK_FINDING
                 row_peaks[np.abs(ydata_peaks[row_peaks]) < np.percentile(abs_ydata, percentile_filter)]
             ))
             row_peaks = row_peaks[np.abs(ydata_peaks[row_peaks]) >= np.percentile(abs_ydata, percentile_filter)]
-        # Max peaks is to avoid spending a significant amount of time fitting bad data. It can lead to problems
-        # if the user is searching the entire ms spectra because of the number of peaks possible to find
-        if max_peaks != -1 and row_peaks.size > max_peaks:
-            # pick the top n peaks for max_peaks
-            if rt_peak:
-                # If the user specified a retention time as a guide, select the n peaks closest
-                row_peaks = np.sort(row_peaks[np.argsort(np.abs(xdata[row_peaks] - rt_peak)[:max_peaks])])
-            else:
-                # this selects the row peaks in ydata, reversed the sorting order (to be greatest to least), then
-                # takes the number of peaks we allow and then sorts those peaks
-                row_peaks = np.sort(row_peaks[np.argsort(
-                    np.abs(ydata_peaks[row_peaks]) if fit_negative else ydata_peaks[row_peaks])[::-1]][:max_peaks])
 
         possible_peaks[peak_width] = {'peaks': row_peaks, 'minima': minima}
 

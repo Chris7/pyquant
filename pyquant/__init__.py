@@ -16,6 +16,10 @@ PEAK_RESOLUTION_COMMON_MODE = 'common-peak'
 PEAK_FINDING_REL_MAX = 'relative-max'
 PEAK_FINDING_DERIVATIVE = 'derivative'
 
+PEAK_FIT_MODE_FAST = 'fast'
+PEAK_FIT_MODE_AVERAGE = 'average'
+PEAK_FIT_MODE_SLOW = 'slow'
+
 pyquant_parser = argparse.ArgumentParser(prog='PyQuant v{}'.format(version), description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 pyquant_parser.add_argument('-p', help="Threads to run", type=int, default=1)
 pyquant_parser.add_argument('--theo-xic', help=argparse.SUPPRESS, action='store_true')
@@ -80,6 +84,13 @@ quant_parameters.add_argument('--no-contaminant-detection', help='Disables routi
 
 peak_parameters = pyquant_parser.add_argument_group('Peak Fitting Parameters')
 peak_parameters.add_argument('--peak-find-method', help='The method to use to identify peaks within data. For LC-MS, relative-max is usually best. For smooth data, derivative is better.', type=str, choices=(PEAK_FINDING_REL_MAX, PEAK_FINDING_DERIVATIVE), default=PEAK_FINDING_REL_MAX)
+peak_parameters.add_argument(
+    '--peak-find-mode',
+    help='This picks some predefined parameters for various use cases. Fast is good for robust data with few peaks, slow is good for complex data with overlapping peaks of very different size.',
+    type=str,
+    choices=(PEAK_FIT_MODE_SLOW, PEAK_FIT_MODE_AVERAGE, PEAK_FIT_MODE_FAST),
+    default=PEAK_FIT_MODE_AVERAGE
+)
 peak_parameters.add_argument('--gap-interpolation', help='This interpolates missing data in scans. The parameter should be a number that is the maximal gap size to fill (ie 2 means a gap of 2 scans). Can be useful for low intensity LC-MS data.', type=int, default=0)
 peak_parameters.add_argument('--remove-baseline', help='Fit a separate line for the baseline of each peak.', action='store_true')
 peak_parameters.add_argument('--peak-cutoff', help='The threshold from the initial retention time a peak can fall by before being discarded', type=float, default=0.05)

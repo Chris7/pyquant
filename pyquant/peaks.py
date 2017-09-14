@@ -20,7 +20,7 @@ if os.environ.get('PYQUANT_DEV', False) == 'True':
 
 from pyquant.cpeaks import bigauss_func, gauss_func, bigauss_ndim, gauss_ndim, bigauss_jac,\
     gauss_jac, find_nearest, find_nearest_index, get_ppm
-from . import PEAK_FINDING_REL_MAX
+from . import PEAK_FINDING_REL_MAX, PEAK_FIT_MODE_AVERAGE, PEAK_FIT_MODE_FAST, PEAK_FIT_MODE_SLOW
 from .logger import logger
 from .utils import divide_peaks, find_possible_peaks, estimate_peak_parameters, interpolate_data, savgol_smooth
 
@@ -259,7 +259,8 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                  rt_peak=None, mrm=False, max_peaks=4, debug=False, peak_width_start=3, snr=0, zscore=0, amplitude_filter=0,
                  peak_width_end=4, baseline_correction=False, rescale=True, fit_negative=False, percentile_filter=0, micro=False,
                  method_opts=None, smooth=False, r2_cutoff=None, peak_find_method=PEAK_FINDING_REL_MAX, min_slope=None,
-                 min_peak_side_width=3, gap_interpolation=0, min_peak_width=None, min_peak_increase=None, chunk_factor=0.1):
+                 min_peak_side_width=3, gap_interpolation=0, min_peak_width=None, min_peak_increase=None, chunk_factor=0.1,
+                 fit_mode=PEAK_FIT_MODE_AVERAGE):
 
     if micro:
         baseline_correction = False
@@ -295,7 +296,6 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         snr=snr,
         zscore=zscore,
         rt_peak=rt_peak,
-        max_peaks=max_peaks,
         amplitude_filter=amplitude_filter,
         fit_negative=fit_negative,
         percentile_filter=percentile_filter,
@@ -311,10 +311,15 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
 
     # Next, for fitting multiple peaks, we want to divide up the space so we are not fitting peaks that
     # have no chance of actually impacting one another.
+    CHUNK_MAP = {
+        PEAK_FIT_MODE_SLOW: 0.1,
+        PEAK_FIT_MODE_AVERAGE: 0.5,
+        PEAK_FIT_MODE_FAST: 1.0,
+    }
     chunks = divide_peaks(
         np.abs(ydata_peaks),
         min_sep=5 if 5 > peak_width_end else peak_width_end,
-        chunk_factor=chunk_factor
+        chunk_factor=CHUNK_MAP[fit_mode]
     )
     if not chunks.any() or chunks[-1] != len(ydata_peaks):
         chunks = np.hstack((chunks, len(ydata_peaks)))
@@ -532,11 +537,25 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 return np.array([]), np.inf
             best_fits[peak_width]['fit'] += best_segment_fit.tolist()
             best_fits[peak_width]['residual'] += lowest_bic
+            best_fits[peak_width]['contains_rt'] = not best_segment_res._contains_rt  # this is so it sorts lower
 
     best_fit = np.array(sorted(
-        ((best_fits[key[0]]['residual'], best_fits[key[0]]['fit']) for key in segment_order),
-        key=itemgetter(0)
-    )[0][1])
+        ((best_fits[key[0]]['contains_rt'], best_fits[key[0]]['residual'], best_fits[key[0]]['fit']) for key in segment_order),
+        key=itemgetter(0, 1)
+    )[0][2])
+
+    # If the user only wants a certain number of peaks, enforce that now
+    if max_peaks != -1:
+        # pick the top n peaks for max_peaks
+        if rt_peak:
+            means = best_fit[1::step_size]
+            # If the user specified a retention time as a guide, select the n peaks closest
+            peak_indices = np.argsort(np.abs(means - rt_peak))[:max_peaks]
+        else:
+            # Return the top n highest peaks
+            amplitudes = best_fit[0::step_size]
+            peak_indices = sorted(np.argsort(amplitudes)[::-1][:max_peaks])
+        best_fit = np.hstack((best_fit[i*step_size:(i+1)*step_size] for i in peak_indices))
 
     peak_func = bigauss_ndim if bigauss_fit else gauss_ndim
     # Get rid of peaks with low r^2
