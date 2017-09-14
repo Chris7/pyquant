@@ -206,7 +206,11 @@ def nanmean(arr, empty=0):
 
 def divide_peaks(peaks, min_sep=5, chunk_factor=0.1):
     # We divide up the list of peaks to reduce the number of dimensions each fitting routine is working on
-    # to improve convergence speeds
+    # to improve convergence speeds. Note -- this function can never rely on our peak estimates because we
+    # are very conservative in our peak initial parameter boundaries -- thus we can never really say whether
+    # two peaks are going to overlap. This function should instead find dead spots in the data where it is
+    # safe to split apart peaks because the overlap would be negligible.
+
     chunks = argrelextrema(
         np.abs(peaks),
         # To account for peak overlaps, we need to ensure we do not separate peaks where their tails
