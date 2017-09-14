@@ -109,6 +109,7 @@ class Worker(Process):
             'smooth': self.parser_args.xic_smooth,
             'r2_cutoff': self.parser_args.r2_cutoff,
             'gap_interpolation': self.parser_args.gap_interpolation,
+            'fit_mode': self.parser_args.peak_find_mode,
         }
 
     def get_calibrated_mass(self, mass):
