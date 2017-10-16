@@ -16,6 +16,11 @@ def get_gauss_value(x, amp, mu, std):
 
 
 class PeakFindingTests(FileMixins, unittest.TestCase):
+    def test_returns_with_bad_data(self):
+        params, residual = peaks.findAllPeaks(np.array([1,2,3,4,5,6]), np.array([0,0,0,0,0,0]))
+        self.assertEqual(len(params), 0)
+        self.assertEqual(residual, np.inf)
+
     def test_max_peaks(self):
         # Regression where relative-max is reporting 2 peaks when max_peaks is set to 1. This occurred
         # because we enforced max_peaks for each peak width when using the relative-max setting. Thus,
