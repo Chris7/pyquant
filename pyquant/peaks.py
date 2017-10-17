@@ -539,10 +539,16 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             best_fits[peak_width]['residual'] += lowest_bic
             best_fits[peak_width]['contains_rt'] = not best_segment_res._contains_rt  # this is so it sorts lower
 
-    best_fit = np.array(sorted(
-        ((best_fits[key[0]]['contains_rt'], best_fits[key[0]]['residual'], best_fits[key[0]]['fit']) for key in segment_order),
+    best_fit = sorted(
+        ((best_fits[key[0]]['contains_rt'], best_fits[key[0]]['residual'], best_fits[key[0]]['fit']) for key in
+         segment_order),
         key=itemgetter(0, 1)
-    )[0][2])
+    )
+
+    if not best_fit:
+        return (np.array([]), np.inf)
+
+    best_fit = np.array(best_fit[0][2])
 
     # If the user only wants a certain number of peaks, enforce that now
     if max_peaks != -1:
