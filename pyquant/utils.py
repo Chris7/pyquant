@@ -531,15 +531,11 @@ def find_peaks_rel_max(xdata, ydata, ydata_peaks=None, peak_width_start=2, peak_
     if peak_width_start > peak_width_end:
         peak_width_end = peak_width_start + 1
     peak_width = peak_width_start
-    final_peak = False
     peaks_found = {}
-    while peak_width <= peak_width_end or final_peak:
+    while peak_width <= peak_width_end:
         row_peaks = np.array(argrelextrema(np.abs(ydata_peaks), np.greater, order=peak_width)[0], dtype=int)
         if not row_peaks.size:
             row_peaks = np.array([np.argmax(np.abs(ydata))], dtype=int)
-        if len(row_peaks) == 1:
-            # We don't need to look for a final peak, we already found a global maximum peak with no other peaks
-            final_peak = None
         logger.debug('peak indices: {}\n'.format(row_peaks))
 
         if ydata_peaks.size:
@@ -559,12 +555,6 @@ def find_peaks_rel_max(xdata, ydata, ydata_peaks=None, peak_width_start=2, peak_
 
         peaks_found[peak_width] = {'peaks': row_peaks, 'minima': minima}
         peak_width += 1
-        if peak_width > peak_width_end:
-            if final_peak:
-                final_peak = False
-            elif final_peak is not None and not micro:
-                final_peak = True
-                peak_width = len(xdata)
 
     return peaks_found
 
