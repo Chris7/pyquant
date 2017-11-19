@@ -102,7 +102,7 @@ class Worker(Process):
             'snr': self.parser_args.snr_filter,
             'amplitude_filter': self.parser_args.intensity_filter,
             'min_dist': self.parser_args.min_peak_separation,
-            'baseline_correction': self.parser_args.remove_baseline,
+            'fit_baseline': self.parser_args.remove_baseline,
             'zscore': self.parser_args.zscore_filter,
             'local_filter_size': self.parser_args.filter_width,
             'percentile_filter': self.parser_args.percentile_filter,

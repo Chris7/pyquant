@@ -184,6 +184,21 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         self.assertAlmostEqual(resolution, 90781.241173982111)
 
 
+    def test_subtract_baseline(self):
+        # This test data is a simple sin function with a parabola function applied to the ends,
+        # giving a smile shape.
+        from scipy import signal
+        x = np.linspace(-50, 50)
+        noise = 0.00125 * x ** 2
+        c1 = np.sin(x)
+        y = noise + c1
+
+        baselined = utils.subtract_baseline(y)
+
+        # Assert we're about zero and the noise (the parabola) has been removed
+        self.assertTrue(sum(baselined-c1) < 1e-10)
+
+
 
 if __name__ == '__main__':
     unittest.main()
