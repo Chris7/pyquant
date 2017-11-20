@@ -111,15 +111,31 @@ class GaussianTests(GaussianMixin, unittest.TestCase):
         # Experimental data
         x, y = self.peak_data['offset_fit']
         params, residual = peaks.findAllPeaks(x, y, bigauss_fit=True, filter=True)
+        expected = np.array([
+          13219262.587656807, 46.821340819991505, 0.06523272363478014, 0.18374422913588656,
+          3347200.309180678, 47.497, 0.6166821402545103, 0.3817876338966981,
+          1880722.1582992678, 48.14756707645761, 0.17537885391522443, 0.4846763157315077,
+          1473766.5256005626, 49.52607160264086, 0.020199999999999108, 0.22250905781532157
+        ])
         np.testing.assert_allclose(
-            params,
-            np.array([
-                13219262.587656807, 46.821340819991505, 0.06523272363478014, 0.18374422913588656,
-                3347200.309180678, 47.497, 0.6166821402545103, 0.3817876338966981,
-                1880722.1582992678, 48.14756707645761, 0.17537885391522443, 0.4846763157315077,
-                1473766.5256005626, 49.52607160264086, 0.020199999999999108, 0.22250905781532157
-            ]),
-            atol=10,
+          params[::4],
+          expected[::4],
+          atol=10000,
+        )
+        np.testing.assert_allclose(
+          params[1::4],
+          expected[1::4],
+          atol=1,
+        )
+        np.testing.assert_allclose(
+          params[2::4],
+          expected[2::4],
+          atol=0.1,
+        )
+        np.testing.assert_allclose(
+          params[3::4],
+          expected[3::4],
+          atol=0.1,
         )
 
 if __name__ == '__main__':

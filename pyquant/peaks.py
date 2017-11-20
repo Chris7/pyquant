@@ -262,7 +262,7 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
 
     return {'envelope': env_dict, 'micro_envelopes': micro_dict, 'ppms': ppm_dict}
 
-def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_size=0, filter=False, peak_boost=False, bigauss_fit=False,
+def findAllPeaks(xdata_original, ydata_original, min_dist=0, method=None, local_filter_size=0, filter=False, peak_boost=False, bigauss_fit=False,
                  rt_peak=None, mrm=False, max_peaks=4, debug=False, peak_width_start=3, snr=0, zscore=0, amplitude_filter=0,
                  peak_width_end=4, fit_baseline=False, rescale=True, fit_negative=False, percentile_filter=0, micro=False,
                  method_opts=None, smooth=False, r2_cutoff=None, peak_find_method=PEAK_FINDING_REL_MAX, min_slope=None,
@@ -276,10 +276,14 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     if micro:
         fit_baseline = False
 
+    xdata = np.copy(xdata_original)
+
     if not micro and gap_interpolation:
         ydata_original = interpolate_data(xdata, ydata_original, gap_limit=gap_interpolation)
 
     rel_peak_constraint = (0.0 if fit_baseline else 0.5)
+    original_x_max = np.max(xdata)
+    xdata /= original_x_max
     original_max = np.abs(ydata_original).max() if fit_negative else ydata_original.max()
     amplitude_filter /= original_max
     ydata = ydata_original / original_max
@@ -291,6 +295,8 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     if smooth and len(ydata) > 5:
         ydata_peaks = savgol_smooth(ydata_peaks)
 
+    if rt_peak is not None:
+        rt_peak /= original_x_max
 
     if filter or peak_boost:
         if len(ydata) >= 5:
@@ -322,6 +328,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         smooth=smooth,
         min_peak_increase=min_peak_increase,
     )
+    print('fp', peak_find_method, 'are', final_peaks)
 
     # Next, for fitting multiple peaks, we want to divide up the space so we are not fitting peaks that
     # have no chance of actually impacting one another.
@@ -617,6 +624,18 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             best_fit[step_size-2::step_size] *= original_max
             # Intercept
             best_fit[step_size-1::step_size] *= original_max
+
+    # rescale the x axis back up
+    print('bf is', best_fit)
+    best_fit[1::step_size] *= original_x_max
+    best_fit[2::step_size] *= original_x_max
+    if bigauss_fit:
+        best_fit[3::step_size] *= original_x_max
+
+    if fit_baseline:
+        # Slope
+        best_fit[step_size - 2::step_size] *= original_max
+
 
     return best_fit, residual
 
