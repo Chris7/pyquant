@@ -328,7 +328,6 @@ def findAllPeaks(xdata_original, ydata_original, min_dist=0, method=None, local_
         smooth=smooth,
         min_peak_increase=min_peak_increase,
     )
-    print('fp', peak_find_method, 'are', final_peaks)
 
     # Next, for fitting multiple peaks, we want to divide up the space so we are not fitting peaks that
     # have no chance of actually impacting one another.
