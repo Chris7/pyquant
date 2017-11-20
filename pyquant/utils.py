@@ -31,6 +31,7 @@ def merge_list(starting_list):
     final_list.append(starting_list[-1])
     return final_list
 
+
 def findValleys(y, srt):
     peak = y.iloc[srt]
     for left in xrange(srt-1, -1, -1):
@@ -44,6 +45,7 @@ def findValleys(y, srt):
             break
     return left, right
 
+
 def fit_theo_dist(params, ny, ty):
     right_limit, scaling = params
     index = xrange(len(ny)) if len(ny) > len(ty) else xrange(len(ty))
@@ -53,6 +55,7 @@ def fit_theo_dist(params, ny, ty):
     exp_dist[int(right_limit):] = 0
     theo_dist += ty
     return ((exp_dist-theo_dist*scaling)**2).sum()
+
 
 def looper(selected=None, df=None, theo=None, index=0, out=None):
     if out is None:
@@ -581,6 +584,7 @@ def get_cross_points(data, pad=True):
 
     return cross_points
 
+
 def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_peak_height=None,
                           min_peak_side_width=2, max_peak_side_width=np.inf,
                           min_peak_width=None, max_peak_width=np.inf, smooth=True):
@@ -713,7 +717,7 @@ def merge_close_peaks(peaks_found, ydata, distance=2):
 
 
 def estimate_peak_parameters(xdata, ydata, row_peaks, minima_array, fit_negative=False, rel_peak_constraint=0, micro=False,
-                             bigauss_fit=False, baseline_correction=False):
+                             bigauss_fit=False, fit_baseline=False):
     guess = []
     bnds = []
     last_peak = -1
@@ -814,7 +818,7 @@ def estimate_peak_parameters(xdata, ydata, row_peaks, minima_array, fit_negative
                 guess.extend([rel_peak, xdata[peak_index], variance, variance])
             else:
                 guess.extend([rel_peak, xdata[peak_index], variance])
-            if baseline_correction:
+            if fit_baseline:
                 slope = (ydata[right] - ydata[left]) / (xdata[right] - xdata[left])
                 intercept = ((ydata[right] - slope * xdata[right]) + (ydata[left] - slope * xdata[left])) / 2
                 guess.extend([slope, intercept])
@@ -829,7 +833,7 @@ def estimate_peak_parameters(xdata, ydata, row_peaks, minima_array, fit_negative
         guess = [max(ydata), average, variance]
         if bigauss_fit:
             guess.extend([variance])
-        if baseline_correction:
+        if fit_baseline:
             slope = (ydata[-1] - ydata[0]) / (xdata[-1] - xdata[0])
             intercept = ((ydata[-1] - slope * xdata[-1]) + (ydata[0] - slope * xdata[0])) / 2
             guess.extend([slope, intercept])
@@ -911,3 +915,17 @@ def get_scan_resolution(scan):
 
     fwhm = peaks[2+largest_peak*3]*2.355
     return peaks[1+largest_peak*3]/fwhm
+
+
+def subtract_baseline(y, components_to_remove=10, dampen_factor=10):
+    from scipy import fftpack, signal
+    f = fftpack.rfft(y)
+    f[:components_to_remove] = 0
+    fs = fftpack.fftshift(f)
+
+    # filter it
+    filtered = (fs * (1 - signal.gaussian(len(y), dampen_factor))) if dampen_factor else fs
+    # invert it
+    final = fftpack.irfft(fftpack.ifftshift(filtered))
+
+    return final

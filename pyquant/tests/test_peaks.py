@@ -41,7 +41,7 @@ class PeakFindingTests(FileMixins, unittest.TestCase):
         params, residual = peaks.findAllPeaks(x, y, max_peaks=1, rt_peak=360, fit_mode=PEAK_FIT_MODE_FAST)
         np.testing.assert_allclose(params[1], desired=365.78, atol=0.1)
 
-    def test_baseline_correction_derivative(self):
+    def test_fit_baseline_derivative(self):
         with open(os.path.join(self.data_dir, 'peak_data.pickle'), 'rb') as peak_file:
             data = pickle.load(peak_file, encoding='latin1') if six.PY3 else pickle.load(peak_file)
 
@@ -50,7 +50,7 @@ class PeakFindingTests(FileMixins, unittest.TestCase):
             x,
             y,
             max_peaks=1,
-            baseline_correction=True,
+            fit_baseline=True,
             rt_peak=328,
             peak_find_method='derivative',
             fit_mode=PEAK_FIT_MODE_FAST,
