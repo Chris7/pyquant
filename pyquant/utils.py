@@ -31,6 +31,7 @@ def merge_list(starting_list):
     final_list.append(starting_list[-1])
     return final_list
 
+
 def findValleys(y, srt):
     peak = y.iloc[srt]
     for left in xrange(srt-1, -1, -1):
@@ -44,6 +45,7 @@ def findValleys(y, srt):
             break
     return left, right
 
+
 def fit_theo_dist(params, ny, ty):
     right_limit, scaling = params
     index = xrange(len(ny)) if len(ny) > len(ty) else xrange(len(ty))
@@ -53,6 +55,7 @@ def fit_theo_dist(params, ny, ty):
     exp_dist[int(right_limit):] = 0
     theo_dist += ty
     return ((exp_dist-theo_dist*scaling)**2).sum()
+
 
 def looper(selected=None, df=None, theo=None, index=0, out=None):
     if out is None:
@@ -531,15 +534,11 @@ def find_peaks_rel_max(xdata, ydata, ydata_peaks=None, peak_width_start=2, peak_
     if peak_width_start > peak_width_end:
         peak_width_end = peak_width_start + 1
     peak_width = peak_width_start
-    final_peak = False
     peaks_found = {}
-    while peak_width <= peak_width_end or final_peak:
+    while peak_width <= peak_width_end:
         row_peaks = np.array(argrelextrema(np.abs(ydata_peaks), np.greater, order=peak_width)[0], dtype=int)
         if not row_peaks.size:
             row_peaks = np.array([np.argmax(np.abs(ydata))], dtype=int)
-        if len(row_peaks) == 1:
-            # We don't need to look for a final peak, we already found a global maximum peak with no other peaks
-            final_peak = None
         logger.debug('peak indices: {}\n'.format(row_peaks))
 
         if ydata_peaks.size:
@@ -559,12 +558,6 @@ def find_peaks_rel_max(xdata, ydata, ydata_peaks=None, peak_width_start=2, peak_
 
         peaks_found[peak_width] = {'peaks': row_peaks, 'minima': minima}
         peak_width += 1
-        if peak_width > peak_width_end:
-            if final_peak:
-                final_peak = False
-            elif final_peak is not None and not micro:
-                final_peak = True
-                peak_width = len(xdata)
 
     return peaks_found
 
@@ -590,6 +583,7 @@ def get_cross_points(data, pad=True):
                 cross_points.append(len(signs)-1)
 
     return cross_points
+
 
 def find_peaks_derivative(xdata, ydata, ydata_peaks=None, min_slope=None, rel_peak_height=None,
                           min_peak_side_width=2, max_peak_side_width=np.inf,
@@ -723,7 +717,7 @@ def merge_close_peaks(peaks_found, ydata, distance=2):
 
 
 def estimate_peak_parameters(xdata, ydata, row_peaks, minima_array, fit_negative=False, rel_peak_constraint=0, micro=False,
-                             bigauss_fit=False, baseline_correction=False):
+                             bigauss_fit=False, fit_baseline=False):
     guess = []
     bnds = []
     last_peak = -1
@@ -824,7 +818,7 @@ def estimate_peak_parameters(xdata, ydata, row_peaks, minima_array, fit_negative
                 guess.extend([rel_peak, xdata[peak_index], variance, variance])
             else:
                 guess.extend([rel_peak, xdata[peak_index], variance])
-            if baseline_correction:
+            if fit_baseline:
                 slope = (ydata[right] - ydata[left]) / (xdata[right] - xdata[left])
                 intercept = ((ydata[right] - slope * xdata[right]) + (ydata[left] - slope * xdata[left])) / 2
                 guess.extend([slope, intercept])
@@ -839,7 +833,7 @@ def estimate_peak_parameters(xdata, ydata, row_peaks, minima_array, fit_negative
         guess = [max(ydata), average, variance]
         if bigauss_fit:
             guess.extend([variance])
-        if baseline_correction:
+        if fit_baseline:
             slope = (ydata[-1] - ydata[0]) / (xdata[-1] - xdata[0])
             intercept = ((ydata[-1] - slope * xdata[-1]) + (ydata[0] - slope * xdata[0])) / 2
             guess.extend([slope, intercept])
@@ -921,3 +915,17 @@ def get_scan_resolution(scan):
 
     fwhm = peaks[2+largest_peak*3]*2.355
     return peaks[1+largest_peak*3]/fwhm
+
+
+def subtract_baseline(y, components_to_remove=10, dampen_factor=10):
+    from scipy import fftpack, signal
+    f = fftpack.rfft(y)
+    f[:components_to_remove] = 0
+    fs = fftpack.fftshift(f)
+
+    # filter it
+    filtered = (fs * (1 - signal.gaussian(len(y), dampen_factor))) if dampen_factor else fs
+    # invert it
+    final = fftpack.irfft(fftpack.ifftshift(filtered))
+
+    return final

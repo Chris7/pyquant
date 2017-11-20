@@ -22,7 +22,14 @@ from pyquant.cpeaks import bigauss_func, gauss_func, bigauss_ndim, gauss_ndim, b
     gauss_jac, find_nearest, find_nearest_index, get_ppm
 from . import PEAK_FINDING_REL_MAX, PEAK_FIT_MODE_AVERAGE, PEAK_FIT_MODE_FAST, PEAK_FIT_MODE_SLOW
 from .logger import logger
-from .utils import divide_peaks, find_possible_peaks, estimate_peak_parameters, interpolate_data, savgol_smooth
+from .utils import (
+    divide_peaks,
+    find_possible_peaks,
+    estimate_peak_parameters,
+    interpolate_data,
+    savgol_smooth,
+    subtract_baseline,
+)
 
 if six.PY3:
     xrange = range
@@ -257,22 +264,29 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
 
 def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_size=0, filter=False, peak_boost=False, bigauss_fit=False,
                  rt_peak=None, mrm=False, max_peaks=4, debug=False, peak_width_start=3, snr=0, zscore=0, amplitude_filter=0,
-                 peak_width_end=4, baseline_correction=False, rescale=True, fit_negative=False, percentile_filter=0, micro=False,
+                 peak_width_end=4, fit_baseline=False, rescale=True, fit_negative=False, percentile_filter=0, micro=False,
                  method_opts=None, smooth=False, r2_cutoff=None, peak_find_method=PEAK_FINDING_REL_MAX, min_slope=None,
                  min_peak_side_width=3, gap_interpolation=0, min_peak_width=None, min_peak_increase=None, chunk_factor=0.1,
-                 fit_mode=PEAK_FIT_MODE_AVERAGE):
+                 fit_mode=PEAK_FIT_MODE_AVERAGE, baseline_subtraction=False, **kwargs):
+
+    # Deprecation things
+    if 'baseline_correction' in kwargs:
+        fit_baseline = kwargs['baseline_correction']
 
     if micro:
-        baseline_correction = False
+        fit_baseline = False
 
     if not micro and gap_interpolation:
         ydata_original = interpolate_data(xdata, ydata_original, gap_limit=gap_interpolation)
 
-    rel_peak_constraint = (0.0 if baseline_correction else 0.5)
+    rel_peak_constraint = (0.0 if fit_baseline else 0.5)
     original_max = np.abs(ydata_original).max() if fit_negative else ydata_original.max()
     amplitude_filter /= original_max
     ydata = ydata_original / original_max
     ydata_peaks = np.copy(ydata)
+
+    if baseline_subtraction:
+        ydata_peaks = subtract_baseline(ydata_peaks)
 
     if smooth and len(ydata) > 5:
         ydata_peaks = savgol_smooth(ydata_peaks)
@@ -327,7 +341,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     logger.debug('found: {}\n'.format(final_peaks))
 
     step_size = 4 if bigauss_fit else 3
-    if baseline_correction:
+    if fit_baseline:
         step_size += 2
     min_spacing = min(np.diff(xdata)) / 2
     peak_range = xdata[-1] - xdata[0]
@@ -335,7 +349,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     initial_bounds = [(-1.01, 1.01), (xdata[0], xdata[-1]), (min_spacing, peak_range)]
     if bigauss_fit:
         initial_bounds.extend([(min_spacing, peak_range)])
-    if baseline_correction:
+    if fit_baseline:
         initial_bounds.extend([(None, None), (None, None)])
         # print(final_peaks)
     if debug:
@@ -392,13 +406,13 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 rel_peak_constraint=rel_peak_constraint,
                 micro=micro,
                 bigauss_fit=bigauss_fit,
-                baseline_correction=baseline_correction
+                fit_baseline=fit_baseline
             )
 
             if not segment_guess:
                 continue
 
-            args = (segment_x, segment_y, baseline_correction)
+            args = (segment_x, segment_y, fit_baseline)
             opts = method_opts or {'maxiter': 1000}
 
             # Because the amplitude of peaks can vary wildly, we have to make sure our tolerance matters for the
@@ -435,7 +449,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                     if segment_bounds[i][1] > segment_x[-1]:
                         segment_bounds[i] = (segment_bounds[i][0], segment_x[-1])
 
-            if baseline_correction:
+            if fit_baseline:
                 jacobian = None
             else:
                 jacobian = bigauss_jac if bigauss_fit else gauss_jac
@@ -485,7 +499,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 # Rescale our data back
                 # Amplitude
                 res.x[::step_size] *= segment_max
-                if baseline_correction:
+                if fit_baseline:
                     # Slope
                     res.x[step_size-2::step_size] *= segment_max
                     # Intercept
@@ -539,10 +553,16 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             best_fits[peak_width]['residual'] += lowest_bic
             best_fits[peak_width]['contains_rt'] = not best_segment_res._contains_rt  # this is so it sorts lower
 
-    best_fit = np.array(sorted(
-        ((best_fits[key[0]]['contains_rt'], best_fits[key[0]]['residual'], best_fits[key[0]]['fit']) for key in segment_order),
+    best_fit = sorted(
+        ((best_fits[key[0]]['contains_rt'], best_fits[key[0]]['residual'], best_fits[key[0]]['fit']) for key in
+         segment_order),
         key=itemgetter(0, 1)
-    )[0][2])
+    )
+
+    if not best_fit:
+        return (np.array([]), np.inf)
+
+    best_fit = np.array(best_fit[0][2])
 
     # If the user only wants a certain number of peaks, enforce that now
     if max_peaks != -1:
@@ -579,7 +599,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 fitted_data -= peak_func(fitted_x, best_fit[other_peak_index:other_peak_index + step_size])
             ss_tot = np.sum((fitted_data - np.mean(fitted_data)) ** 2)
             explained_data = peak_func(fitted_x, peak_info)
-            if baseline_correction:
+            if fit_baseline:
                 explained_data += fitted_x*peak_info[-2]+peak_info[-1]
             ss_res = np.sum((fitted_data - explained_data) ** 2)
             coeff_det = 1 - (ss_res / ss_tot)
@@ -590,9 +610,9 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
 
     residual = sum((ydata-peak_func(xdata, best_fit))**2)
 
-    if rescale:  # and not baseline_correction:
+    if rescale:  # and not fit_baseline:
         best_fit[::step_size] *= original_max
-        if baseline_correction:
+        if fit_baseline:
             # Slope
             best_fit[step_size-2::step_size] *= original_max
             # Intercept
@@ -691,7 +711,7 @@ def targeted_search(merged_x, merged_y, x_value, attempts=4, max_peak_distance=1
     stepsize = 3
     if find_peaks_kwargs.get('bigauss_fit'):
         stepsize += 1
-    if find_peaks_kwargs.get('baseline_correction'):
+    if find_peaks_kwargs.get('fit_baseline'):
         stepsize += 2
     while rt_attempts < attempts and not found_rt:
         logger.debug('MERGED PEAK FINDING ATTEMPT %s', rt_attempts)
