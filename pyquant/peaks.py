@@ -461,7 +461,12 @@ def findAllPeaks(xdata_original, ydata_original, min_dist=0, method=None, local_
                 jacobian = bigauss_jac if bigauss_fit else gauss_jac
 
             if debug:
-                print('left and right segments', xdata[left_break_point], xdata[right_break_point-1])
+                print('left and right segments {}({}), {}({})'.format(
+                    xdata[left_break_point],
+                    xdata[left_break_point]*original_x_max,
+                    xdata[right_break_point-1],
+                    xdata[right_break_point-1]*original_x_max,
+                ))
                 print('guess and bnds', segment_guess, segment_bounds)
             hessian = None  # if bigauss_fit else gauss_hess
 
