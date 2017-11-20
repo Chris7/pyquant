@@ -626,7 +626,6 @@ def findAllPeaks(xdata_original, ydata_original, min_dist=0, method=None, local_
             best_fit[step_size-1::step_size] *= original_max
 
     # rescale the x axis back up
-    print('bf is', best_fit)
     best_fit[1::step_size] *= original_x_max
     best_fit[2::step_size] *= original_x_max
     if bigauss_fit:
