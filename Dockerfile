@@ -9,7 +9,6 @@ RUN apt-get update && apt-get install -y \
     libxml2-dev \
     libxslt1-dev \
     python-dev \
-    python-numpy \
     zlib1g-dev
 
 RUN curl https://bootstrap.pypa.io/get-pip.py -o - | python
