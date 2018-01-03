@@ -142,7 +142,7 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         x, y = data['low_res_scan']
         scan = pd.Series(y, index=x)
         resolution = utils.get_scan_resolution(scan)
-        self.assertAlmostEqual(int(resolution), 30459)
+        self.assertAlmostEqual(int(resolution), 30459, delta=1000)
 
         x = np.array([
             805.47264226,  805.47265226,  805.47495304,  805.47739824,
