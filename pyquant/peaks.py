@@ -45,13 +45,16 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
     start_mz = measured_mz if isotope_offset == 0 else measured_mz + isotope_offset * CARBON_NEUTRON / float(charge)
     initial_mz = start_mz
     if max_mz is not None:
-        max_mz = max_mz - spacing * 0.9 if isotope_offset == 0 else max_mz + isotope_offset * CARBON_NEUTRON * 0.9 / float(
-            charge)
+        max_mz = max_mz - spacing * 0.9 if isotope_offset == 0 else max_mz + isotope_offset * CARBON_NEUTRON * 0.9 / float(charge)
     if isotope_ppms is None:
         isotope_ppms = {}
     tolerance = isotope_ppms.get(0, precursor_ppm) / 1000000.0
     env_dict, micro_dict, ppm_dict = OrderedDict(), OrderedDict(), OrderedDict()
-    empty_dict = {'envelope': env_dict, 'micro_envelopes': micro_dict, 'ppms': ppm_dict}
+    empty_dict = {
+        'envelope': env_dict,
+        'micro_envelopes': micro_dict,
+        'ppms': ppm_dict
+    }
 
     non_empty = xdata[ydata > 0]
     if len(non_empty) == 0:
@@ -59,7 +62,6 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
             print('data is empty')
         return empty_dict
     first_mz = find_nearest(non_empty, start_mz)
-    attempts = 0
 
     isotope_index = 0
     use_theo = False
@@ -69,7 +71,9 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
             # let's try using our theoretical mass
             first_mz = find_nearest(non_empty, theo_mz)
             if get_ppm(theo_mz, first_mz) > tolerance:
-                # let's check our last boundary
+                # let's check our last boundary. This allows for drift in m/z values
+                # as scans progress instead of enforcing the m/z at the first
+                # observed instance of a given m/z
                 if last_precursor is not None:
                     first_mz = find_nearest(non_empty, last_precursor)
                     if get_ppm(last_precursor, first_mz) > tolerance:
@@ -100,8 +104,18 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
 
     isotope_index += isotope_offset
     start_index = find_nearest_index(xdata, first_mz)
-    start_info = findMicro(xdata, ydata, start_index, ppm=tolerance, start_mz=start_mz, calc_start_mz=theo_mz,
-                           quant_method=quant_method, reporter_mode=reporter_mode, fragment_scan=fragment_scan, centroid=centroid)
+    start_info = findMicro(
+        xdata,
+        ydata,
+        start_index,
+        ppm=tolerance,
+        start_mz=start_mz,
+        calc_start_mz=theo_mz,
+        quant_method=quant_method,
+        reporter_mode=reporter_mode,
+        fragment_scan=fragment_scan,
+        centroid=centroid
+    )
     start_error = start_info['error']
 
     if 'params' in start_info:
@@ -260,7 +274,11 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
                         micro_dict.pop(j[0])
                         ppm_dict.pop(j[0])
 
-    return {'envelope': env_dict, 'micro_envelopes': micro_dict, 'ppms': ppm_dict}
+    return {
+        'envelope': env_dict,
+        'micro_envelopes': micro_dict,
+        'ppms': ppm_dict,
+    }
 
 def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_size=0, filter=False, peak_boost=False, bigauss_fit=False,
                  rt_peak=None, mrm=False, max_peaks=4, debug=False, peak_width_start=3, snr=0, zscore=0, amplitude_filter=0,

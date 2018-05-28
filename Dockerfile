@@ -16,7 +16,7 @@ RUN curl https://bootstrap.pypa.io/get-pip.py -o - | python
 RUN pip install cython
 RUN pip install --upgrade setuptools
 
-RUN git clone https://github.com/Chris7/pyquant.git
+RUN git clone https://github.com/Chris7/pyquant.git@build
 
 WORKDIR pyquant
 
