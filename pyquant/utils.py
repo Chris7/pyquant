@@ -861,7 +861,7 @@ def interpolate_data(x, y, gap_limit=2):
     return y
 
 
-def savgol_smooth(ydata, max_window=10):
+def savgol_smooth(ydata, max_window=10, polyorder=3):
     window_size = int(len(ydata) / 10)
     if window_size < 5:
         window_size = 5
@@ -874,7 +874,10 @@ def savgol_smooth(ydata, max_window=10):
     if not window_size % 2:
         window_size -= 1
 
-    return savgol_filter(ydata, window_size, 3)
+    if polyorder >= window_size:
+        polyorder = window_size - 1
+
+    return savgol_filter(ydata, window_size, polyorder)
 
 
 def get_formatted_mass(mass):

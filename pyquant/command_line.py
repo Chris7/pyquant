@@ -15,6 +15,7 @@ from string import Template
 
 import pandas as pd
 import six
+from pythomics.proteomics.config import CARBON_NEUTRON
 from pythomics.proteomics.parsers import GuessIterator
 from pythomics.proteomics import config
 from scipy.interpolate import UnivariateSpline
@@ -672,7 +673,7 @@ def run_pyquant():
                                     charge_peaks_found = 0
                                     peak_height = 0
                                     for j in xrange(1, 3):
-                                        next_peak = ion+peaks.NEUTRON/float(i)*float(j)
+                                        next_peak = ion+CARBON_NEUTRON/float(i)*float(j)
                                         closest_mz = peaks.find_nearest_index(scan_mzs, next_peak)
                                         if peaks.get_ppm(next_peak, scan_mzs[closest_mz]) < isotope_ppm*1.5:
                                             charge_peaks_found += 1
