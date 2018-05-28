@@ -16,6 +16,12 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         self.base_dir = os.path.split(os.path.abspath(__file__))[0]
         self.data_dir = os.path.join(self.base_dir, 'data')
 
+    def test_savgol_smooth(self):
+        y = np.array([0, 1, 1.5, 0])
+        new_y = utils.savgol_smooth(y)
+        self.assertAlmostEqual(new_y[1], 1.0)
+        self.assertAlmostEqual(new_y[2], 1.5)
+
     def test_select_window(self):
         x = list(range(10))
         selection = utils.select_window(x, 0, 3)
