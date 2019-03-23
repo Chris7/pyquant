@@ -197,112 +197,128 @@ def run_pyquant():
             charge_col = args.charge
             file_col = args.source
             label_col = args.label
-        for index, row in enumerate(results.iterrows()):
-            if index%1000 == 0:
-                sys.stderr.write('.')
-            row_index, i = row
-            peptide = i[peptide_col].strip() if peptide_col in i else ''
-            if peptides and not any([j.lower() == peptide.lower() for j in peptides]):
-                continue
-            if not peptides and (sample != 1.0 and random.random() > sample):
-                continue
-            specId = str(i[scan_col])
-            if scans_to_select and str(specId) not in scans_to_select:
-                continue
-            fname = i[file_col] if file_col in i else raw_file
-            if fname not in scan_filemap:
-                fname = os.path.split(fname)[1]
-                if fname not in scan_filemap:
-                    if skip:
-                        continue
-                    sys.stderr.write('{0} not found in filemap. Filemap is {1}. If you wish to ignore this message, add --skip to your input arguments.'.format(fname, scan_filemap))
-                    return 1
-            charge = float(i[charge_col]) if charge_col in i else 1
-            precursor_mass = i[precursor_col] if precursor_col in i else None
-            rt_value = i[rt_col] if rt_col in i else None
-            mass_key = (specId, fname, charge, precursor_mass)
-            if mass_key in found_scans:
-                continue
-            #'id': id_Scan[id], 'theor_mass' -> id_scan[mass], 'peptide': idScan[peptide,],  'mod_peptide': idscan, 'rt': idscan,
-            #
-            d = {
-                'file': fname, 'quant_scan': {}, 'id_scan': {
-                'id': specId, 'mass': precursor_mass, 'peptide': peptide, 'rt': rt_value,
-                'charge': charge, 'modifications': None, 'label': name_mapping.get(i[label_col]) if label_col in i else None
+
+        result_iterator = results.iterrows()
+        def tsv_formatter(row):
+            row_index, row_info = row
+            peptide = row_info[peptide_col].strip() if peptide_col in row_info else ''
+            specId = str(row_info[scan_col])
+            fname = row_info[file_col] if file_col in row_info else raw_file
+            charge = float(row_info[charge_col]) if charge_col in row_info else 1
+            precursor_mass = row_info[precursor_col] if precursor_col in row_info else None
+            rt_value = row_info[rt_col] if rt_col in row_info else None
+            label = name_mapping.get(row_info[label_col]) if label_col in row_info else None
+
+            return {
+                'file': fname,
+                'id': specId,
+                'mass': float(precursor_mass),
+                'rt': rt_value,
+                'charge': charge,
+                'peptide': peptide,
+                'modifications': None,
+                'label': label,
+                'key': (fname, specId, peptide, precursor_mass)
             }
-            }
-            found_scans[mass_key] = d
-            if args.mva:
-                for i in scan_filemap:
-                    raw_files[i] = d
-            else:
-                try:
-                    raw_files[i[file_col]].append(d)
-                except Exception as e:
-                    raw_files[i[file_col]] = [d]
+
+        result_formatter = tsv_formatter
+
     elif input_found == 'ms':
         if not (args.label_scheme or args.label_method):
             mass_labels.update(results.getSILACLabels())
         replicate_file_mapper = {}
-        for index, scan in enumerate(results.getScans(modifications=False, fdr=True)):
-            if index%1000 == 0:
-                sys.stderr.write('.')
-            if scan is None:
-                continue
+        result_iterator = results.getScans(modifications=False, fdr=True)
+
+        def ms_formatter(scan):
             peptide = scan.peptide
-            # if peptide.lower() != 'AGkPVIcATQMLESmIk'.lower():
-            #     continue
-            if peptides and peptide.upper() not in peptides:
-                continue
-            if not peptides and (sample != 1.0 and random.random() > sample):
-                continue
             specId = scan.id
-            if scans_to_select and str(specId) not in scans_to_select:
-                continue
             fname = scan.file
-            mass_key = (fname, specId, peptide, scan.mass)
-            if mass_key in found_scans:
-                continue
-            d = {
-                    'file': fname, 'quant_scan': {}, 'id_scan': {
-                    'id': specId, 'theor_mass': scan.getTheorMass(), 'peptide': peptide, 'mod_peptide': scan.modifiedPeptide, 'rt': scan.rt,
-                    'charge': scan.charge, 'modifications': scan.getModifications(), 'mass': float(scan.mass), 'accession': getattr(scan, 'acc', None),
-                }
+
+            return {
+                'file': fname,
+                'id': specId,
+                'mass': float(scan.mass),
+                'rt': scan.rt,
+                'charge': scan.charge,
+                'peptide': peptide,
+                'mod_peptide': scan.modifiedPeptide,
+                'theor_mass': scan.getTheorMass(),
+                'modifications': scan.getModifications(),
+                'accession': getattr(scan, 'acc', None),
+                'key': (fname, specId, peptide, scan.mass),
             }
-            found_scans[mass_key] = d#.add(mass_key)
-            fname = os.path.splitext(fname)[0]
-            if args.mva:
-                # find the most similar name, add in a setting for this
-                import difflib
-                if fname in replicate_file_mapper:
-                    fname = replicate_file_mapper[fname]
-                    if fname is None:
-                        continue
-                else:
-                    s = difflib.SequenceMatcher(None, fname)
-                    seq_matches = []
-                    for i in scan_filemap:
-                        s.set_seq2(i)
-                        seq_matches.append((s.ratio(), i))
-                    seq_matches.sort(key=operator.itemgetter(0), reverse=True)
-                    if False:#len(fname)-len(fname)*seq_matches[0][0] > 1:
-                        replicate_file_mapper[fname] = None
-                        continue
-                    else:
-                        replicate_file_mapper[fname] = seq_matches[0][1]
-                        fname = seq_matches[0][1]
+
+        result_formatter = ms_formatter
+
+    for index, scan in enumerate(result_iterator):
+        if index%1000 == 0:
+            sys.stderr.write('.')
+        if scan is None:
+            continue
+
+        result_info = result_formatter(scan)
+        peptide = result_info['peptide']
+
+        if peptides and peptide.upper() not in peptides:
+            continue
+        if not peptides and (sample != 1.0 and random.random() > sample):
+            continue
+
+        specId = result_info['id']
+        if scans_to_select and str(specId) not in scans_to_select:
+            continue
+
+        fname = result_info['file']
+        mass_key = result_info['key']
+        if mass_key in found_scans:
+            continue
+
+        d = {
+            'file': fname,
+            'quant_scan': {},
+            'id_scan': {
+                'id': specId,
+                'theor_mass': result_info.get('theor_mass'),
+                'peptide': peptide,
+                'mod_peptide': result_info.get('mod_peptide'),
+                'rt': result_info['rt'],
+                'charge': result_info['charge'],
+                'modifications': result_info['modifications'],
+                'mass': result_info['mass'],
+                'accession': result_info.get('accession'),
+            }
+        }
+        found_scans[mass_key] = d
+        fname = os.path.splitext(fname)[0]
+        if args.mva:
+            # find the most similar name, add in a setting for this
+            import difflib
+            if fname in replicate_file_mapper:
+                fname = replicate_file_mapper[fname]
+                if fname is None:
+                    continue
+            else:
+                s = difflib.SequenceMatcher(None, fname)
+                seq_matches = []
+                for i in scan_filemap:
+                    s.set_seq2(i)
+                    seq_matches.append((s.ratio(), i))
+                seq_matches.sort(key=operator.itemgetter(0), reverse=True)
+
+                replicate_file_mapper[fname] = seq_matches[0][1]
+                fname = seq_matches[0][1]
+        if fname not in scan_filemap:
+            fname = os.path.split(fname)[1]
             if fname not in scan_filemap:
-                fname = os.path.split(fname)[1]
-                if fname not in scan_filemap:
-                    if skip:
-                        continue
-                    sys.stderr.write('{0} not found in filemap. Filemap is {1}.'.format(fname, scan_filemap))
-                    return 1
-            try:
-                raw_files[fname].append(d)
-            except KeyError:
-                raw_files[fname] = [d]
-            del scan
+                if skip:
+                    continue
+                sys.stderr.write('{0} not found in filemap. Filemap is {1}.'.format(fname, scan_filemap))
+                return 1
+        try:
+            raw_files[fname].append(d)
+        except KeyError:
+            raw_files[fname] = [d]
+        del scan
 
     if scan_filemap and raw_data_only:
         # determine if we want to do ms1 ion detection, ms2 ion detection, all ms2 of each file
