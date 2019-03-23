@@ -45,4 +45,4 @@ after_success:
     fi
 cache:
   directories:
-  - $TRAVIS_BUILD_DIR/pyquant/tests/data
+  - $TRAVIS_BUILD_DIR/tests/data

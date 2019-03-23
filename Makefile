@@ -14,17 +14,17 @@ docker-release:
 	docker push chrismit7/pyquant
 
 test:
-	nosetests --with-coverage --cover-erase --cover-package=pyquant pyquant.tests
-	coverage report --omit=pyquant/tests*
+	nosetests --with-coverage --cover-erase --cover-package=pyquant tests
+	coverage report --omit=tests*
 
 testintegration:
-	nosetests -i integration_.* pyquant.tests
+	nosetests -i integration_.* tests
 
 testitraq:
-	nosetests pyquant.tests.integration_isobaric_tags
+	nosetests tests.integration_isobaric_tags
 
 testmanual:
-	nosetests pyquant.tests.integration_manual
+	nosetests tests.integration_manual
 
 testtravis: test testitraq
 
