@@ -660,8 +660,7 @@ class Worker(Process):
                 if self.html:
                     # make the figure of our isotopes selected
                     all_x = sorted(isotopes_chosen.index.get_level_values('MZ').drop_duplicates())
-                    isotopes_chosen['RT'] = isotopes_chosen.index.get_level_values('RT')
-                    isotope_group = isotopes_chosen.groupby('RT')
+                    isotope_group = isotopes_chosen.groupby(level='RT')
 
                     isotope_figure = {
                         'data': [],

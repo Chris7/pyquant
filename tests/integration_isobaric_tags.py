@@ -3,7 +3,7 @@ import unittest
 import pandas as pd
 import subprocess
 
-from pyquant.tests import mixins, utils
+from . import mixins, utils
 
 
 class ITraqTest(mixins.FileMixins, unittest.TestCase):

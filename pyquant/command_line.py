@@ -213,6 +213,7 @@ def run_pyquant():
                 'file': fname,
                 'id': specId,
                 'mass': float(precursor_mass),
+                'theor_mass': float(precursor_mass),
                 'rt': rt_value,
                 'charge': charge,
                 'peptide': peptide,
