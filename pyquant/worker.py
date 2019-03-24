@@ -643,6 +643,7 @@ class Worker(Process):
                             if self.debug:
                                 print(combined_data.columns)
                                 print(self.msn_rt_map)
+                            raise
                 else:
                     new_col = combined_data.columns[-1] + (combined_data.columns[-1] - combined_data.columns[-2])
                 combined_data[new_col] = 0
