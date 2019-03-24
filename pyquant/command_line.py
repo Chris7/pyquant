@@ -176,6 +176,8 @@ def run_pyquant():
         else:
             scan_filemap[os.path.splitext(os.path.split(raw_file)[1])[0]] = os.path.abspath(raw_file)
 
+
+    result_iterator = []
     if input_found == 'tsv':
         if args.maxquant:
             peptide_col = "Sequence"
