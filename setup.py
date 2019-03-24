@@ -30,7 +30,7 @@ setup(
     install_requires=['cython', 'numpy', 'scipy >= 0.18.*', 'patsy', 'pythomics >= 0.3.41', 'pandas', 'lxml', 'scikit-learn', 'simplejson'],
     include_package_data=True,
     description='A framework for the analysis of quantitative mass spectrometry data',
-    url='http://www.github.com/pandeylab/pyquant',
+    url='http://www.github.com/chris7/pyquant',
     author='Chris Mitchell <chris.mit7@gmail.com>',
     classifiers=[
         'License :: OSI Approved :: MIT License',
