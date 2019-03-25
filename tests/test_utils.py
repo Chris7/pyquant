@@ -8,7 +8,7 @@ import pandas as pd
 import six
 
 from pyquant import utils
-from pyquant.tests.mixins import GaussianMixin
+from .mixins import GaussianMixin
 
 class UtilsTests(GaussianMixin, unittest.TestCase):
     def setUp(self):
@@ -187,7 +187,7 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
 
         scan = pd.Series(y, index=x)
         resolution = utils.get_scan_resolution(scan)
-        self.assertAlmostEqual(resolution, 90781.241173982111)
+        self.assertAlmostEqual(int(resolution), 90781)
 
 
     def test_subtract_baseline(self):

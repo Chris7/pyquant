@@ -7,8 +7,8 @@ import numpy as np
 
 import tempfile
 
-from pyquant.tests.mixins import FileMixins
-from pyquant.tests import config
+from .mixins import FileMixins
+from . import config
 
 class TestTargeted(FileMixins, unittest.TestCase):
     def setUp(self):

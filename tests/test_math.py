@@ -6,7 +6,7 @@ import numpy as np
 from six.moves import xrange
 from sympy import symbols, diff, exp, Piecewise
 
-from pyquant.tests.mixins import GaussianMixin
+from .mixins import GaussianMixin
 from pyquant import peaks
 from pyquant import cpeaks
 

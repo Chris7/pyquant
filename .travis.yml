@@ -27,7 +27,7 @@ install:
     else
       echo "no coveralls for python3";
     fi
-  - pip install --upgrade pip setuptools
+  - pip install --upgrade -I --force-reinstall pip setuptools
   - pip install -r requirements.txt
   - pip install -e .
 language: python
@@ -45,4 +45,4 @@ after_success:
     fi
 cache:
   directories:
-  - $TRAVIS_BUILD_DIR/pyquant/tests/data
+  - $TRAVIS_BUILD_DIR/tests/data

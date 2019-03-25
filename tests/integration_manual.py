@@ -6,9 +6,9 @@ import numpy as np
 import os
 import subprocess
 
-from pyquant.tests.mixins import FileMixins
-from pyquant.tests.utils import timer
-from pyquant.tests import config
+from .mixins import FileMixins
+from .utils import timer
+from . import config
 
 
 peps_scans = (

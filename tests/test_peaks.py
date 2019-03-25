@@ -6,8 +6,8 @@ import numpy as np
 import six
 import six.moves.cPickle as pickle
 
-from pyquant.tests.utils import timer
-from pyquant.tests.mixins import FileMixins, GaussianMixin
+from .utils import timer
+from .mixins import FileMixins, GaussianMixin
 from pyquant import peaks
 from pyquant import PEAK_FINDING_DERIVATIVE, PEAK_FINDING_REL_MAX, PEAK_FIT_MODE_FAST
 
@@ -119,7 +119,8 @@ class GaussianTests(GaussianMixin, unittest.TestCase):
                 1880722.1582992678, 48.14756707645761, 0.17537885391522443, 0.4846763157315077,
                 1473766.5256005626, 49.52607160264086, 0.020199999999999108, 0.22250905781532157
             ]),
-            atol=10,
+            # The rtol is 1e-7, so we really don't care about the atol
+            atol=20,
         )
 
 if __name__ == '__main__':

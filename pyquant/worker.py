@@ -634,15 +634,10 @@ class Worker(Process):
                 start_rt = rt
                 rt_guide = self.rt_guide and start_rt
                 if len(combined_data.columns) == 1:
-                    if combined_data.columns[-1] == self.msn_rt_map[-1]:
-                        new_col = combined_data.columns[-1] + (combined_data.columns[-1] - self.msn_rt_map[-2])
+                    if combined_data.columns[-1] == self.msn_rt_map.iloc[-1]:
+                        new_col = combined_data.columns[-1] + (combined_data.columns[-1] - self.msn_rt_map.iloc[-2])
                     else:
-                        try:
-                            new_col = self.msn_rt_map.iloc[self.msn_rt_map.searchsorted(combined_data.columns[-1]) + 1].values[0]
-                        except Exception as e:
-                            if self.debug:
-                                print(combined_data.columns)
-                                print(self.msn_rt_map)
+                        new_col = self.msn_rt_map.iloc[self.msn_rt_map.searchsorted(combined_data.columns[-1]) + 1]
                 else:
                     new_col = combined_data.columns[-1] + (combined_data.columns[-1] - combined_data.columns[-2])
                 combined_data[new_col] = 0
@@ -660,8 +655,7 @@ class Worker(Process):
                 if self.html:
                     # make the figure of our isotopes selected
                     all_x = sorted(isotopes_chosen.index.get_level_values('MZ').drop_duplicates())
-                    isotopes_chosen['RT'] = isotopes_chosen.index.get_level_values('RT')
-                    isotope_group = isotopes_chosen.groupby('RT')
+                    isotope_group = isotopes_chosen.groupby(level='RT')
 
                     isotope_figure = {
                         'data': [],

@@ -4,7 +4,7 @@ from unittest import TestCase
 from multiprocessing import Queue
 
 from pyquant.reader import Reader
-from pyquant.tests import mixins
+from . import mixins
 
 class TestReader(mixins.FileMixins, TestCase):
     def setUp(self):
