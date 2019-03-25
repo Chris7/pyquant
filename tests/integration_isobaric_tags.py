@@ -16,7 +16,7 @@ class ITraqTest(mixins.FileMixins, unittest.TestCase):
     def test_itraq_processing(self):
         com = [self.executable, '--scan-file', self.itraq_mzml, '-o', self.output, '--precursor-ppm', '200', '--isobaric-tags', '--label-scheme', self.labels]
         subprocess.call(com)
-        data = pd.read_table(self.output)
+        data = pd.read_csv(self.output, sep='\t')
         for i,j in zip([int(i) for i in data['114 Intensity'].values.tolist()], [1215, 9201, 1218, 83983, 10266, 2995, 7160]):
             delta = j*0.1
             if delta != 0 and delta < 300:

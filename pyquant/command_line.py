@@ -98,7 +98,7 @@ def run_pyquant():
         args.no_rt_guide = True
         args.disable_stats = True
 
-    mrm_pair_info = pd.read_table(args.mrm_map) if args.mrm and args.mrm_map else None
+    mrm_pair_info = pd.read_csv(args.mrm_map, sep='\t') if args.mrm and args.mrm_map else None
 
     scan_filemap = {}
     found_scans = {}
@@ -108,7 +108,7 @@ def run_pyquant():
     name_mapping = {}
 
     if args.label_scheme:
-        label_info = pd.read_table(args.label_scheme.name, sep='\t', header=None, dtype='str')
+        label_info = pd.read_csv(args.label_scheme.name, sep='\t', header=None, dtype='str')
         try:
             label_info.columns = ['Label', 'AA', 'Mass', 'UserName']
             name_mapping = dict([(v['Label'], v['UserName']) for i,v in label_info.iterrows()])
@@ -151,7 +151,7 @@ def run_pyquant():
         results = GuessIterator(args.search_file.name, full=True, store=False, peptide=peptides)
         input_found = 'ms'
     elif args.tsv:
-        results = pd.read_table(args.tsv, sep='\t')
+        results = pd.read_csv(args.tsv, sep='\t')
         input_found = 'tsv'
 
     if args.search_file:
