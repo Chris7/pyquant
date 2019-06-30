@@ -15,7 +15,7 @@ from string import Template
 
 import pandas as pd
 import six
-from pythomics.proteomics.config import CARBON_NEUTRON
+from pythomics.proteomics.config import CARBON_NEUTRON, PROTON
 from pythomics.proteomics.parsers import GuessIterator
 from pythomics.proteomics import config
 from scipy.interpolate import UnivariateSpline
@@ -183,7 +183,7 @@ def run_pyquant():
     if input_found == 'tsv':
         if args.maxquant:
             peptide_col = "Sequence"
-            precursor_col = "m/z"
+            precursor_col = "Mass"
             rt_col = 'Retention time'
             charge_col = 'Charge'
             file_col = 'Raw file'
@@ -211,6 +211,9 @@ def run_pyquant():
             precursor_mass = row_info[precursor_col] if precursor_col in row_info else None
             rt_value = row_info[rt_col] if rt_col in row_info else None
             label = name_mapping.get(row_info[label_col]) if label_col in row_info else None
+
+            if args.maxquant:
+                precursor_mass = precursor_mass / charge + PROTON
 
             return {
                 'file': fname,
