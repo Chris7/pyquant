@@ -309,8 +309,7 @@ def run_pyquant():
                 for i in scan_filemap:
                     s.set_seq2(i)
                     seq_matches.append((s.ratio(), i))
-                seq_matches.sort(key=operator.itemgetter(0), reverse=True)
-
+                seq_matches = [i for i in sorted(seq_matches, key=operator.itemgetter(0), reverse=True) if i[0] != 1]
                 replicate_file_mapper[fname] = seq_matches[0][1]
                 fname = seq_matches[0][1]
         if fname not in scan_filemap:
@@ -878,7 +877,7 @@ def run_pyquant():
                 target_scan['rt'] = rt
 
             if args.mva and rep_mapper is not None:
-                target_scan['rt'] = rep_mapper.predict(float(target_scan['rt']))[0]
+                target_scan['rt'] = rep_mapper.predict(np.array(float(target_scan['rt'])).reshape(-1, 1))[0]
 
             mods = target_scan.get('modifications')
             charge = target_scan.get('charge')
