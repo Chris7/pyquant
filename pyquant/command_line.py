@@ -2,6 +2,7 @@ from __future__ import division, unicode_literals, print_function
 import base64
 import copy
 import gzip
+import math
 import os
 import operator
 import traceback
@@ -212,6 +213,9 @@ def run_pyquant():
             rt_value = row_info[rt_col] if rt_col in row_info else None
             label = name_mapping.get(row_info[label_col]) if label_col in row_info else None
 
+            if math.isnan(precursor_mass) or not charge:
+                return None
+
             if args.maxquant:
                 precursor_mass = precursor_mass / charge + PROTON
 
@@ -263,6 +267,9 @@ def run_pyquant():
             continue
 
         result_info = result_formatter(scan)
+        if result_info is None:
+            continue
+
         peptide = result_info['peptide']
 
         if peptides and peptide.upper() not in peptides:
