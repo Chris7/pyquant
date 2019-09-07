@@ -16,7 +16,7 @@ before_install:
   - bash travis_downloaddata.sh
 install:
   - cd $TRAVIS_BUILD_DIR
-  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION atlas numpy scipy nose pandas statsmodels lxml
+  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION numpy scipy nose pandas statsmodels lxml
   - source activate test-environment
   # Coverage packages are on my binstar channel
   - if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
