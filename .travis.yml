@@ -10,16 +10,13 @@ before_install:
   - conda config --set always_yes yes --set changeps1 no
   - conda update -q conda
   - conda info -a
-  # The next couple lines fix a crash with multiprocessing on Travis and are not specific to using Miniconda
-  - sudo rm -rf /dev/shm
-  - sudo ln -s /run/shm /dev/shm
   # git lfs until we get our packages on PRIDE and just use curl for those
   - cd $TRAVIS_BUILD_DIR
   - cd ci
   - bash travis_downloaddata.sh
 install:
   - cd $TRAVIS_BUILD_DIR
-  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION atlas numpy scipy nose pandas statsmodels lxml
+  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION numpy scipy nose pandas statsmodels lxml
   - source activate test-environment
   # Coverage packages are on my binstar channel
   - if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
@@ -27,13 +24,12 @@ install:
     else
       echo "no coveralls for python3";
     fi
-  - pip install --upgrade pip setuptools
+  - pip install --upgrade -I --force-reinstall pip setuptools
   - pip install -r requirements.txt
   - pip install -e .
 language: python
 python:
   - "2.7"
-  - "3.5"
   - "3.6"
 # command to run tests
 script: make testtravis
@@ -45,4 +41,4 @@ after_success:
     fi
 cache:
   directories:
-  - $TRAVIS_BUILD_DIR/pyquant/tests/data
+  - $TRAVIS_BUILD_DIR/tests/data

@@ -10,8 +10,8 @@ from operator import itemgetter
 import six
 import numpy as np
 import pandas as pd
-from scipy.misc import comb
 from scipy.signal import savgol_filter
+from scipy.special import comb
 
 from . import PEAK_FINDING_DERIVATIVE, PEAK_FINDING_REL_MAX
 from .logger import logger

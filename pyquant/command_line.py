@@ -2,6 +2,7 @@ from __future__ import division, unicode_literals, print_function
 import base64
 import copy
 import gzip
+import math
 import os
 import operator
 import traceback
@@ -15,7 +16,7 @@ from string import Template
 
 import pandas as pd
 import six
-from pythomics.proteomics.config import CARBON_NEUTRON
+from pythomics.proteomics.config import CARBON_NEUTRON, PROTON
 from pythomics.proteomics.parsers import GuessIterator
 from pythomics.proteomics import config
 from scipy.interpolate import UnivariateSpline
@@ -98,7 +99,7 @@ def run_pyquant():
         args.no_rt_guide = True
         args.disable_stats = True
 
-    mrm_pair_info = pd.read_table(args.mrm_map) if args.mrm and args.mrm_map else None
+    mrm_pair_info = pd.read_csv(args.mrm_map, sep='\t') if args.mrm and args.mrm_map else None
 
     scan_filemap = {}
     found_scans = {}
@@ -108,7 +109,7 @@ def run_pyquant():
     name_mapping = {}
 
     if args.label_scheme:
-        label_info = pd.read_table(args.label_scheme.name, sep='\t', header=None, dtype='str')
+        label_info = pd.read_csv(args.label_scheme.name, sep='\t', header=None, dtype='str')
         try:
             label_info.columns = ['Label', 'AA', 'Mass', 'UserName']
             name_mapping = dict([(v['Label'], v['UserName']) for i,v in label_info.iterrows()])
@@ -151,7 +152,7 @@ def run_pyquant():
         results = GuessIterator(args.search_file.name, full=True, store=False, peptide=peptides)
         input_found = 'ms'
     elif args.tsv:
-        results = pd.read_table(args.tsv, sep='\t')
+        results = pd.read_csv(args.tsv, sep='\t')
         input_found = 'tsv'
 
     if args.search_file:
@@ -176,133 +177,160 @@ def run_pyquant():
         else:
             scan_filemap[os.path.splitext(os.path.split(raw_file)[1])[0]] = os.path.abspath(raw_file)
 
+
+    result_iterator = []
+    replicate_file_mapper = {}
+
     if input_found == 'tsv':
         if args.maxquant:
             peptide_col = "Sequence"
-            precursor_col = "m/z"
+            precursor_col = "Mass"
             rt_col = 'Retention time'
             charge_col = 'Charge'
             file_col = 'Raw file'
-            if 'evidence' in source_file:
-                scan_col = "MS/MS Scan Number"
-                label_col = 'Labeling State'
-            elif 'ms2' in source_file:
+            scan_col = "MS/MS Scan Number"
+            label_col = 'Labeling State'
+            if 'ms2' in source_file:
                 scan_col = "Scan number"
                 label_col = None
         else:
             peptide_col = args.peptide_col
-            scan_col = args.scan_col
             precursor_col = args.mz
             rt_col = args.rt
             charge_col = args.charge
             file_col = args.source
             label_col = args.label
-        for index, row in enumerate(results.iterrows()):
-            if index%1000 == 0:
-                sys.stderr.write('.')
-            row_index, i = row
-            peptide = i[peptide_col].strip() if peptide_col in i else ''
-            if peptides and not any([j.lower() == peptide.lower() for j in peptides]):
-                continue
-            if not peptides and (sample != 1.0 and random.random() > sample):
-                continue
-            specId = str(i[scan_col])
-            if scans_to_select and str(specId) not in scans_to_select:
-                continue
-            fname = i[file_col] if file_col in i else raw_file
-            if fname not in scan_filemap:
-                fname = os.path.split(fname)[1]
-                if fname not in scan_filemap:
-                    if skip:
-                        continue
-                    sys.stderr.write('{0} not found in filemap. Filemap is {1}. If you wish to ignore this message, add --skip to your input arguments.'.format(fname, scan_filemap))
-                    return 1
-            charge = float(i[charge_col]) if charge_col in i else 1
-            precursor_mass = i[precursor_col] if precursor_col in i else None
-            rt_value = i[rt_col] if rt_col in i else None
-            mass_key = (specId, fname, charge, precursor_mass)
-            if mass_key in found_scans:
-                continue
-            #'id': id_Scan[id], 'theor_mass' -> id_scan[mass], 'peptide': idScan[peptide,],  'mod_peptide': idscan, 'rt': idscan,
-            #
-            d = {
-                'file': fname, 'quant_scan': {}, 'id_scan': {
-                'id': specId, 'mass': precursor_mass, 'peptide': peptide, 'rt': rt_value,
-                'charge': charge, 'modifications': None, 'label': name_mapping.get(i[label_col]) if label_col in i else None
+            scan_col = args.scan_col
+
+        result_iterator = results.iterrows()
+        def tsv_formatter(row):
+            row_index, row_info = row
+            peptide = row_info[peptide_col].strip() if peptide_col in row_info else ''
+            specId = str(row_info[scan_col])
+            fname = row_info[file_col] if file_col in row_info else raw_file
+            charge = float(row_info[charge_col]) if charge_col in row_info else 1
+            precursor_mass = row_info[precursor_col] if precursor_col in row_info else None
+            rt_value = row_info[rt_col] if rt_col in row_info else None
+            label = name_mapping.get(row_info[label_col]) if label_col in row_info else None
+
+            if math.isnan(precursor_mass) or not charge:
+                return None
+
+            if args.maxquant:
+                precursor_mass = precursor_mass / charge + PROTON
+
+            return {
+                'file': fname,
+                'id': specId,
+                'mass': float(precursor_mass),
+                'theor_mass': float(precursor_mass),
+                'rt': rt_value,
+                'charge': charge,
+                'peptide': peptide,
+                'modifications': None,
+                'label': label,
+                'key': (fname, specId, peptide, precursor_mass)
             }
-            }
-            found_scans[mass_key] = d
-            if args.mva:
-                for i in scan_filemap:
-                    raw_files[i] = d
-            else:
-                try:
-                    raw_files[i[file_col]].append(d)
-                except Exception as e:
-                    raw_files[i[file_col]] = [d]
+
+        result_formatter = tsv_formatter
+
     elif input_found == 'ms':
         if not (args.label_scheme or args.label_method):
             mass_labels.update(results.getSILACLabels())
-        replicate_file_mapper = {}
-        for index, scan in enumerate(results.getScans(modifications=False, fdr=True)):
-            if index%1000 == 0:
-                sys.stderr.write('.')
-            if scan is None:
-                continue
+        result_iterator = results.getScans(modifications=False, fdr=True)
+
+        def ms_formatter(scan):
             peptide = scan.peptide
-            # if peptide.lower() != 'AGkPVIcATQMLESmIk'.lower():
-            #     continue
-            if peptides and peptide.upper() not in peptides:
-                continue
-            if not peptides and (sample != 1.0 and random.random() > sample):
-                continue
             specId = scan.id
-            if scans_to_select and str(specId) not in scans_to_select:
-                continue
             fname = scan.file
-            mass_key = (fname, specId, peptide, scan.mass)
-            if mass_key in found_scans:
-                continue
-            d = {
-                    'file': fname, 'quant_scan': {}, 'id_scan': {
-                    'id': specId, 'theor_mass': scan.getTheorMass(), 'peptide': peptide, 'mod_peptide': scan.modifiedPeptide, 'rt': scan.rt,
-                    'charge': scan.charge, 'modifications': scan.getModifications(), 'mass': float(scan.mass), 'accession': getattr(scan, 'acc', None),
-                }
+
+            return {
+                'file': fname,
+                'id': specId,
+                'mass': float(scan.mass),
+                'rt': scan.rt,
+                'charge': scan.charge,
+                'peptide': peptide,
+                'mod_peptide': scan.modifiedPeptide,
+                'theor_mass': scan.getTheorMass(),
+                'modifications': scan.getModifications(),
+                'accession': getattr(scan, 'acc', None),
+                'key': (fname, specId, peptide, scan.mass),
             }
-            found_scans[mass_key] = d#.add(mass_key)
-            fname = os.path.splitext(fname)[0]
-            if args.mva:
-                # find the most similar name, add in a setting for this
-                import difflib
-                if fname in replicate_file_mapper:
-                    fname = replicate_file_mapper[fname]
-                    if fname is None:
-                        continue
-                else:
-                    s = difflib.SequenceMatcher(None, fname)
-                    seq_matches = []
-                    for i in scan_filemap:
-                        s.set_seq2(i)
-                        seq_matches.append((s.ratio(), i))
-                    seq_matches.sort(key=operator.itemgetter(0), reverse=True)
-                    if False:#len(fname)-len(fname)*seq_matches[0][0] > 1:
-                        replicate_file_mapper[fname] = None
-                        continue
-                    else:
-                        replicate_file_mapper[fname] = seq_matches[0][1]
-                        fname = seq_matches[0][1]
+
+        result_formatter = ms_formatter
+
+    for index, scan in enumerate(result_iterator):
+        if index%1000 == 0:
+            sys.stderr.write('.')
+        if scan is None:
+            continue
+
+        result_info = result_formatter(scan)
+        if result_info is None:
+            continue
+
+        peptide = result_info['peptide']
+
+        if peptides and peptide.upper() not in peptides:
+            continue
+        if not peptides and (sample != 1.0 and random.random() > sample):
+            continue
+
+        specId = result_info['id']
+        if scans_to_select and str(specId) not in scans_to_select:
+            continue
+
+        fname = result_info['file']
+        mass_key = result_info['key']
+        if mass_key in found_scans:
+            continue
+
+        d = {
+            'file': fname,
+            'quant_scan': {},
+            'id_scan': {
+                'id': specId,
+                'theor_mass': result_info.get('theor_mass'),
+                'peptide': peptide,
+                'mod_peptide': result_info.get('mod_peptide'),
+                'rt': result_info['rt'],
+                'charge': result_info['charge'],
+                'modifications': result_info['modifications'],
+                'mass': result_info['mass'],
+                'accession': result_info.get('accession'),
+            }
+        }
+        found_scans[mass_key] = d
+        fname = os.path.splitext(fname)[0]
+        if args.mva:
+            # find the most similar name, add in a setting for this
+            import difflib
+            if fname in replicate_file_mapper:
+                fname = replicate_file_mapper[fname]
+                if fname is None:
+                    continue
+            else:
+                s = difflib.SequenceMatcher(None, fname)
+                seq_matches = []
+                for i in scan_filemap:
+                    s.set_seq2(i)
+                    seq_matches.append((s.ratio(), i))
+                seq_matches = [i for i in sorted(seq_matches, key=operator.itemgetter(0), reverse=True) if i[0] != 1]
+                replicate_file_mapper[fname] = seq_matches[0][1]
+                fname = seq_matches[0][1]
+        if fname not in scan_filemap:
+            fname = os.path.split(fname)[1]
             if fname not in scan_filemap:
-                fname = os.path.split(fname)[1]
-                if fname not in scan_filemap:
-                    if skip:
-                        continue
-                    sys.stderr.write('{0} not found in filemap. Filemap is {1}.'.format(fname, scan_filemap))
-                    return 1
-            try:
-                raw_files[fname].append(d)
-            except KeyError:
-                raw_files[fname] = [d]
-            del scan
+                if skip:
+                    continue
+                sys.stderr.write('{0} not found in filemap. Filemap is {1}.'.format(fname, scan_filemap))
+                return 1
+        try:
+            raw_files[fname].append(d)
+        except KeyError:
+            raw_files[fname] = [d]
+        del scan
 
     if scan_filemap and raw_data_only:
         # determine if we want to do ms1 ion detection, ms2 ion detection, all ms2 of each file
@@ -623,10 +651,12 @@ def run_pyquant():
                 scan_mzs = scan_mzs[scan_mzs[:, 1] > 0][:, 0]
                 if not np.any(scan_mzs):
                     continue
-                mass, charge, rt = scan['mass'], scan['charge'], scan['rt']
+                mass, charge, rt, centroided = scan['mass'], scan['charge'], scan['rt'], scan['centroid']
                 ions_found = []
                 added = set([])
                 for ion_set in ions:
+                    if isinstance(ion_set, float):
+                        ion_set = [ion_set]
                     for ion_index, (ion, nearest_mz_index) in enumerate(zip(ion_set, find_nearest_indices(scan_mzs, np.array(ion_set, dtype=np.float)))):
                         nearest_mz = scan_mzs[nearest_mz_index]
                         found_ions = []
@@ -666,7 +696,7 @@ def run_pyquant():
                             ion_found = ','.join(map(str, ion_dict['ion_set']))
                             spectra_to_quant = scan_id
                             # we are quantifying the ion itself
-                            if charge == 0 or args.mva:
+                            if charge == 0 and not args.mva:
                                 # see if we can figure out the charge state
                                 charge_states = []
                                 for i in xrange(1, 5):
@@ -680,7 +710,7 @@ def run_pyquant():
                                             peak_height += mz_vals[closest_mz]
                                     charge_states.append((charge_peaks_found, i, peak_height))
                                 charge_states = sorted(charge_states, key=operator.itemgetter(0, 2), reverse=True)
-                                if args.mva and int(ion_dict['charge']) not in [i[0] for i in charge_states]:
+                                if int(ion_dict['charge']) not in [i[0] for i in charge_states]:
                                     continue
                                 elif args.mva:
                                     charge_to_use = ion_dict['charge']
@@ -691,11 +721,11 @@ def run_pyquant():
                                         charge_to_use = charge_states[0][1]
                                 else:
                                     charge_to_use = 1
+                            else:
+                                charge_to_use = charge
                                 if args.mva:
                                     rep_key = (ion_dict['scan_info']['id_scan']['rt'], ion_dict['scan_info']['id_scan']['mass'], charge_to_use)
                                     rep_map[rep_key].add(rt)
-                            else:
-                                charge_to_use = charge
                             this_scan_ions[ion].add(charge_to_use)
                             if charge_to_use in last_scan_ions[ion]:
                                 continue
@@ -768,7 +798,7 @@ def run_pyquant():
             raw_scans = []
             for i in replicate_search_list:
                 ion_rt, ion = i
-                best_scan = sorted([(np.abs((rep_mapper.predict(j[1]['replicate_scan_rt']) if rep_mapper else j[1]['replicate_scan_rt'])-ion_rt), j[1]) for j in replicate_search_list[i]], key=operator.itemgetter(0))[0][1]
+                best_scan = sorted([(np.abs((rep_mapper.predict(np.array(j[1]['replicate_scan_rt']).reshape(-1, 1)) if rep_mapper else j[1]['replicate_scan_rt'])-ion_rt), j[1]) for j in replicate_search_list[i]], key=operator.itemgetter(0))[0][1]
                 raw_scans.append(best_scan)
 
         quant_msn_map = [i for i in msn_map if i[0] == msn_for_quant] if not args.mrm else msn_map
@@ -854,7 +884,7 @@ def run_pyquant():
                 target_scan['rt'] = rt
 
             if args.mva and rep_mapper is not None:
-                target_scan['rt'] = rep_mapper.predict(float(target_scan['rt']))[0]
+                target_scan['rt'] = rep_mapper.predict(np.array(float(target_scan['rt'])).reshape(-1, 1))[0]
 
             mods = target_scan.get('modifications')
             charge = target_scan.get('charge')

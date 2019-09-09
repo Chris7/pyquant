@@ -12,7 +12,7 @@ class FileMixins(object):
         super(FileMixins, self).setUp()
         self.base_dir = BASE_DIR
         self.data_dir = DATA_DIR
-        self.executable = os.path.abspath(os.path.join(self.base_dir, '..', '..', 'scripts', 'pyQuant'))
+        self.executable = os.path.abspath(os.path.join(self.base_dir, '..', 'scripts', 'pyQuant'))
         self.ecoli_search_file = os.path.join(self.data_dir, 'Chris_Ecoli_1-2-4-(01).msf')
         self.ecoli_mzml = os.path.join(self.data_dir, 'Chris_Ecoli_1-2-4.mzML')
         self.itraq_mzml = os.path.join(self.data_dir, 'iTRAQ_Data.mzML')

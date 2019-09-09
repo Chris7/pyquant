@@ -593,7 +593,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             # Return the top n highest peaks
             amplitudes = best_fit[0::step_size]
             peak_indices = sorted(np.argsort(amplitudes)[::-1][:max_peaks])
-        best_fit = np.hstack((best_fit[i*step_size:(i+1)*step_size] for i in peak_indices))
+        best_fit = np.hstack([best_fit[i*step_size:(i+1)*step_size] for i in peak_indices])
 
     peak_func = bigauss_ndim if bigauss_fit else gauss_ndim
     # Get rid of peaks with low r^2

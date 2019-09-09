@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 import subprocess
 
-from pyquant.tests import mixins, utils, config
+from . import mixins, utils, config
 
 
 class EColiTest(mixins.FileMixins, unittest.TestCase):
