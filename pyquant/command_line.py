@@ -2,6 +2,7 @@ from __future__ import division, unicode_literals, print_function
 import base64
 import copy
 import gzip
+import math
 import os
 import operator
 import traceback
@@ -15,7 +16,7 @@ from string import Template
 
 import pandas as pd
 import six
-from pythomics.proteomics.config import CARBON_NEUTRON
+from pythomics.proteomics.config import CARBON_NEUTRON, PROTON
 from pythomics.proteomics.parsers import GuessIterator
 from pythomics.proteomics import config
 from scipy.interpolate import UnivariateSpline
@@ -178,27 +179,28 @@ def run_pyquant():
 
 
     result_iterator = []
+    replicate_file_mapper = {}
+
     if input_found == 'tsv':
         if args.maxquant:
             peptide_col = "Sequence"
-            precursor_col = "m/z"
+            precursor_col = "Mass"
             rt_col = 'Retention time'
             charge_col = 'Charge'
             file_col = 'Raw file'
-            if 'evidence' in source_file:
-                scan_col = "MS/MS Scan Number"
-                label_col = 'Labeling State'
-            elif 'ms2' in source_file:
+            scan_col = "MS/MS Scan Number"
+            label_col = 'Labeling State'
+            if 'ms2' in source_file:
                 scan_col = "Scan number"
                 label_col = None
         else:
             peptide_col = args.peptide_col
-            scan_col = args.scan_col
             precursor_col = args.mz
             rt_col = args.rt
             charge_col = args.charge
             file_col = args.source
             label_col = args.label
+            scan_col = args.scan_col
 
         result_iterator = results.iterrows()
         def tsv_formatter(row):
@@ -210,6 +212,12 @@ def run_pyquant():
             precursor_mass = row_info[precursor_col] if precursor_col in row_info else None
             rt_value = row_info[rt_col] if rt_col in row_info else None
             label = name_mapping.get(row_info[label_col]) if label_col in row_info else None
+
+            if math.isnan(precursor_mass) or not charge:
+                return None
+
+            if args.maxquant:
+                precursor_mass = precursor_mass / charge + PROTON
 
             return {
                 'file': fname,
@@ -229,7 +237,6 @@ def run_pyquant():
     elif input_found == 'ms':
         if not (args.label_scheme or args.label_method):
             mass_labels.update(results.getSILACLabels())
-        replicate_file_mapper = {}
         result_iterator = results.getScans(modifications=False, fdr=True)
 
         def ms_formatter(scan):
@@ -260,6 +267,9 @@ def run_pyquant():
             continue
 
         result_info = result_formatter(scan)
+        if result_info is None:
+            continue
+
         peptide = result_info['peptide']
 
         if peptides and peptide.upper() not in peptides:
@@ -306,8 +316,7 @@ def run_pyquant():
                 for i in scan_filemap:
                     s.set_seq2(i)
                     seq_matches.append((s.ratio(), i))
-                seq_matches.sort(key=operator.itemgetter(0), reverse=True)
-
+                seq_matches = [i for i in sorted(seq_matches, key=operator.itemgetter(0), reverse=True) if i[0] != 1]
                 replicate_file_mapper[fname] = seq_matches[0][1]
                 fname = seq_matches[0][1]
         if fname not in scan_filemap:
@@ -642,10 +651,12 @@ def run_pyquant():
                 scan_mzs = scan_mzs[scan_mzs[:, 1] > 0][:, 0]
                 if not np.any(scan_mzs):
                     continue
-                mass, charge, rt = scan['mass'], scan['charge'], scan['rt']
+                mass, charge, rt, centroided = scan['mass'], scan['charge'], scan['rt'], scan['centroid']
                 ions_found = []
                 added = set([])
                 for ion_set in ions:
+                    if isinstance(ion_set, float):
+                        ion_set = [ion_set]
                     for ion_index, (ion, nearest_mz_index) in enumerate(zip(ion_set, find_nearest_indices(scan_mzs, np.array(ion_set, dtype=np.float)))):
                         nearest_mz = scan_mzs[nearest_mz_index]
                         found_ions = []
@@ -685,7 +696,7 @@ def run_pyquant():
                             ion_found = ','.join(map(str, ion_dict['ion_set']))
                             spectra_to_quant = scan_id
                             # we are quantifying the ion itself
-                            if charge == 0 or args.mva:
+                            if charge == 0 and not args.mva:
                                 # see if we can figure out the charge state
                                 charge_states = []
                                 for i in xrange(1, 5):
@@ -699,7 +710,7 @@ def run_pyquant():
                                             peak_height += mz_vals[closest_mz]
                                     charge_states.append((charge_peaks_found, i, peak_height))
                                 charge_states = sorted(charge_states, key=operator.itemgetter(0, 2), reverse=True)
-                                if args.mva and int(ion_dict['charge']) not in [i[0] for i in charge_states]:
+                                if int(ion_dict['charge']) not in [i[0] for i in charge_states]:
                                     continue
                                 elif args.mva:
                                     charge_to_use = ion_dict['charge']
@@ -710,11 +721,11 @@ def run_pyquant():
                                         charge_to_use = charge_states[0][1]
                                 else:
                                     charge_to_use = 1
+                            else:
+                                charge_to_use = charge
                                 if args.mva:
                                     rep_key = (ion_dict['scan_info']['id_scan']['rt'], ion_dict['scan_info']['id_scan']['mass'], charge_to_use)
                                     rep_map[rep_key].add(rt)
-                            else:
-                                charge_to_use = charge
                             this_scan_ions[ion].add(charge_to_use)
                             if charge_to_use in last_scan_ions[ion]:
                                 continue
@@ -787,7 +798,7 @@ def run_pyquant():
             raw_scans = []
             for i in replicate_search_list:
                 ion_rt, ion = i
-                best_scan = sorted([(np.abs((rep_mapper.predict(j[1]['replicate_scan_rt']) if rep_mapper else j[1]['replicate_scan_rt'])-ion_rt), j[1]) for j in replicate_search_list[i]], key=operator.itemgetter(0))[0][1]
+                best_scan = sorted([(np.abs((rep_mapper.predict(np.array(j[1]['replicate_scan_rt']).reshape(-1, 1)) if rep_mapper else j[1]['replicate_scan_rt'])-ion_rt), j[1]) for j in replicate_search_list[i]], key=operator.itemgetter(0))[0][1]
                 raw_scans.append(best_scan)
 
         quant_msn_map = [i for i in msn_map if i[0] == msn_for_quant] if not args.mrm else msn_map
@@ -873,7 +884,7 @@ def run_pyquant():
                 target_scan['rt'] = rt
 
             if args.mva and rep_mapper is not None:
-                target_scan['rt'] = rep_mapper.predict(float(target_scan['rt']))[0]
+                target_scan['rt'] = rep_mapper.predict(np.array(float(target_scan['rt'])).reshape(-1, 1))[0]
 
             mods = target_scan.get('modifications')
             charge = target_scan.get('charge')

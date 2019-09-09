@@ -297,7 +297,7 @@ class Worker(Process):
                 sys.stderr.write('thread {4} on ms {0} {1} {2} {3}\n'.format(ms1, rt, precursor, scan_info, id(self)))
 
             result_dict = {
-              'peptide': target_scan.get('mod_peptide', peptide),
+              'peptide': target_scan.get('mod_peptide') or target_scan.get('peptide'),
               'scan': scanId,
               'ms1': ms1,
               'charge': charge,
