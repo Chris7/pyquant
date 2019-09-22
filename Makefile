@@ -28,4 +28,4 @@ testmanual:
 
 testtravis: test testitraq
 
-testall: test testintegration testtargeted
+testall: test testintegration
