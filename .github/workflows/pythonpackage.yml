@@ -24,7 +24,7 @@ jobs:
         pip install -r requirements.txt
         pip install -e .
     - name: Run Linux Tests
-      if: matrix.os == "ubuntu-latest"
+      if: matrix.os == 'ubuntu-latest'
       run: |
         pwd
         bash ci/downloaddata.sh
@@ -33,6 +33,6 @@ jobs:
         ls -l tests/data
         make testall
     - name: Run Windows Tests
-      if: matrix.os == "windows-latest"
+      if: matrix.os == 'windows-latest'
       run: |
         make test
