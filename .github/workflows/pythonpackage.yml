@@ -30,3 +30,4 @@ jobs:
         ls -l
         ls -l tests
         ls -l tests/data
+        make testall
