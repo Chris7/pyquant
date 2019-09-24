@@ -25,4 +25,7 @@ jobs:
         pip install -e .
     - name: Run tests
       run: |
+        pwd
         ls -l
+        ls -l tests
+        ls -l tests/data
