@@ -547,7 +547,7 @@ class Worker(Process):
                             if df.name in combined_data.columns:
                                 combined_data = combined_data.add(selected, axis='index', fill_value=0)
                             else:
-                                combined_data = pd.concat([combined_data, selected], axis=1).fillna(0)
+                                combined_data = pd.concat([combined_data, selected], axis=1, sort=True).fillna(0)
                             del selected
                         if not self.mrm and ((len(labels_found) < self.labels_needed) or (
                                             self.parser_args.require_all_ions and len(labels_found) < len(precursors))):
