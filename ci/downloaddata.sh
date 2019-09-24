@@ -1,5 +1,5 @@
 #!/bin/bash
-BASEDIR=$PWD
+BASEDIR=`dirname $0`
 DATADIR="$BASEDIR/../tests/data"
 mkdir -p $DATADIR
 MSFFILE="$DATADIR/Chris_Ecoli_1-2-4-(01).msf"
