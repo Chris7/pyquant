@@ -26,6 +26,7 @@ jobs:
     - name: Run tests
       run: |
         pwd
+        bash ci/downloaddata.sh
         ls -l
         ls -l tests
         ls -l tests/data
