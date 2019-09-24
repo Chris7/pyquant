@@ -23,7 +23,8 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install -e .
-    - name: Run tests
+    - name: Run Linux Tests
+      if: matrix.os == "ubuntu-latest"
       run: |
         pwd
         bash ci/downloaddata.sh
@@ -31,3 +32,7 @@ jobs:
         ls -l tests
         ls -l tests/data
         make testall
+    - name: Run Windows Tests
+      if: matrix.os == "windows-latest"
+      run: |
+        make test
