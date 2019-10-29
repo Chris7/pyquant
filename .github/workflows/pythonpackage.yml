@@ -28,9 +28,6 @@ jobs:
       run: |
         pwd
         bash ci/downloaddata.sh
-        ls -l
-        ls -l tests
-        ls -l tests/data
         make testall
     - name: Run Windows Tests
       if: matrix.os == 'windows-latest'

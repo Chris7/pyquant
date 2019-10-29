@@ -14,7 +14,7 @@ docker-release:
 	docker push chrismit7/pyquant
 
 test:
-	nosetests --with-coverage --cover-erase --cover-package=pyquant tests
+	nosetests -I integration_.* -vvv --with-coverage --cover-erase --cover-package=pyquant tests
 	coverage report --omit=tests*
 
 testintegration:
