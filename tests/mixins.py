@@ -16,6 +16,7 @@ class FileMixins(object):
         self.ecoli_search_file = os.path.join(self.data_dir, 'Chris_Ecoli_1-2-4-(01).msf')
         self.ecoli_mzml = os.path.join(self.data_dir, 'Chris_Ecoli_1-2-4.mzML')
         self.itraq_mzml = os.path.join(self.data_dir, 'iTRAQ_Data.mzML')
+        self.small_mzml = os.path.join(self.data_dir, 'tiny.msdata.mzML0.99.10.mzML')
         self.out_dir = 'pq_tests'
         try:
             os.mkdir(self.out_dir)
