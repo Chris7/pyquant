@@ -13,12 +13,12 @@ class EColiTest(mixins.FileMixins, unittest.TestCase):
         super(EColiTest, self).setUp()
         self.output = os.path.join(self.out_dir, 'pqtest2')
         self.output_stats = '{}_stats'.format(self.output)
-        self.r_std = 0.5
-        self.k_std = 0.7
+        self.r_std = 0.6
+        self.k_std = 0.9
 
     @utils.timer
     def test_pyquant(self):
-        com = [self.executable, '--search-file', self.ecoli_search_file, '--scan-file', self.ecoli_mzml, '-p', str(config.CORES), '-o', self.output, '--html', '--precursor-ppm', '2.5', '--xic-window-size', '12']
+        com = [self.executable, '--search-file', self.ecoli_search_file, '--scan-file', self.ecoli_mzml, '-p', str(config.CORES), '-o', self.output, '--html', '--precursor-ppm', '2', '--xic-window-size', '12']
         subprocess.call(com)
         pyquant = pd.read_table(self.output)
         label = 'Medium'
