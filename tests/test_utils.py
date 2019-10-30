@@ -6,6 +6,7 @@ import unittest
 import numpy as np
 import pandas as pd
 import six
+from nose.plugins.attrib import attr
 
 from pyquant import utils
 from .mixins import GaussianMixin
@@ -50,6 +51,7 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         np.testing.assert_almost_equal(pep_comp.values.tolist(), [0.6411550319843632, 0.2662471681269686, 0.07401847648709056, 0.015434213671511215, 0.002681646815294711])
         np.testing.assert_almost_equal(ele_comp.values.tolist(), [0.9254949240653104, 0.07205572209608584, 0.002404285974894674])
 
+    @attr('linux')
     def test_ml(self):
         data = os.path.join(self.data_dir, 'ml_data.tsv')
         dat = pd.read_table(data)
