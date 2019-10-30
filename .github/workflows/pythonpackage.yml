@@ -32,4 +32,5 @@ jobs:
     - name: Run Windows Tests
       if: matrix.os == 'windows-latest'
       run: |
+        perl -pi -e 's/\r\n/\n/g' -- tests/data/*.pickle
         make test
