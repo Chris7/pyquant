@@ -17,6 +17,10 @@ test:
 	nosetests -I integration_.* --with-coverage --cover-erase --cover-package=pyquant tests
 	coverage report --omit=tests*
 
+testwindows:
+	nosetests -I integration_.* --with-coverage --cover-erase --cover-package=pyquant -a '!linux' tests
+	coverage report --omit=tests*
+
 testintegration:
 	nosetests -i integration_.* tests
 
