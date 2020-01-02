@@ -1,3 +1,4 @@
+# cython: language_level=3
 import numpy as np
 cimport numpy as np
 cimport cython
@@ -247,13 +248,9 @@ cpdef np.ndarray[FLOAT_t] fixedMeanFit(np.ndarray[FLOAT_t, ndim=1] xdata, np.nda
     try:
         results = [optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, tol=1e-20)]
     except ValueError:
-        print 'fitting error'
+        print('fitting error')
         import traceback
-        print traceback.format_exc()
-        print peak_loc
-        print xdata.tolist()
-        print ydata.tolist()
-        print bnds
+        print(traceback.format_exc())
         results = []
     while routines:
         routine, opts = routines.pop(0)
@@ -308,7 +305,6 @@ cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t,
     if rb < min_spacing:
         rb = min_spacing*5
     bnds = np.array([(rel_peak*0.75, 1.01) if rel_peak > 0 else (0.0, 1.0), (xdata[0], xdata[-1]), (min_spacing, lb), (min_spacing, rb)])
-    #print bnds, xdata, peak_loc
     average = np.average(xdata, weights=ydata)
     variance = np.sqrt(np.average((xdata-average)**2, weights=ydata))
     if variance == 0:
@@ -335,13 +331,9 @@ cpdef tuple fixedMeanFit2(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t,
     try:
         results = [optimize.minimize(bigauss_func, guess, args, bounds=bnds, method=routine, options=opts, jac=bigauss_jac)]
     except ValueError:
-        print 'fitting error'
+        print('fitting error')
         import traceback
-        print traceback.format_exc()
-        print peak_loc
-        print xdata.tolist()
-        print ydata.tolist()
-        print bnds
+        print(traceback.format_exc())
         results = []
     while routines:# and results[-1].success == False:
         routine, opts = routines.pop(0)
