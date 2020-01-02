@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <title>Targeted Peak Search</title>
+    <div>
+        Suppose we want to quantify all peaks containing an immonium signature ion. We can search for this like:
+            --scan-file xxx.mzML --msn-ion 216.043
+        If we wish to add the additional restriction that the fragment is tryptic (ends with a lysine or arginine), we can add their y<sub>1</sub> ions as well.
+            --scan-file xxx.mzML --msn-ion 216.043 147 175
+    </div>
+</head>
+<body>
+
+</body>
+</html>

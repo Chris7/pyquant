@@ -56,34 +56,36 @@
 
           <p>PyQuant is a versatile tool for an assortment of mass spectrometry based analyses.</p>
 
-          <h3><a class="anchor" href="#installation" aria-hidden="true"><span class="octicon octicon-link"></span></a>Installation Options</h3>
+          <h3><a class="anchor" href="#installation" aria-hidden="true"><span class="octicon octicon-link"></span></a>Installation</h3>
           <div>
-            <h4><strong>Docker</strong></h4>
-              <p>Those who are comfortable using <a href="https://www.docker.com">Docker</a> may run PyQuant via the image at <code>chrismit7/pyquant</code>.
+            <h4><a href="https://www.docker.com">Docker</a></h4>
+              <p>Those who are comfortable using Docker may run PyQuant via the image at <code>chrismit7/pyquant</code>.
                 <br>
-                One point to remember is that folders on your local drive must be mounted in docker. For instance, if your files
+                The only point of note is to remember that volumes on your local drive must be mounted in docker, for instance, if your files
                 are located at /home/chris/msexperiment, you would run docker as such:
                 <code>docker run -v /home/chris/msexperiment:/msexperiment chrismit7/pyquant --search-file /msexperiment/search_file.msf -o /msexperiment/pyquant_results</code>
               </p>
-            <h4><strong>Mac/Linux</strong></h4>
-              <p>For Mac and Linux OS's, PyQuant is installable via the standard python packaging tool, pip.</p>
+            <h4>non-windows operating systems</h4>
+              <p>For mac and linux OS's, PyQuant is installable via the standard python packaging tool, pip.</p>
               <code>
                 pip install Cython
-                pip install pyquant-ms
+                pip install pyquant
               </code>
-            <h4><strong>Windows</strong></h4>
-              <em>The easiest way</em>
-              <p>Use <a href="https://www.docker.com">Docker</a></p>
-              <em>The easier way</em>
+            <br>
+            <br>
+            <h4>Windows Installation</h4>
+              <h5>Docker</h5>
+              <p>Docker may be used to run PyQuant on Windows</p>
+              <h5>The easy way</h5>
               <p>
                 This approach may not work for every configuration, but is considerably less involved.
                 <ol style="padding-left: 30px;">
                   <li>Install anaconda 64 bit for python 2.7: continuum.io/downloads#windows</li>
-                  <li>In the terminal: <code>pip install pyquant-ms</code></li>
+                  <li>In the terminal: <code>pip install pyquant</code></li>
                   <li>Confirm you can view PyQuant via <code>pyQuant --help</code></li>
                 </ol>
               </p>
-              <em>The hard way</em>
+              <h5>The hard way</h5>
               <p>
                 The difficult aspect of building on Windows is setting up a compilation environment. Those unfamiliar with compilation on Windows should seek
                 someone comfortable with doing so.<br>
@@ -94,7 +96,7 @@
                 <br>
                 For brevity, they are summarized here, but are not guaranteed to be up to date:
                 <ol style="padding-left: 30px;">
-                  <li>conda install cython</li>
+                  <li><code>conda install cython</code></li>
                   <li>Install <a href="http://www.microsoft.com/en-us/download/confirmation.aspx?id=44266">Microsoft Visual C++ Compiler for Python 2.7</a></li>
                   <li>Patch C:\Anaconda2\Lib\distutils\msvc9compiler.py with the following code:
 <pre>
@@ -116,7 +118,7 @@ def find_vcvarsall(version):
 
                   </li>
 
-                  <li>Install pyquant via pip install pyquant-ms</li>
+                  <li>Install pyquant via pip install pyquant</li>
                 </ol>
             </p>
           </div>
@@ -340,16 +342,6 @@ def find_vcvarsall(version):
               <dd><code>--label-method iTRAQ8 --isobaric-tags --search-file xxx_.msf --reference-label 114 --precursor-ppm 20</code></dd>
             </dl>
 
-          </div>
-
-          <h3><a class="anchor" href="#usage" aria-hidden="true"><span class="octicon octicon-link"></span></a>Graphics</h3>
-          <div>
-            <p>
-              PyQuant provides two graphical outputs -- the fitting for the extracted ion chromatogram as well
-              as the ions selected from each scan. Currently, these graphs can be accessed by clicking on the
-              'peptide' entry for a given row for the XIC, or the 'retention time' entry for a row. In the future,
-              a more full featured data analysis/graphing panel is planned
-            </p>
           </div>
         </section>
 
