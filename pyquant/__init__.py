@@ -3,7 +3,7 @@ import pkg_resources  # part of setuptools
 import argparse
 from pythomics.proteomics import config
 
-version = pkg_resources.require('pyquant-ms')[0].version
+version = pkg_resources.require('pyquant')[0].version
 
 description = """
 This will quantify labeled peaks (such as SILAC) in ms1 spectra. It relies solely on the distance between peaks,
