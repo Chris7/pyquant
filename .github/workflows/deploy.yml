@@ -1,14 +1,12 @@
 name: Deploy-To-Pypi
 
-on: [push]
+on:
+  push:
+    tags:
+    - '*'
 
 jobs:
   build:
-
-    on:
-      push:
-        tags:
-        - '*'
 
     runs-on: ${{ matrix.os }}
     strategy:
