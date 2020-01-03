@@ -1,6 +1,6 @@
 PyQuant
 -------
-[![Build Status](https://github.com/chris7/pyquant/workflows/build/badge.svg)](https://github.com/chris7/pyquant/actions)
+[![Build Status](https://github.com/chris7/pyquant/workflows/Build-and-Test/badge.svg)](https://github.com/chris7/pyquant/actions)
 
 PyQuant is a versatile tool for analysis of mass spectrometry data.
 
