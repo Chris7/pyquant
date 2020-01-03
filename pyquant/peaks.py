@@ -10,18 +10,37 @@ from pythomics.proteomics.config import CARBON_NEUTRON
 from scipy import optimize
 from scipy.signal import convolve, kaiser
 
-if os.environ.get('PYQUANT_DEV', False) == 'True':
+if os.environ.get("PYQUANT_DEV", False) == "True":
     try:
-        import pyximport; pyximport.install(setup_args={'include_dirs': np.get_include()}, reload_support=True)
+        import pyximport
+
+        pyximport.install(
+            setup_args={"include_dirs": np.get_include()}, reload_support=True
+        )
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         pass
 
-from pyquant.cpeaks import bigauss_func, gauss_func, bigauss_ndim, gauss_ndim, bigauss_jac,\
-    gauss_jac, find_nearest, find_nearest_index, get_ppm
-from . import PEAK_FINDING_REL_MAX, PEAK_FIT_MODE_AVERAGE, PEAK_FIT_MODE_FAST, PEAK_FIT_MODE_SLOW
-from .logger import logger
+from .cpeaks import (
+    bigauss_func,
+    gauss_func,
+    bigauss_ndim,
+    gauss_ndim,
+    bigauss_jac,
+    gauss_jac,
+    find_nearest,
+    find_nearest_index,
+    get_ppm,
+)  # noqa: E402
+from . import (
+    PEAK_FINDING_REL_MAX,
+    PEAK_FIT_MODE_AVERAGE,
+    PEAK_FIT_MODE_FAST,
+    PEAK_FIT_MODE_SLOW,
+)  # noqa: E402
+from .logger import logger  # noqa: E402
 from .utils import (
     divide_peaks,
     find_possible_peaks,
@@ -29,44 +48,68 @@ from .utils import (
     interpolate_data,
     savgol_smooth,
     subtract_baseline,
-)
+)  # noqa: E402
 
 if six.PY3:
     xrange = range
 
 _epsilon = np.sqrt(np.finfo(float).eps)
 
-def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, precursor_ppm=5, isotope_ppm=2.5,
-                 isotope_ppms=None, charge=2, debug=False, isotope_offset=0, isotopologue_limit=-1,
-                 theo_dist=None, label=None, skip_isotopes=None, last_precursor=None, quant_method='integrate',
-                 reporter_mode=False, fragment_scan=False, centroid=False, contaminant_search=True):
+
+def findEnvelope(
+    xdata,
+    ydata,
+    measured_mz=None,
+    theo_mz=None,
+    max_mz=None,
+    precursor_ppm=5,
+    isotope_ppm=2.5,
+    isotope_ppms=None,
+    charge=2,
+    debug=False,
+    isotope_offset=0,
+    isotopologue_limit=-1,
+    theo_dist=None,
+    label=None,
+    skip_isotopes=None,
+    last_precursor=None,
+    quant_method="integrate",
+    reporter_mode=False,
+    fragment_scan=False,
+    centroid=False,
+    contaminant_search=True,
+):
     # returns the envelope of isotopic peaks as well as micro envelopes  of each individual cluster
     spacing = CARBON_NEUTRON / float(charge)
-    start_mz = measured_mz if isotope_offset == 0 else measured_mz + isotope_offset * CARBON_NEUTRON / float(charge)
+    start_mz = (
+        measured_mz
+        if isotope_offset == 0
+        else measured_mz + isotope_offset * CARBON_NEUTRON / float(charge)
+    )
     initial_mz = start_mz
     if max_mz is not None:
-        max_mz = max_mz - spacing * 0.9 if isotope_offset == 0 else max_mz + isotope_offset * CARBON_NEUTRON * 0.9 / float(charge)
+        max_mz = (
+            max_mz - spacing * 0.9
+            if isotope_offset == 0
+            else max_mz + isotope_offset * CARBON_NEUTRON * 0.9 / float(charge)
+        )
     if isotope_ppms is None:
         isotope_ppms = {}
     tolerance = isotope_ppms.get(0, precursor_ppm) / 1000000.0
     env_dict, micro_dict, ppm_dict = OrderedDict(), OrderedDict(), OrderedDict()
-    empty_dict = {
-        'envelope': env_dict,
-        'micro_envelopes': micro_dict,
-        'ppms': ppm_dict
-    }
+    empty_dict = {"envelope": env_dict, "micro_envelopes": micro_dict, "ppms": ppm_dict}
 
     non_empty = xdata[ydata > 0]
     if len(non_empty) == 0:
         if debug:
-            print('data is empty')
+            print("data is empty")
         return empty_dict
     first_mz = find_nearest(non_empty, start_mz)
 
     isotope_index = 0
     use_theo = False
     # This is purposefully verbose to be more explicit
-    if reporter_mode == False and fragment_scan == False:
+    if reporter_mode is False and fragment_scan is False:
         while get_ppm(start_mz, first_mz) > tolerance:
             # let's try using our theoretical mass
             first_mz = find_nearest(non_empty, theo_mz)
@@ -97,7 +140,7 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
             tolerance = isotope_ppms.get(isotope_index, isotope_ppm) / 1000000.0
             if isotope_index == 2 or (max_mz is not None and first_mz >= max_mz):
                 if debug:
-                    print('unable to find start ion')
+                    print("unable to find start ion")
                 return empty_dict
 
     precursor_tolerance = tolerance
@@ -114,25 +157,33 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
         quant_method=quant_method,
         reporter_mode=reporter_mode,
         fragment_scan=fragment_scan,
-        centroid=centroid
+        centroid=centroid,
     )
-    start_error = start_info['error']
+    start_error = start_info["error"]
 
-    if 'params' in start_info:
-        if fragment_scan == False and start_info['error'] > tolerance:
-            start = last_precursor if last_precursor is not None else theo_mz if use_theo else start_mz
+    if "params" in start_info:
+        if fragment_scan is False and start_info["error"] > tolerance:
+            start = (
+                last_precursor
+                if last_precursor is not None
+                else theo_mz
+                if use_theo
+                else start_mz
+            )
         else:
-            start = start_info['params'][1]
+            start = start_info["params"][1]
     else:
         if debug:
-            print('empty start info', start_info)
+            print("empty start info", start_info)
         return empty_dict
 
     valid_locations2 = OrderedDict()
     valid_locations2[isotope_index] = [(0, start, find_nearest_index(non_empty, start))]
-    contaminant_int = 0.
+    contaminant_int = 0.0
 
-    if not reporter_mode and (isotopologue_limit == -1 or len(valid_locations2) < isotopologue_limit):
+    if not reporter_mode and (
+        isotopologue_limit == -1 or len(valid_locations2) < isotopologue_limit
+    ):
         isotope_index += 1
         pos = find_nearest_index(non_empty, start) + 1
         offset = isotope_index * spacing
@@ -143,14 +194,26 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
         # check for contaminant at doubly and triply charged positions to see if we're in another ion's peak
         if contaminant_search:
             for i in xrange(2, 4):
-                closest_contaminant = find_nearest(non_empty, start - CARBON_NEUTRON / float(i))
-                closest_contaminant_index = find_nearest_index(xdata, closest_contaminant)
-                contaminant_bounds = findMicro(xdata, ydata, closest_contaminant_index, ppm=precursor_tolerance,
-                                               calc_start_mz=start, start_mz=start, isotope=-1,
-                                               spacing=CARBON_NEUTRON / float(i),
-                                               quant_method=quant_method, centroid=centroid)
-                if contaminant_bounds.get('int', 0) > contaminant_int:
-                    contaminant_int = contaminant_bounds.get('int', 0.)
+                closest_contaminant = find_nearest(
+                    non_empty, start - CARBON_NEUTRON / float(i)
+                )
+                closest_contaminant_index = find_nearest_index(
+                    xdata, closest_contaminant
+                )
+                contaminant_bounds = findMicro(
+                    xdata,
+                    ydata,
+                    closest_contaminant_index,
+                    ppm=precursor_tolerance,
+                    calc_start_mz=start,
+                    start_mz=start,
+                    isotope=-1,
+                    spacing=CARBON_NEUTRON / float(i),
+                    quant_method=quant_method,
+                    centroid=centroid,
+                )
+                if contaminant_bounds.get("int", 0) > contaminant_int:
+                    contaminant_int = contaminant_bounds.get("int", 0.0)
 
         # set the tolerance for isotopes
         tolerance = isotope_ppms.get(isotope_index, isotope_ppm) / 1000000.0
@@ -162,7 +225,11 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
             if max_mz is not None and current_loc >= max_mz:
                 if not valid_locations:
                     break
-                displacement = last_displacement + tolerance if last_displacement is not None else tolerance * 2
+                displacement = (
+                    last_displacement + tolerance
+                    if last_displacement is not None
+                    else tolerance * 2
+                )
             else:
                 displacement = get_ppm(start + offset, current_loc)
             # because the peak location may be between two readings, we use a very tolerance search here and enforce the ppm at the peak fitting stage.
@@ -177,7 +244,9 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
                     offset = spacing * isotope_index
                     displacement = get_ppm(start + offset, current_loc)
                     valid_locations = []
-                    if isotopologue_limit != -1 and (len(valid_locations2) >= isotopologue_limit):
+                    if isotopologue_limit != -1 and (
+                        len(valid_locations2) >= isotopologue_limit
+                    ):
                         break
                 elif displacement > last_displacement and not valid_locations:
                     break
@@ -185,9 +254,14 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
             pos += 1
 
     # combine any overlapping micro envelopes
-    valid_keys = sorted(set(valid_locations2.keys()).intersection(
-        theo_dist.keys() if theo_dist is not None else valid_locations2.keys()))
-    best_locations = [sorted(valid_locations2[i], key=itemgetter(0))[0] for i in valid_keys]
+    valid_keys = sorted(
+        set(valid_locations2.keys()).intersection(
+            theo_dist.keys() if theo_dist is not None else valid_locations2.keys()
+        )
+    )
+    best_locations = [
+        sorted(valid_locations2[i], key=itemgetter(0))[0] for i in valid_keys
+    ]
 
     for index, isotope_index in enumerate(valid_keys):
         if skip_isotopes is not None and isotope_index in skip_isotopes:
@@ -201,31 +275,45 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
         # if micro_index == 0:
         #     pass
         isotope_tolerance = isotope_ppms.get(isotope_index, isotope_ppm) / 1000000.0
-        micro_bounds = findMicro(xdata, ydata, micro_index,
-                                 ppm=precursor_tolerance if isotope_index == 0 else isotope_tolerance,
-                                 calc_start_mz=start, start_mz=start_mz, isotope=isotope_index, spacing=spacing,
-                                 quant_method=quant_method, centroid=centroid)
+        micro_bounds = findMicro(
+            xdata,
+            ydata,
+            micro_index,
+            ppm=precursor_tolerance if isotope_index == 0 else isotope_tolerance,
+            calc_start_mz=start,
+            start_mz=start_mz,
+            isotope=isotope_index,
+            spacing=spacing,
+            quant_method=quant_method,
+            centroid=centroid,
+        )
         if isotope_index == 0:
-            micro_bounds['error'] = start_error
+            micro_bounds["error"] = start_error
 
         micro_dict[isotope_index] = micro_bounds
         env_dict[isotope_index] = micro_index
-        ppm_dict[isotope_index] = micro_bounds.get('error')
+        ppm_dict[isotope_index] = micro_bounds.get("error")
 
     # in all cases, the envelope is going to be either monotonically decreasing, or a parabola (-x^2)
-    isotope_pattern = [(isotope_index, isotope_dict['int']) for isotope_index, isotope_dict in micro_dict.items()]
+    isotope_pattern = [
+        (isotope_index, isotope_dict["int"])
+        for isotope_index, isotope_dict in micro_dict.items()
+    ]
     # Empirically, it's been found that enforcing the theoretical distribution on a per ms1 scan basis leads to
     # significant increases in variance for the XIC, so don't do it here
     if contaminant_int > 1:
         for i, (isotope_index, isotope_intensity) in enumerate(isotope_pattern):
             if contaminant_int > isotope_intensity:
                 if debug:
-                    print('contaminant loss', label)
+                    print("contaminant loss", label)
                 env_dict.pop(isotope_index)
                 micro_dict.pop(isotope_index)
                 ppm_dict.pop(isotope_index)
     # rebuild the pattern after contaminants are removed
-    isotope_pattern = [(isotope_index, isotope_dict['int']) for isotope_index, isotope_dict in micro_dict.items()]
+    isotope_pattern = [
+        (isotope_index, isotope_dict["int"])
+        for isotope_index, isotope_dict in micro_dict.items()
+    ]
     if theo_dist is None:
         # are we monotonically decreasing?
         remove = False
@@ -245,7 +333,7 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
                         remove = True
                     if remove:
                         if debug:
-                            print('pattern2.1 loss', label, j[0], isotope_pattern)
+                            print("pattern2.1 loss", label, j[0], isotope_pattern)
                         env_dict.pop(j[0])
                         micro_dict.pop(j[0])
                         ppm_dict.pop(j[0])
@@ -269,36 +357,72 @@ def findEnvelope(xdata, ydata, measured_mz=None, theo_mz=None, max_mz=None, prec
                             shift = True
                     if remove:
                         if debug:
-                            print('pattern2.2 loss', label, j[0], isotope_pattern)
+                            print("pattern2.2 loss", label, j[0], isotope_pattern)
                         env_dict.pop(j[0])
                         micro_dict.pop(j[0])
                         ppm_dict.pop(j[0])
 
     return {
-        'envelope': env_dict,
-        'micro_envelopes': micro_dict,
-        'ppms': ppm_dict,
+        "envelope": env_dict,
+        "micro_envelopes": micro_dict,
+        "ppms": ppm_dict,
     }
 
-def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_size=0, filter=False, peak_boost=False, bigauss_fit=False,
-                 rt_peak=None, mrm=False, max_peaks=4, debug=False, peak_width_start=3, snr=0, zscore=0, amplitude_filter=0,
-                 peak_width_end=4, fit_baseline=False, rescale=True, fit_negative=False, percentile_filter=0, micro=False,
-                 method_opts=None, smooth=False, r2_cutoff=None, peak_find_method=PEAK_FINDING_REL_MAX, min_slope=None,
-                 min_peak_side_width=3, gap_interpolation=0, min_peak_width=None, min_peak_increase=None, chunk_factor=0.1,
-                 fit_mode=PEAK_FIT_MODE_AVERAGE, baseline_subtraction=False, **kwargs):
+
+def findAllPeaks(
+    xdata,
+    ydata_original,
+    min_dist=0,
+    method=None,
+    local_filter_size=0,
+    filter=False,
+    peak_boost=False,
+    bigauss_fit=False,
+    rt_peak=None,
+    mrm=False,
+    max_peaks=4,
+    debug=False,
+    peak_width_start=3,
+    snr=0,
+    zscore=0,
+    amplitude_filter=0,
+    peak_width_end=4,
+    fit_baseline=False,
+    rescale=True,
+    fit_negative=False,
+    percentile_filter=0,
+    micro=False,
+    method_opts=None,
+    smooth=False,
+    r2_cutoff=None,
+    peak_find_method=PEAK_FINDING_REL_MAX,
+    min_slope=None,
+    min_peak_side_width=3,
+    gap_interpolation=0,
+    min_peak_width=None,
+    min_peak_increase=None,
+    chunk_factor=0.1,
+    fit_mode=PEAK_FIT_MODE_AVERAGE,
+    baseline_subtraction=False,
+    **kwargs
+):
 
     # Deprecation things
-    if 'baseline_correction' in kwargs:
-        fit_baseline = kwargs['baseline_correction']
+    if "baseline_correction" in kwargs:
+        fit_baseline = kwargs["baseline_correction"]
 
     if micro:
         fit_baseline = False
 
     if not micro and gap_interpolation:
-        ydata_original = interpolate_data(xdata, ydata_original, gap_limit=gap_interpolation)
+        ydata_original = interpolate_data(
+            xdata, ydata_original, gap_limit=gap_interpolation
+        )
 
-    rel_peak_constraint = (0.0 if fit_baseline else 0.5)
-    original_max = np.abs(ydata_original).max() if fit_negative else ydata_original.max()
+    rel_peak_constraint = 0.0 if fit_baseline else 0.5
+    original_max = (
+        np.abs(ydata_original).max() if fit_negative else ydata_original.max()
+    )
     amplitude_filter /= original_max
     ydata = ydata_original / original_max
     ydata_peaks = np.copy(ydata)
@@ -309,14 +433,13 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     if smooth and len(ydata) > 5:
         ydata_peaks = savgol_smooth(ydata_peaks)
 
-
     if filter or peak_boost:
         if len(ydata) >= 5:
-            ydata_peaks = convolve(ydata_peaks, kaiser(10, 12), mode='same')
+            ydata_peaks = convolve(ydata_peaks, kaiser(10, 12), mode="same")
 
     ydata_peaks[np.isnan(ydata_peaks)] = 0
 
-    ydata_peaks /= (np.abs(ydata_peaks).max() if fit_negative else ydata_peaks.max())
+    ydata_peaks /= np.abs(ydata_peaks).max() if fit_negative else ydata_peaks.max()
 
     final_peaks = find_possible_peaks(
         xdata,
@@ -351,12 +474,12 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
     chunks = divide_peaks(
         np.abs(ydata_peaks),
         min_sep=5 if 5 > peak_width_end else peak_width_end,
-        chunk_factor=CHUNK_MAP[fit_mode]
+        chunk_factor=CHUNK_MAP[fit_mode],
     )
     if not chunks.any() or chunks[-1] != len(ydata_peaks):
         chunks = np.hstack((chunks, len(ydata_peaks)))
 
-    logger.debug('found: {}\n'.format(final_peaks))
+    logger.debug("found: {}\n".format(final_peaks))
 
     step_size = 4 if bigauss_fit else 3
     if fit_baseline:
@@ -371,15 +494,15 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         initial_bounds.extend([(None, None), (None, None)])
         # print(final_peaks)
     if debug:
-        sys.stderr.write('final peaks: {}\n'.format(final_peaks))
+        sys.stderr.write("final peaks: {}\n".format(final_peaks))
 
     fitted_segments = defaultdict(list)
     for peak_width, peak_info in final_peaks.items():
-        row_peaks = peak_info['peaks']
+        row_peaks = peak_info["peaks"]
         if not row_peaks.any():
             continue
 
-        minima_array = np.array(peak_info['minima'], dtype=np.long)
+        minima_array = np.array(peak_info["minima"], dtype=np.long)
         # Now that we have estimated the parameters for fitting all the data, we divide it up into
         # chunks and fit each segment. The choice to fit all parameters first is to prevent cases
         # where a chunk is dividing two overlapping points and the variance estimate may be too low.
@@ -400,14 +523,14 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             for i in row_peaks:
                 if i >= left_break_point:
                     if i < right_break_point:
-                        segment_row_peaks.append(i-left_break_point)
+                        segment_row_peaks.append(i - left_break_point)
                     else:
                         break
 
             for i in minima_array:
                 if i >= left_break_point:
                     if i < right_break_point:
-                        segment_minima_array.append(i-left_break_point)
+                        segment_minima_array.append(i - left_break_point)
                     else:
                         break
 
@@ -424,33 +547,33 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 rel_peak_constraint=rel_peak_constraint,
                 micro=micro,
                 bigauss_fit=bigauss_fit,
-                fit_baseline=fit_baseline
+                fit_baseline=fit_baseline,
             )
 
             if not segment_guess:
                 continue
 
             args = (segment_x, segment_y, fit_baseline)
-            opts = method_opts or {'maxiter': 1000}
+            opts = method_opts or {"maxiter": 1000}
 
             # Because the amplitude of peaks can vary wildly, we have to make sure our tolerance matters for the
             # smallest peaks. i.e. if we are fitting two peaks, one with an amplitude of 20M and another with 10000,
             # changes in the smaller peak will be below our tolerance and the minimization routine can ignore them
 
-            if 'ftol' not in opts and not micro:
+            if "ftol" not in opts and not micro:
                 min_tol = 1e-10
                 for i, j in zip(segment_bounds, segment_guess):
                     abs_i = np.abs(i[0]) if i[0] else None
                     abs_j = np.abs(j) if j else None
                     if abs_i and abs_i < min_tol:
-                        min_tol = abs_i/5.
+                        min_tol = abs_i / 5.0
                     if abs_j and abs_j < min_tol:
-                        min_tol = abs_j/5.
-                opts['ftol'] = min_tol
+                        min_tol = abs_j / 5.0
+                opts["ftol"] = min_tol
 
             fit_func = bigauss_func if bigauss_fit else gauss_func
 
-            routines = ['SLSQP', 'TNC', 'L-BFGS-B']
+            routines = ["SLSQP", "TNC", "L-BFGS-B"]
             if method:
                 routines = [method]
 
@@ -473,21 +596,44 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 jacobian = bigauss_jac if bigauss_fit else gauss_jac
 
             if debug:
-                print('left and right segments', xdata[left_break_point], xdata[right_break_point-1])
-                print('guess and bnds', segment_guess, segment_bounds)
+                print(
+                    "left and right segments",
+                    xdata[left_break_point],
+                    xdata[right_break_point - 1],
+                )
+                print("guess and bnds", segment_guess, segment_bounds)
             hessian = None  # if bigauss_fit else gauss_hess
 
-            results = [optimize.minimize(fit_func, segment_guess, args, method=routine, bounds=segment_bounds, options=opts,
-                                         jac=jacobian, hess=hessian, tol=1e-3)]
+            results = [
+                optimize.minimize(
+                    fit_func,
+                    segment_guess,
+                    args,
+                    method=routine,
+                    bounds=segment_bounds,
+                    options=opts,
+                    jac=jacobian,
+                    hess=hessian,
+                    tol=1e-3,
+                )
+            ]
             while not results[-1].success and routines:
                 routine = routines.pop(0)
                 results.append(
-                    optimize.minimize(fit_func, segment_guess, args, method=routine, bounds=segment_bounds, options=opts,
-                                      jac=jacobian))
+                    optimize.minimize(
+                        fit_func,
+                        segment_guess,
+                        args,
+                        method=routine,
+                        bounds=segment_bounds,
+                        options=opts,
+                        jac=jacobian,
+                    )
+                )
             if results[-1].success:
                 res = results[-1]
             else:
-                res = sorted(results, key=attrgetter('fun'))[0]
+                res = sorted(results, key=attrgetter("fun"))[0]
             n = len(segment_x)
             k = len(res.x)
             bic = n * np.log(res.fun / n) + k * np.log(n)
@@ -510,7 +656,10 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                         rstd = res.x[i + 2]
                     else:
                         rstd = lstd
-                    if rt_peak is not None and mean - lstd * 2 < rt_peak < mean + rstd * 2:
+                    if (
+                        rt_peak is not None
+                        and mean - lstd * 2 < rt_peak < mean + rstd * 2
+                    ):
                         res._contains_rt = True
 
             if not micro:
@@ -519,9 +668,9 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
                 res.x[::step_size] *= segment_max
                 if fit_baseline:
                     # Slope
-                    res.x[step_size-2::step_size] *= segment_max
+                    res.x[step_size - 2 :: step_size] *= segment_max
                     # Intercept
-                    res.x[step_size-1::step_size] *= segment_max
+                    res.x[step_size - 1 :: step_size] *= segment_max
 
             # TODO: Evaluate the F-test based method
             # if best_res:
@@ -541,10 +690,10 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
 
     # Figure out the best set of fits
     segment_order = sorted(fitted_segments.keys(), key=itemgetter(0, 1))
-    best_fits = {peak_width: {
-        'fit': [],
-        'residual': 0,
-    } for (peak_width, chunk_index) in segment_order}
+    best_fits = {
+        peak_width: {"fit": [], "residual": 0,}
+        for (peak_width, chunk_index) in segment_order
+    }
     for key in segment_order:
         peak_width = key[0]
         fits = fitted_segments[key]
@@ -552,29 +701,44 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         best_segment_res = 0
         best_segment_fit = None
         for bic, res in fits:
-            if bic < lowest_bic or (getattr(best_segment_res, '_contains_rt', False) != True and res._contains_rt == True):
+            if bic < lowest_bic or (
+                getattr(best_segment_res, "_contains_rt", False) is not True
+                and res._contains_rt is True
+            ):
                 if debug:
-                    sys.stderr.write('{} < {}\n'.format(bic, lowest_bic))
-                if res._contains_rt == False and best_segment_res != 0 and best_segment_res._contains_rt == True:
+                    sys.stderr.write("{} < {}\n".format(bic, lowest_bic))
+                if (
+                    res._contains_rt is False
+                    and best_segment_res != 0
+                    and best_segment_res._contains_rt is True
+                ):
                     continue
                 if debug:
-                    print('NEW BEST!', res, 'old was', best_segment_res)
+                    print("NEW BEST!", res, "old was", best_segment_res)
                 best_segment_fit = np.copy(res.x)
                 best_segment_res = res
                 lowest_bic = bic
             if debug:
-                sys.stderr.write('{} - best: {}\n'.format(res, best_segment_fit))
+                sys.stderr.write("{} - best: {}\n".format(res, best_segment_fit))
         else:
             if best_segment_fit is None:
                 return np.array([]), np.inf
-            best_fits[peak_width]['fit'] += best_segment_fit.tolist()
-            best_fits[peak_width]['residual'] += lowest_bic
-            best_fits[peak_width]['contains_rt'] = not best_segment_res._contains_rt  # this is so it sorts lower
+            best_fits[peak_width]["fit"] += best_segment_fit.tolist()
+            best_fits[peak_width]["residual"] += lowest_bic
+            best_fits[peak_width][
+                "contains_rt"
+            ] = not best_segment_res._contains_rt  # this is so it sorts lower
 
     best_fit = sorted(
-        ((best_fits[key[0]]['contains_rt'], best_fits[key[0]]['residual'], best_fits[key[0]]['fit']) for key in
-         segment_order),
-        key=itemgetter(0, 1)
+        (
+            (
+                best_fits[key[0]]["contains_rt"],
+                best_fits[key[0]]["residual"],
+                best_fits[key[0]]["fit"],
+            )
+            for key in segment_order
+        ),
+        key=itemgetter(0, 1),
     )
 
     if not best_fit:
@@ -593,7 +757,9 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             # Return the top n highest peaks
             amplitudes = best_fit[0::step_size]
             peak_indices = sorted(np.argsort(amplitudes)[::-1][:max_peaks])
-        best_fit = np.hstack([best_fit[i*step_size:(i+1)*step_size] for i in peak_indices])
+        best_fit = np.hstack(
+            [best_fit[i * step_size : (i + 1) * step_size] for i in peak_indices]
+        )
 
     peak_func = bigauss_ndim if bigauss_fit else gauss_ndim
     # Get rid of peaks with low r^2
@@ -601,7 +767,7 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
         final_fit = np.array([])
         for peak_index in xrange(0, len(best_fit), step_size):
 
-            peak_info = best_fit[peak_index:peak_index + step_size]
+            peak_info = best_fit[peak_index : peak_index + step_size]
             amplitude, mean, std = peak_info[:3]
             left = mean - 2 * std
             right = mean + 2 * peak_info[3] if bigauss_fit else mean + 2 * std
@@ -614,11 +780,13 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
             for other_peak_index in xrange(0, len(best_fit), step_size):
                 if other_peak_index == peak_index:
                     continue
-                fitted_data -= peak_func(fitted_x, best_fit[other_peak_index:other_peak_index + step_size])
+                fitted_data -= peak_func(
+                    fitted_x, best_fit[other_peak_index : other_peak_index + step_size]
+                )
             ss_tot = np.sum((fitted_data - np.mean(fitted_data)) ** 2)
             explained_data = peak_func(fitted_x, peak_info)
             if fit_baseline:
-                explained_data += fitted_x*peak_info[-2]+peak_info[-1]
+                explained_data += fitted_x * peak_info[-2] + peak_info[-1]
             ss_res = np.sum((fitted_data - explained_data) ** 2)
             coeff_det = 1 - (ss_res / ss_tot)
             if coeff_det >= r2_cutoff:
@@ -626,21 +794,33 @@ def findAllPeaks(xdata, ydata_original, min_dist=0, method=None, local_filter_si
 
         best_fit = final_fit
 
-    residual = sum((ydata-peak_func(xdata, best_fit))**2)
+    residual = sum((ydata - peak_func(xdata, best_fit)) ** 2)
 
     if rescale:  # and not fit_baseline:
         best_fit[::step_size] *= original_max
         if fit_baseline:
             # Slope
-            best_fit[step_size-2::step_size] *= original_max
+            best_fit[step_size - 2 :: step_size] *= original_max
             # Intercept
-            best_fit[step_size-1::step_size] *= original_max
+            best_fit[step_size - 1 :: step_size] *= original_max
 
     return best_fit, residual
 
 
-def findMicro(xdata, ydata, pos, ppm=None, start_mz=None, calc_start_mz=None, isotope=0, spacing=0,
-              quant_method='integrate', fragment_scan=False, centroid=False, reporter_mode=False):
+def findMicro(
+    xdata,
+    ydata,
+    pos,
+    ppm=None,
+    start_mz=None,
+    calc_start_mz=None,
+    isotope=0,
+    spacing=0,
+    quant_method="integrate",
+    fragment_scan=False,
+    centroid=False,
+    reporter_mode=False,
+):
     """
     We want to find the boundaries of our isotopic clusters. Basically we search until our gradient
     changes, this assumes it's roughly gaussian and there is little interference
@@ -659,14 +839,18 @@ def findMicro(xdata, ydata, pos, ppm=None, start_mz=None, calc_start_mz=None, is
         fit = np.abs(error) < tolerance
         peak = [int_val, xdata[pos], 0]
     else:
-        if df_empty_index.size == 0 or not (df_empty_index[0] < xdata[pos] < df_empty_index[-1]):
+        if df_empty_index.size == 0 or not (
+            df_empty_index[0] < xdata[pos] < df_empty_index[-1]
+        ):
             left = 0
             right = xdata.size
         else:
             right = np.searchsorted(df_empty_index, xdata[pos])
             left = right - 1
-            left, right = (np.searchsorted(xdata, df_empty_index[left], side='left'),
-                           np.searchsorted(xdata, df_empty_index[right]))
+            left, right = (
+                np.searchsorted(xdata, df_empty_index[left], side="left"),
+                np.searchsorted(xdata, df_empty_index[right]),
+            )
             right += 1
         new_x = xdata[left:right]
         new_y = ydata[left:right]
@@ -675,15 +859,31 @@ def findMicro(xdata, ydata, pos, ppm=None, start_mz=None, calc_start_mz=None, is
             peaks = (new_y.max(), peak_mean, 0)
             sorted_peaks = [(peaks, get_ppm(start_mz + offset, peak_mean))]
         else:
-            peaks, peak_residuals = findAllPeaks(new_x, new_y, min_dist=(new_x[1] - new_x[0]) * 2.0, peak_width_start=1, micro=True)
+            peaks, peak_residuals = findAllPeaks(
+                new_x,
+                new_y,
+                min_dist=(new_x[1] - new_x[0]) * 2.0,
+                peak_width_start=1,
+                micro=True,
+            )
             sorted_peaks = sorted(
-                [(peaks[i * 3:(i + 1) * 3], get_ppm(start_mz + offset, v)) for i, v in enumerate(peaks[1::3])],
-                key=itemgetter(1))
-        if (fragment_scan == False or reporter_mode) and not within_tolerance(sorted_peaks, tolerance):
+                [
+                    (peaks[i * 3 : (i + 1) * 3], get_ppm(start_mz + offset, v))
+                    for i, v in enumerate(peaks[1::3])
+                ],
+                key=itemgetter(1),
+            )
+        if (fragment_scan is False or reporter_mode) and not within_tolerance(
+            sorted_peaks, tolerance
+        ):
             if calc_start_mz is not None:
                 sorted_peaks2 = sorted(
-                    [(peaks[i * 3:(i + 1) * 3], get_ppm(calc_start_mz + offset, v)) for i, v in enumerate(peaks[1::3])],
-                    key=itemgetter(1))
+                    [
+                        (peaks[i * 3 : (i + 1) * 3], get_ppm(calc_start_mz + offset, v))
+                        for i, v in enumerate(peaks[1::3])
+                    ],
+                    key=itemgetter(1),
+                )
                 if any(filter(lambda x: x[1] < tolerance, sorted_peaks2)):
                     sorted_peaks = sorted_peaks2
                 else:
@@ -697,13 +897,19 @@ def findMicro(xdata, ydata, pos, ppm=None, start_mz=None, calc_start_mz=None, is
             # peak[0] *= new_y.max()
             int_val = gauss_ndim(new_x, peak).sum()
         else:
-            int_val = 0.
+            int_val = 0.0
         if not fit:
             pass
         error = sorted_peaks[0][1]
-    ret_dict = {'int': int_val if fit or (fragment_scan == True and not reporter_mode) else 0., 'int2': int_val, 'bounds': (left, right),
-                'params': peak, 'error': error}
+    ret_dict = {
+        "int": int_val if fit or (fragment_scan is True and not reporter_mode) else 0.0,
+        "int2": int_val,
+        "bounds": (left, right),
+        "params": peak,
+        "error": error,
+    }
     return ret_dict
+
 
 def within_tolerance(arr, tolerance):
     # arr is a list of tuples with the [1] index for each tuple being the ppm error
@@ -712,32 +918,38 @@ def within_tolerance(arr, tolerance):
             return 1
     return 0
 
-def targeted_search(merged_x, merged_y, x_value, attempts=4, max_peak_distance=1., peak_finding_kwargs=None):
+
+def targeted_search(
+    merged_x,
+    merged_y,
+    x_value,
+    attempts=4,
+    max_peak_distance=1.0,
+    peak_finding_kwargs=None,
+):
     rt_attempts = 0
     fitting_y = np.copy(merged_y)
     find_peaks_kwargs = {
-        'filter': False,
-        'bigauss_fit': True,
-        'rt_peak': x_value,
+        "filter": False,
+        "bigauss_fit": True,
+        "rt_peak": x_value,
     }
     peak_finding_kwargs = peak_finding_kwargs or {}
     if peak_finding_kwargs:
-        assert isinstance(peak_finding_kwargs, dict), 'peak_finding_kwargs must be a dictionary'
+        assert isinstance(
+            peak_finding_kwargs, dict
+        ), "peak_finding_kwargs must be a dictionary"
         find_peaks_kwargs.update(peak_finding_kwargs)
-    debug = peak_finding_kwargs.get('debug')
+    debug = peak_finding_kwargs.get("debug")
     found_rt = False
     stepsize = 3
-    if find_peaks_kwargs.get('bigauss_fit'):
+    if find_peaks_kwargs.get("bigauss_fit"):
         stepsize += 1
-    if find_peaks_kwargs.get('fit_baseline'):
+    if find_peaks_kwargs.get("fit_baseline"):
         stepsize += 2
     while rt_attempts < attempts and not found_rt:
-        logger.debug('MERGED PEAK FINDING ATTEMPT %s', rt_attempts)
-        res, residual = findAllPeaks(
-            merged_x,
-            fitting_y,
-            **find_peaks_kwargs
-        )
+        logger.debug("MERGED PEAK FINDING ATTEMPT %s", rt_attempts)
+        res, residual = findAllPeaks(merged_x, fitting_y, **find_peaks_kwargs)
         if not res.any():
             return (None, np.inf)
         rt_peak = bigauss_ndim(np.array([x_value]), res)[0]
@@ -745,8 +957,9 @@ def targeted_search(merged_x, merged_y, x_value, attempts=4, max_peak_distance=1
         found_rt = sum(fitting_y > 0) <= 5 or rt_peak > 0.05
         if not found_rt and rt_peak < 0.05:
             # get the closest peak
-            nearest_peak = \
-            sorted([(i, np.abs(x_value - i)) for i in res[1::stepsize]], key=itemgetter(1))[0][0]
+            nearest_peak = sorted(
+                [(i, np.abs(x_value - i)) for i in res[1::stepsize]], key=itemgetter(1)
+            )[0][0]
             # this is tailored to mass spectrometry elution profiles at the moment, and only evaluates for situtations where the rt and peak
             # are no further than a minute apart.
             if np.abs(nearest_peak - x_value) < max_peak_distance:
@@ -761,15 +974,18 @@ def targeted_search(merged_x, merged_y, x_value, attempts=4, max_peak_distance=1
                     if grad_len < 4:
                         found_rt = True
                     else:
-                        gradient = (np.gradient(fitting_y[rt_index:peak_index]) > 0) if rt_index < peak_index else (
-                            np.gradient(fitting_y[peak_index:rt_index]) < 0)
+                        gradient = (
+                            (np.gradient(fitting_y[rt_index:peak_index]) > 0)
+                            if rt_index < peak_index
+                            else (np.gradient(fitting_y[peak_index:rt_index]) < 0)
+                        )
                         if sum(gradient) >= grad_len - 1:
                             found_rt = True
                 else:
                     found_rt = True
         if not found_rt:
             if debug:
-                print('cannot find rt for', x_value)
+                print("cannot find rt for", x_value)
                 print(merged_x, fitting_y, res, sum(fitting_y > 0))
 
             fitting_y -= bigauss_ndim(merged_x, res)
