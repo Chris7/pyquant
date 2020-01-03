@@ -1,0 +1,15 @@
+*/.git*
+*.pyc
+build
+dist
+ci
+conda.recipe
+.coverage
+data
+dist
+.eggs
+.idea
+.ipynb_checkpoints
+pages
+.tox
+tests/data

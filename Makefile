@@ -1,5 +1,5 @@
-testenv:
-	pip install -r requirements.txt
+devenv:
+	pip install -r requirements-dev.txt
 	pip install -e .
 
 release:
