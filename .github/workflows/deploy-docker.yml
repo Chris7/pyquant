@@ -1,9 +1,9 @@
 name: Deploy-To-Docker
 
-on: [push]
-#  push:
-#    tags:
-#    - '*'
+on:
+  push:
+    tags:
+    - '*'
 
 jobs:
   build:
