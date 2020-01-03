@@ -77,9 +77,7 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
                 if label1 == label2:
                     continue
                 col = "{}/{} Confidence".format(label1, label2)
-                self.assertNotEqual(
-                    sum(pd.isnull(dat["Heavy/Light Confidence"]) is False), 0
-                )
+                self.assertNotEqual(sum(pd.isnull(dat["Heavy/Light Confidence"])), 0)
 
     def test_merge_peaks(self):
         peaks = {
@@ -266,6 +264,60 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
 
         merged = utils.merge_close_peaks(np.array([]), ty, distance=6)
         np.testing.assert_array_equal(merged, np.array([]))
+
+    def test_rel_extrema(self):
+        from scipy.signal import argrelextrema
+
+        y = np.array(
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                720001.9375,
+                3056311.5,
+                5417428.5,
+                5494928.0,
+                2185260.5,
+                4099960.25,
+                6359202.5,
+                7897908.5,
+                5956936.5,
+                3124577.75,
+                533339.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                554049.75,
+                2336927.0,
+                4342714.5,
+                4671674.0,
+                3267909.5,
+                2324766.75,
+                3356381.25,
+                5258928.5,
+                6305622.5,
+                4235590.0,
+                2183502.75,
+                306638.96875,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ]
+        )
+        self.assertTrue(
+            np.array_equal(
+                argrelextrema(y, np.greater), utils.argrelextrema(y, np.greater)
+            )
+        )
 
     def test_get_formatted_mass(self):
         self.assertEqual(

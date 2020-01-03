@@ -465,8 +465,9 @@ def boolrelextrema(data, comparator, axis=0, order=1, mode="clip"):
     datalen = data.shape[axis]
     locs = np.arange(0, datalen)
     data = np.ma.masked_array(data, mask=np.hstack(([1], np.diff(data))) == 0)
+
     if np.ma.is_masked(data):
-        locs = locs[np.ma.getmask(data) is False]
+        locs = locs[~np.ma.getmask(data)]
         main = data.take(locs, axis=axis, mode=mode)
         results = np.zeros(data.shape, dtype=bool)
         for index, result in enumerate(
