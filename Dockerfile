@@ -1,4 +1,4 @@
-FROM ubuntu:14.04
+FROM ubuntu:18.04
 
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -8,23 +8,20 @@ RUN apt-get update && apt-get install -y \
     git \
     libxml2-dev \
     libxslt1-dev \
-    python-dev \
+    python3-dev \
     zlib1g-dev
 
-RUN curl https://bootstrap.pypa.io/get-pip.py -o - | python
-
-RUN pip install cython
-RUN pip install --upgrade setuptools
+RUN curl https://bootstrap.pypa.io/get-pip.py -o - | python3
 
 WORKDIR pyquant
-COPY Makefile MANIFEST.in requirements.txt setup.py tox.ini ./
-RUN pip install -r requirements.txt
+COPY Makefile MANIFEST.in requirements.txt requirements-dev.txt setup.py setup.cfg tox.ini ./
+RUN pip3 install -r requirements-dev.txt
 
 COPY scripts scripts
 COPY tests tests
 COPY pyquant pyquant
 
-RUN pip install -e .
+RUN pip3 install -e .
 
 ENTRYPOINT ["pyQuant"]
 CMD ["--help"]
