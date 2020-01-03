@@ -5,7 +5,6 @@ from copy import deepcopy
 from operator import itemgetter, attrgetter
 
 import numpy as np
-import six
 from pythomics.proteomics.config import CARBON_NEUTRON
 from scipy import optimize
 from scipy.signal import convolve, kaiser
@@ -50,8 +49,6 @@ from .utils import (
     subtract_baseline,
 )  # noqa: E402
 
-if six.PY3:
-    xrange = range
 
 _epsilon = np.sqrt(np.finfo(float).eps)
 
@@ -193,7 +190,7 @@ def findEnvelope(
 
         # check for contaminant at doubly and triply charged positions to see if we're in another ion's peak
         if contaminant_search:
-            for i in xrange(2, 4):
+            for i in range(2, 4):
                 closest_contaminant = find_nearest(
                     non_empty, start - CARBON_NEUTRON / float(i)
                 )
@@ -584,7 +581,7 @@ def findAllPeaks(
             # Check that the bounds for the mean are within the segment so the optimizer doesn't try and cheat
             # by going to solutions outside of the data
             if not micro:
-                for i in xrange(1, len(segment_bounds), step_size):
+                for i in range(1, len(segment_bounds), step_size):
                     if segment_bounds[i][0] < segment_x[0]:
                         segment_bounds[i] = (segment_x[0], segment_bounds[i][1])
                     if segment_bounds[i][1] > segment_x[-1]:
@@ -649,7 +646,7 @@ def findAllPeaks(
             # does this data contain our rt peak?
             res._contains_rt = False
             if rt_peak != 0:
-                for i in xrange(1, res.x.size, step_size):
+                for i in range(1, res.x.size, step_size):
                     mean = res.x[i]
                     lstd = res.x[i + 1]
                     if bigauss_fit:
@@ -765,7 +762,7 @@ def findAllPeaks(
     # Get rid of peaks with low r^2
     if not micro and r2_cutoff is not None:
         final_fit = np.array([])
-        for peak_index in xrange(0, len(best_fit), step_size):
+        for peak_index in range(0, len(best_fit), step_size):
 
             peak_info = best_fit[peak_index : peak_index + step_size]
             amplitude, mean, std = peak_info[:3]
@@ -777,7 +774,7 @@ def findAllPeaks(
             curve_indices = (xdata >= left) & (xdata <= right)
             fitted_data = ydata[curve_indices]
             fitted_x = xdata[curve_indices]
-            for other_peak_index in xrange(0, len(best_fit), step_size):
+            for other_peak_index in range(0, len(best_fit), step_size):
                 if other_peak_index == peak_index:
                     continue
                 fitted_data -= peak_func(
