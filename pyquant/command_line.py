@@ -47,6 +47,10 @@ CRASH_SIGNALS = {signal.SIGSEGV, }
 
 def run_pyquant():
     from . import pyquant_parser
+    if len(sys.argv) == 1:
+        pyquant_parser.print_help()
+        sys.exit()
+
     # for some reason this is being undefined in windows
     import numpy as np
     args = pyquant_parser.parse_args()
@@ -163,6 +167,8 @@ def run_pyquant():
         source_file = args.scan_file[0].name
     elif args.scan_file_dir:
         source_file = os.path.split(args.scan_file_dir)[1]
+    else:
+        pyquant_parser.error('No input files provided. Please provide one via --search-file, --tsv, --scan-file, or --scan-file-dir.')
 
     if args.scan_file:
         nfunc = lambda i: (os.path.splitext(os.path.split(i.name)[1])[0], os.path.abspath(i.name)) if hasattr(i, 'name') else (os.path.splitext(os.path.split(i)[1])[0], os.path.abspath(i))
