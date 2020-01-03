@@ -1,11 +1,13 @@
 *.py[cod]
 __pycache__
 
-# C extensions
+# C extensions and cython compiled files
 *.so
+pyquant/*.c
 
 # Packages
 *.egg
+*.eggs
 *.egg-info
 dist
 build
@@ -33,3 +35,12 @@ htmlcov
 # Git conflicts
 *.orig
 
+# Jupyter notebooks
+*.ipynb_checkpoints
+*.ipynb
+
+# Test data
+data/*
+pq_tests/*
+pq_manual/*
+tests/pq_tests/*

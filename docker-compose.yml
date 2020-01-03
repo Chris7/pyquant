@@ -1,0 +1,10 @@
+version: '2.1'
+
+services:
+  pyquant:
+    image: pyquant:dev
+    build: .
+    volumes:
+      - ./data:/data
+      - ./tests/data:/pyquant/tests/data
+      - ./pyquant:/pyquant/pyquant
