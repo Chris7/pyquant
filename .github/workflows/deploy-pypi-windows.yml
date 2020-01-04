@@ -1,0 +1,36 @@
+name: Deploy-Wheels-To-Pypi
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ${{ matrix.os }}
+    strategy:
+      max-parallel: 4
+      matrix:
+        python-version: [3.7]
+        os: [windows-latest]
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v1
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Setup Build Tools
+      run: |
+        choco install visualstudio2019buildtools
+    - name: Setup Packaging Tools
+      run: |
+       pip install -r requirements-dev.txt
+    - name: Build Wheels
+      run: |
+        python setup.py build
+        python setup.py build_ext --inplace
+        python setup.py bdist_wheel
+    - name: Upload to pypi
+      env:
+        PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+      run: |
+        twine upload -u __token__ -p $PYPI_API_TOKEN dist/*
