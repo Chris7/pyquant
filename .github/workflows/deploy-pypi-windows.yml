@@ -30,7 +30,4 @@ jobs:
     - name: Upload to pypi
       env:
         PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-      run: |
-        dir
-        dir dist
-        twine upload -u __token__ -p $PYPI_API_TOKEN dist dist/*
+      run: twine upload -u __token__ -p $PYPI_API_TOKEN dist dist/*
