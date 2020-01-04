@@ -1,6 +1,9 @@
 name: Deploy-Wheels-To-Pypi
 
-on: [push]
+on:
+  push:
+    tags:
+    - 'v*'
 
 jobs:
   build:
@@ -9,7 +12,7 @@ jobs:
     strategy:
       max-parallel: 4
       matrix:
-        python-version: [3.7]
+        python-version: [3.6, 3.7, 3.8]
         os: [windows-latest]
 
     steps:
@@ -23,7 +26,7 @@ jobs:
        pip install pip --upgrade
        pip install setuptools --upgrade
        pip install -r requirements-dev.txt
-    - name: Build Wheels
+    - name: Build Wheel
       run: |
         SET DISTUTILS_DEBUG=1
         python setup.py --verbose bdist_wheel
