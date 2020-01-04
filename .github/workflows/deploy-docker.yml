@@ -19,7 +19,7 @@ jobs:
     - name: Build image
       run: |
         docker build -t chrismit7/pyquant:latest .
-        docker tag chrismit7/pyquant:latest chrismit7/pyquant:${GITHUB_REF#refs/heads/}
+        docker tag chrismit7/pyquant:latest chrismit7/pyquant:${GITHUB_REF#refs/tags/}
     - name: Upload image to Dockerhub
       env:
         DOCKERHUB_ACCESS_TOKEN: ${{ secrets.DOCKERHUB_ACCESS_TOKEN }}
@@ -27,4 +27,4 @@ jobs:
       run: |
         docker login --username chrismit7 -p ${{ secrets.DOCKERHUB_ACCESS_TOKEN }}
         docker push chrismit7/pyquant:latest
-        docker push chrismit7/pyquant:${GITHUB_REF#refs/heads/}
+        docker push chrismit7/pyquant:${GITHUB_REF#refs/tags/}
