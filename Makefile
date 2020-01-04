@@ -2,16 +2,10 @@ devenv:
 	pip install -r requirements-dev.txt
 	pip install -e .
 
-release:
-	rm -f dist/*
-	python setup.py sdist
-	twine upload dist/*
-
-docker-build:
-	docker build -t chrismit7/pyquant .
-
-docker-release:
-	docker push chrismit7/pyquant
+release/major release/minor release/patch release/test:
+	bumpversion $(@F)
+	git push
+	git push --tags
 
 test:
 	nosetests -I integration_.* --with-coverage --cover-erase --cover-package=pyquant tests
