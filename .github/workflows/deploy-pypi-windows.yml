@@ -32,11 +32,15 @@ jobs:
        pip install -r requirements-dev.txt
     - name: Build Wheels
       run: |
+        venv/Scripts/activate
         python setup.py build
+        dir
         python setup.py build_ext --inplace
+        dir
         python setup.py bdist_wheel
     - name: Upload to pypi
       env:
         PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
       run: |
+        venv/Scripts/activate
         twine upload -u __token__ -p $PYPI_API_TOKEN dist/*
