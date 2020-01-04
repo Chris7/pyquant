@@ -23,6 +23,8 @@ jobs:
         choco install visualstudio2019buildtools
     - name: Setup Packaging Tools
       run: |
+       pip install pip --upgrade
+       pip install setuptools --upgrade
        pip install -r requirements-dev.txt
     - name: Build Wheels
       run: |
