@@ -33,6 +33,8 @@ jobs:
     - name: Build Wheels
       run: |
         venv/Scripts/activate
+        set DISTUTILS_USE_SDK=1
+        set MSSdk=1
         python setup.py build
         dir
         python setup.py build_ext --inplace
