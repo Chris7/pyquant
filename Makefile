@@ -2,7 +2,7 @@ devenv:
 	pip install -r requirements-dev.txt
 	pip install -e .
 
-release/major release/minor release/patch release/test:
+release/major release/minor release/patch release/rc:
 	bumpversion $(@F)
 	git push
 	git push --tags
