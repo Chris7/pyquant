@@ -33,13 +33,11 @@ jobs:
     - name: Build Wheels
       run: |
         venv/Scripts/activate
-        set DISTUTILS_USE_SDK=1
-        set MSSdk=1
         python setup.py build
         dir
         python setup.py build_ext --inplace
         dir
-        python setup.py bdist_wheel
+        python setup.py --verbose bdist_wheel
     - name: Upload to pypi
       env:
         PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
