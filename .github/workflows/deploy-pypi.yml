@@ -21,10 +21,12 @@ jobs:
       uses: actions/setup-python@v1
       with:
         python-version: ${{ matrix.python-version }}
+    - name: Setup Packaging Tools
+      run: |
+       pip install -r requirements-dev.txt
     - name: Upload to pypi
       env:
         PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-      if: matrix.os == 'ubuntu-latest'
       run: |
         python setup.py sdist
         twine upload -u __token__ -p $PYPI_API_TOKEN dist/*
