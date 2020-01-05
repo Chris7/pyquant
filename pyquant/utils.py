@@ -16,8 +16,6 @@ from scipy.special import comb
 from . import PEAK_FINDING_DERIVATIVE, PEAK_FINDING_REL_MAX
 from .logger import logger
 
-if six.PY3:
-    xrange = range
 
 ERRORS = "error" if os.environ.get("PYQUANT_DEV", False) == "True" else "ignore"
 
@@ -35,12 +33,12 @@ def merge_list(starting_list):
 
 def findValleys(y, srt):
     peak = y.iloc[srt]
-    for left in xrange(srt - 1, -1, -1):
+    for left in range(srt - 1, -1, -1):
         val = y.iloc[left]
         if val == 0 or val > peak:
             break
     right = len(y)
-    for right in xrange(srt + 1, len(y)):
+    for right in range(srt + 1, len(y)):
         val = y.iloc[right]
         if val == 0 or val > peak:
             break
@@ -49,7 +47,7 @@ def findValleys(y, srt):
 
 def fit_theo_dist(params, ny, ty):
     right_limit, scaling = params
-    index = xrange(len(ny)) if len(ny) > len(ty) else xrange(len(ty))
+    index = range(len(ny)) if len(ny) > len(ty) else range(len(ty))
     exp_dist = pd.Series(0, index=index)
     theo_dist = pd.Series(0, index=index)
     exp_dist += pd.Series(ny)
@@ -295,7 +293,7 @@ def calculate_theoretical_distribution(peptide=None, elemental_composition=None)
         if out is None:
             out = [0] * len(loops)
         if index != len(loops):
-            for i in xrange(int(n / loops[index]) + 1):
+            for i in range(int(n / loops[index]) + 1):
                 out[index] = i
                 for j in dio_solve(n, loops=loops, index=index + 1, out=out):
                     yield j
@@ -478,7 +476,7 @@ def boolrelextrema(data, comparator, axis=0, order=1, mode="clip"):
     else:
         results = np.ones(data.shape, dtype=bool)
         main = data.take(locs, axis=axis, mode=mode)
-        for shift in xrange(1, order + 1):
+        for shift in range(1, order + 1):
             plus = data.take(locs + shift, axis=axis, mode=mode)
             minus = data.take(locs - shift, axis=axis, mode=mode)
             results &= comparator(main, plus)
@@ -494,7 +492,7 @@ def merge_peaks(peaks_found, debug=False):
 
     final_peaks = {}
     peak_widths = sorted(peaks_found.keys())
-    for peak_width_index in xrange(len(peak_widths) - 1):
+    for peak_width_index in range(len(peak_widths) - 1):
         current_width = peak_widths[peak_width_index]
         next_width = peak_widths[peak_width_index + 1]
         current_peaks = peaks_found[current_width]
@@ -696,7 +694,7 @@ def find_peaks_rel_max(
 def get_cross_points(data, pad=True):
     cross_points = []
     signs = np.sign(data)
-    for i in xrange(len(signs) - 1):
+    for i in range(len(signs) - 1):
         if signs[i] != signs[i + 1]:
             cross_points.append(i)
 
@@ -756,7 +754,7 @@ def find_peaks_derivative(
     cross_points = get_cross_points(smoothed_deriv)
     # Because we take the difference, we need to figure out whether the left or right is the true peak for crosses.
     # By default, cross points returns the left side
-    for i in xrange(len(cross_points)):
+    for i in range(len(cross_points)):
         index = cross_points[i]
         if index < len(ydata):
             if ydata[index] < ydata[index + 1]:
@@ -765,7 +763,7 @@ def find_peaks_derivative(
     if cross_points:
         # Next, we compare crossing points to identify peaks and constrain it using some criteria:
         # slope, peak width
-        for i in xrange(1, len(cross_points) - 1):
+        for i in range(1, len(cross_points) - 1):
             left, center, right = (
                 cross_points[i - 1],
                 cross_points[i],

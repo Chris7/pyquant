@@ -3,8 +3,7 @@ import os
 import unittest
 
 import numpy as np
-import six
-import six.moves.cPickle as pickle
+import pickle
 
 from .utils import timer
 from .mixins import FileMixins, GaussianMixin
@@ -30,11 +29,7 @@ class PeakFindingTests(FileMixins, unittest.TestCase):
         # the max peak for each peak width was combined to the final peak report. The update was to
         # pick the peak_width with the lowest BIC.
         with open(os.path.join(self.data_dir, "peak_data.pickle"), "rb") as peak_file:
-            data = (
-                pickle.load(peak_file, encoding="latin1")
-                if six.PY3
-                else pickle.load(peak_file)
-            )
+            data = pickle.load(peak_file, encoding="latin1")
 
         x, y = data["max_peaks_relative-max"]
         params, residual = peaks.findAllPeaks(
@@ -48,11 +43,7 @@ class PeakFindingTests(FileMixins, unittest.TestCase):
 
     def test_max_peaks_with_rt_peak_regression(self):
         with open(os.path.join(self.data_dir, "peak_data.pickle"), "rb") as peak_file:
-            data = (
-                pickle.load(peak_file, encoding="latin1")
-                if six.PY3
-                else pickle.load(peak_file)
-            )
+            data = pickle.load(peak_file, encoding="latin1")
 
         x, y = data["max_peaks_rt-peak-regression"]
         params, residual = peaks.findAllPeaks(
@@ -62,11 +53,7 @@ class PeakFindingTests(FileMixins, unittest.TestCase):
 
     def test_fit_baseline_derivative(self):
         with open(os.path.join(self.data_dir, "peak_data.pickle"), "rb") as peak_file:
-            data = (
-                pickle.load(peak_file, encoding="latin1")
-                if six.PY3
-                else pickle.load(peak_file)
-            )
+            data = pickle.load(peak_file, encoding="latin1")
 
         x, y = data["max_peaks_rt-peak-regression"]
         params, residual = peaks.findAllPeaks(
@@ -86,11 +73,7 @@ class PeakFindingTests(FileMixins, unittest.TestCase):
         # Regression where a mostly positive dataset with negatives led to -inf values in the data array
         # due to np.max(segment_y) being 0 since all data was negative
         with open(os.path.join(self.data_dir, "peak_data.pickle"), "rb") as peak_file:
-            data = (
-                pickle.load(peak_file, encoding="latin1")
-                if six.PY3
-                else pickle.load(peak_file)
-            )
+            data = pickle.load(peak_file, encoding="latin1")
 
         x, y = data["invalid_operands"]
         params, res = peaks.findAllPeaks(

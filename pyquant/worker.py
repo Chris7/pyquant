@@ -9,7 +9,6 @@ from functools import cmp_to_key
 
 import pandas as pd
 import numpy as np
-import six
 
 from itertools import groupby, combinations
 from collections import OrderedDict, defaultdict
@@ -39,9 +38,6 @@ from .utils import (
     find_common_peak_mean,
     get_scan_resolution,
 )
-
-if six.PY3:
-    xrange = range
 
 
 class Worker(Process):
@@ -96,7 +92,7 @@ class Worker(Process):
         self.shifts.update(
             {
                 sum(silac_masses.keys()): silac_label
-                for silac_label, silac_masses in six.iteritems(self.mass_labels)
+                for silac_label, silac_masses in self.mass_labels.items()
             }
         )
         self.raw_name = raw_name
@@ -686,9 +682,9 @@ class Worker(Process):
                                         "micro_envelopes"
                                     ][0]["params"][1]
                                 added_keys = []
-                                for isotope, vals in six.iteritems(
-                                    envelope["micro_envelopes"]
-                                ):
+                                for isotope, vals in envelope[
+                                    "micro_envelopes"
+                                ].items():
                                     if isotope in finished_isotopes[precursor_label]:
                                         continue
                                     peak_intensity = vals.get("int")
@@ -852,11 +848,11 @@ class Worker(Process):
 
             if self.parser_args.merge_isotopes:
                 new_labels = {}
-                labels = set(v["label"] for i, v in six.iteritems(isotope_labels))
+                labels = set(v["label"] for i, v in isotope_labels.items())
                 for label in labels:
                     to_merge = [
                         (i, v["isotope_index"], v)
-                        for i, v in six.iteritems(isotope_labels)
+                        for i, v in isotope_labels.items()
                         if v["label"] == label
                     ]
                     to_merge.sort(key=operator.itemgetter(1))
@@ -1263,7 +1259,7 @@ class Worker(Process):
                                                 ],
                                                 key=operator.itemgetter(1),
                                             )[0][0]
-                                            for i in reversed(xrange(len(xic_peaks))):
+                                            for i in reversed(range(len(xic_peaks))):
                                                 if xic_peaks[i] == valid_peak:
                                                     continue
                                                 else:
@@ -1553,7 +1549,7 @@ class Worker(Process):
                         isotopes = quant_vals[quant_label].keys()
                         isotope_ints = {i: quant_vals[quant_label][i] for i in isotopes}
                         isotope_residuals = []
-                        for num_of_isotopes in xrange(2, len(isotopes) + 1):
+                        for num_of_isotopes in range(2, len(isotopes) + 1):
                             for combo in combinations(isotopes, num_of_isotopes):
                                 chosen_isotopes = np.array(
                                     [isotope_ints[i] for i in combo]
@@ -1666,7 +1662,7 @@ class Worker(Process):
 
                 if write_html:
                     result_dict.update({"html_info": html_images})
-                for peak_label, peak_data in six.iteritems(peak_info):
+                for peak_label, peak_data in peak_info.items():
                     result_dict.update(
                         {
                             "{}_peaks".format(peak_label): peak_data,
@@ -1676,7 +1672,7 @@ class Worker(Process):
                             ),
                         }
                     )
-            for silac_label, silac_data in six.iteritems(data):
+            for silac_label, silac_data in data.items():
                 precursor = silac_data["precursor"]
                 calc_precursor = silac_data.get(
                     "calibrated_precursor", silac_data["precursor"]

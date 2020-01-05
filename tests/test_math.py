@@ -3,7 +3,6 @@ import unittest
 from random import randint, random
 
 import numpy as np
-from six.moves import xrange
 from sympy import symbols, diff, exp, Piecewise
 
 from .mixins import GaussianMixin
@@ -86,7 +85,7 @@ class MathTests(GaussianMixin, unittest.TestCase):
         ) ** 2
         bigauss = Piecewise((three_gauss, x < u))
         deriv_store = {}
-        for i in xrange(2):
+        for i in range(2):
             subs = [
                 ("a", random()),
                 ("u", randint(1, 10)),
@@ -132,7 +131,7 @@ class MathTests(GaussianMixin, unittest.TestCase):
             )
         ) ** 2
         hess_store = {}
-        for _ in xrange(2):
+        for _ in range(2):
             subs = [
                 ("a", random() + 0.5),
                 ("u", random() * 10),

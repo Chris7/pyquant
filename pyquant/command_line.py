@@ -12,16 +12,14 @@ import sys
 from collections import defaultdict, OrderedDict
 from functools import partial
 from multiprocessing import Queue, Manager
+from queue import Empty
 from string import Template
 
 import pandas as pd
-import six
 from pythomics.proteomics.config import CARBON_NEUTRON, PROTON
 from pythomics.proteomics.parsers import GuessIterator
 from pythomics.proteomics import config
 from scipy.interpolate import UnivariateSpline
-from six.moves.queue import Empty
-from six.moves import xrange
 
 from .reader import Reader
 from .worker import Worker
@@ -658,7 +656,7 @@ def run_pyquant():
 
     silac_shifts = {}
     for silac_label, silac_masses in mass_labels.items():
-        for mass, aas in six.iteritems(silac_masses):
+        for mass, aas in silac_masses.items():
             try:
                 silac_shifts[get_formatted_mass(mass)] |= aas
             except Exception as e:
@@ -673,7 +671,7 @@ def run_pyquant():
         result_queue = Queue()
         reader_in = Queue()
         reader_outs = {"main": Queue()}
-        for i in xrange(threads):
+        for i in range(threads):
             reader_outs[i] = Queue()
 
         msn_map = []
@@ -902,10 +900,10 @@ def run_pyquant():
                             if charge == 0 and not args.mva:
                                 # see if we can figure out the charge state
                                 charge_states = []
-                                for i in xrange(1, 5):
+                                for i in range(1, 5):
                                     charge_peaks_found = 0
                                     peak_height = 0
-                                    for j in xrange(1, 3):
+                                    for j in range(1, 3):
                                         next_peak = ion + CARBON_NEUTRON / float(
                                             i
                                         ) * float(j)
@@ -1027,7 +1025,7 @@ def run_pyquant():
         if args.mva:
             x = []
             y = []
-            for i, v in six.iteritems(rep_map):
+            for i, v in rep_map.items():
                 for j in v:
                     x.append(i[0])
                     y.append(j)
@@ -1076,7 +1074,7 @@ def run_pyquant():
         manager = Manager()
         scan_mask = manager.dict()
 
-        for i in xrange(threads):
+        for i in range(threads):
             worker = Worker(
                 queue=in_queue,
                 results=result_queue,
@@ -1256,7 +1254,7 @@ def run_pyquant():
         sys.stderr.write("{0} processed and placed into queue.\n".format(filename))
 
         # kill the workers
-        [in_queue.put(None) for i in xrange(threads)]
+        [in_queue.put(None) for i in range(threads)]
         RESULT_DICT = {i[0]: "NA" for i in RESULT_ORDER}
         scans_to_export = set([])
         export_mapping = defaultdict(set)
@@ -1368,7 +1366,7 @@ def run_pyquant():
                         most_peaks_found = len(peaks_found)
 
                     xic_peak_summary = OrderedDict()
-                    for isotope_index, isotope_peaks in six.iteritems(peaks_found):
+                    for isotope_index, isotope_peaks in peaks_found.items():
                         if args.export_mzml and args.export_mode == PER_ID:
                             export_mapping[
                                 "{out}_{raw}_{ms1}_{precursor}.mzML".format(
@@ -1384,9 +1382,7 @@ def run_pyquant():
                             ] |= set(
                                 [l for i, v in scans[isotope_index].items() for l in v]
                             )
-                        for xic_peak_index, xic_peak_info in six.iteritems(
-                            isotope_peaks
-                        ):
+                        for xic_peak_index, xic_peak_info in isotope_peaks.items():
                             if args.export_mzml and args.export_mode == PER_PEAK:
                                 export_mapping[
                                     "{out}_{raw}_{ms1}_{precursor}_{isotope}_{peak}.mzML".format(
@@ -1427,7 +1423,7 @@ def run_pyquant():
                                 )
 
                     if args.peaks_n == 1:
-                        for index, values in six.iteritems(xic_peak_summary):
+                        for index, values in xic_peak_summary.items():
                             result_info = RESULT_ORDER[index]
                             if callable(result_info[-1]):
                                 res_dict[result_info[0]] = result_info[-1](values)
@@ -1457,7 +1453,7 @@ def run_pyquant():
 
         if scans_to_export:
             raw_file = GuessIterator(filepath, full=True, store=False)
-            for export_filename, scans in six.iteritems(export_mapping):
+            for export_filename, scans in export_mapping.items():
                 with open(export_filename, "w") as o:
                     raw_file.parser.writeScans(handle=o, scans=sorted(scans))
 
@@ -1475,7 +1471,7 @@ def run_pyquant():
         with open(out.name, "r") as out:
             with open(tmp_file, "w") as o:
                 new_header = out.readline().strip().split("\t")
-                for peak_num in xrange(most_peaks_found):
+                for peak_num in range(most_peaks_found):
                     new_header.extend(
                         ["Peak {} {}".format(peak_num, i[1]) for i in PEAK_REPORTING]
                     )
@@ -1492,9 +1488,7 @@ def run_pyquant():
     peak_data = []
 
     for j in open(temp_file.name, "r"):
-        result = pd.io.json.loads(
-            j if isinstance(j, six.text_type) else j.decode("utf-8")
-        )
+        result = pd.io.json.loads(j if isinstance(j, str) else j.decode("utf-8"))
         res_dict = result["res_dict"]
         res_list = [res_dict["filename"]] + [
             res_dict.get(i[0], "NA") for i in RESULT_ORDER
@@ -1549,16 +1543,10 @@ def run_pyquant():
             html_template.safe_substitute(
                 {
                     "peak_output": base64.b64encode(
-                        gzip.zlib.compress(
-                            peak_map if six.PY2 else six.binary_type(peak_map, "utf-8"),
-                            9,
-                        )
+                        gzip.zlib.compress(bytes(peak_map, "utf-8"), 9,)
                     ).decode("utf-8"),
                     "html_output": base64.b64encode(
-                        gzip.zlib.compress(
-                            html_map if six.PY2 else six.binary_type(html_map, "utf-8"),
-                            9,
-                        )
+                        gzip.zlib.compress(bytes(html_map, "utf-8"), 9,)
                     ).decode("utf-8"),
                 }
             )

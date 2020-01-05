@@ -1,8 +1,6 @@
+import pickle
 import os
 from functools import wraps
-
-import six
-from six.moves import cPickle as pickle
 
 
 def timer(func):
@@ -13,11 +11,7 @@ def timer(func):
         start = time.time()
         val = func(*args, **kwargs)
         elapsed = time.time() - start
-        print(
-            "{} evaluated in {}".format(
-                func.func_name if six.PY2 else func.__name__, elapsed
-            )
-        )
+        print("{} evaluated in {}".format(func.__name__, elapsed))
         return val
 
     return inner
