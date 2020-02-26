@@ -1454,7 +1454,7 @@ def run_pyquant():
         if scans_to_export:
             raw_file = GuessIterator(open(filepath, "rb"), full=True, store=False)
             for export_filename, scans in export_mapping.items():
-                with open(export_filename, "w") as o:
+                with open(export_filename, "wb") as o:
                     raw_file.parser.writeScans(handle=o, scans=sorted(scans))
 
         reader_in.put(None)
