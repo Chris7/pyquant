@@ -6,5 +6,5 @@ services:
     build: .
     volumes:
       - ./data:/data
-      - ./tests/data:/pyquant/tests/data
+      - ./tests:/pyquant/tests
       - ./pyquant:/pyquant/pyquant

@@ -486,5 +486,30 @@ class UtilsTests(GaussianMixin, unittest.TestCase):
         self.assertTrue(sum(baselined - c1) < 1e-10)
 
 
+class TestGetScansUnderPeak(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super(TestGetScansUnderPeak, cls).setUpClass()
+        cls.rt_scan_map = pd.Series({1 + i / 10.0: i for i in range(30)})
+        cls.found_peaks = {
+            0: {
+                0: {"peak_mean": 2, "std": 0.3, "std2": 0.2,},
+                1: {"peak_mean": 1.3, "std": 0.2, "std2": 0.45,},
+            }
+        }
+
+    def test_gets_peaks_under_scan(self):
+        scans = utils.get_scans_under_peaks(self.rt_scan_map, self.found_peaks)
+        self.assertEqual(
+            scans,
+            {
+                0: {
+                    0: {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14},
+                    1: {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                }
+            },
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
