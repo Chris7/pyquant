@@ -433,7 +433,7 @@ def run_pyquant():
     scan_count = len(found_scans)
 
     # before we start, get the information we will be generating
-    labels = mass_labels.keys()
+    labels = list(mass_labels.keys())
     if not labels:
         if ion_search:
             if args.require_all_ions:
@@ -1258,7 +1258,7 @@ def run_pyquant():
         RESULT_DICT = {i[0]: "NA" for i in RESULT_ORDER}
         scans_to_export = set([])
         export_mapping = defaultdict(set)
-        key_map = msn_rt_map.keys()
+        key_map = list(msn_rt_map.keys())
         rt_scan_map = pd.Series(key_map, index=[msn_rt_map[i] for i in key_map])
         rt_scan_map.sort_index(inplace=True)
 
