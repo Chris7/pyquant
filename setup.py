@@ -4,14 +4,7 @@ import os
 from distutils.core import setup
 from setuptools import find_packages
 
-try:
-    from Cython.Build import cythonize
-    import Cython.Distutils
 
-    CYTHON = True
-except ImportError:
-    CYTHON = False
-    print("CYTHON UNAVAILABLE")
 try:
     import numpy
 
@@ -22,6 +15,33 @@ except ImportError:
 
 # allow setup.py to be run from any path
 os.chdir(os.path.normpath(os.path.join(os.path.abspath(__file__), os.pardir)))
+
+
+class defer_cythonize(list):
+    def __init__(self, callback):
+        self._list, self.callback = None, callback
+
+    def c_list(self):
+        if self._list is None:
+            self._list = self.callback()
+        return self._list
+
+    def __iter__(self):
+        for elem in self.c_list():
+            yield elem
+
+    def __getitem__(self, ii):
+        return self.c_list()[ii]
+
+    def __len__(self):
+        return len(self.c_list())
+
+
+def extensions():
+    from Cython.Build import cythonize
+
+    return cythonize("pyquant/*.pyx")
+
 
 setup(
     name="pyquant",
@@ -49,8 +69,7 @@ setup(
         "Operating System :: OS Independent",
         "Programming Language :: Python",
     ],
-    setup_requires=["cython",],
-    cmdclass={"build_ext": Cython.Distutils.build_ext} if CYTHON else {},
-    ext_modules=cythonize("pyquant/*.pyx") if CYTHON else [],
+    setup_requires=["cython", "numpy"],
+    ext_modules=defer_cythonize(extensions),
     include_dirs=[numpy.get_include()] if NUMPY else [],
 )
