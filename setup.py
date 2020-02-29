@@ -1,31 +1,24 @@
 from __future__ import print_function
-
 import os
-from distutils.core import setup
-from setuptools import find_packages
 
-try:
-    from Cython.Build import cythonize
-    import Cython.Distutils
+import numpy
+from setuptools import (
+    Extension,
+    setup,
+    find_packages,
+)
 
-    CYTHON = True
-except ImportError:
-    CYTHON = False
-    print("CYTHON UNAVAILABLE")
-try:
-    import numpy
-
-    NUMPY = True
-except ImportError:
-    NUMPY = False
-    print("NUMPY NOT INSTALLED")
 
 # allow setup.py to be run from any path
 os.chdir(os.path.normpath(os.path.join(os.path.abspath(__file__), os.pardir)))
 
+
+extensions = [Extension(name="pyquant.cpeaks", sources=["pyquant/cpeaks.pyx"])]
+
+
 setup(
     name="pyquant",
-    version="0.3.2",
+    version="0.3.2rc2",
     packages=find_packages(),
     scripts=["scripts/pyQuant"],
     entry_points={"console_scripts": ["pyQuant = pyquant.command_line:run_pyquant",]},
@@ -49,8 +42,7 @@ setup(
         "Operating System :: OS Independent",
         "Programming Language :: Python",
     ],
-    setup_requires=["cython",],
-    cmdclass={"build_ext": Cython.Distutils.build_ext} if CYTHON else {},
-    ext_modules=cythonize("pyquant/*.pyx") if CYTHON else [],
-    include_dirs=[numpy.get_include()] if NUMPY else [],
+    setup_requires=["cython", "numpy"],
+    ext_modules=extensions,
+    include_dirs=[numpy.get_include()],
 )
