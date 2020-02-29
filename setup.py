@@ -1,12 +1,20 @@
 from __future__ import print_function
 import os
 
-import numpy
+# These exceptions are for building pyquant on lambdas, which parse
+# the setup.py file. Sane builders will never hit this
+include_dirs = []
+try:
+    import numpy
+
+    include_dirs.append(numpy.get_include())
+except ImportError:
+    pass
 from setuptools import (
     Extension,
     setup,
     find_packages,
-)
+)  # noqa: E402
 
 
 # allow setup.py to be run from any path
@@ -44,5 +52,5 @@ setup(
     ],
     setup_requires=["cython", "numpy"],
     ext_modules=extensions,
-    include_dirs=[numpy.get_include()],
+    include_dirs=include_dirs,
 )
