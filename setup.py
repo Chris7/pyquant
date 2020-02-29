@@ -1,46 +1,19 @@
 from __future__ import print_function
-
 import os
-from distutils.core import setup
-from setuptools import find_packages
 
+import numpy
+from setuptools import (
+    Extension,
+    setup,
+    find_packages,
+)
 
-try:
-    import numpy
-
-    NUMPY = True
-except ImportError:
-    NUMPY = False
-    print("NUMPY NOT INSTALLED")
 
 # allow setup.py to be run from any path
 os.chdir(os.path.normpath(os.path.join(os.path.abspath(__file__), os.pardir)))
 
 
-class defer_cythonize(list):
-    def __init__(self, callback):
-        self._list, self.callback = None, callback
-
-    def c_list(self):
-        if self._list is None:
-            self._list = self.callback()
-        return self._list
-
-    def __iter__(self):
-        for elem in self.c_list():
-            yield elem
-
-    def __getitem__(self, ii):
-        return self.c_list()[ii]
-
-    def __len__(self):
-        return len(self.c_list())
-
-
-def extensions():
-    from Cython.Build import cythonize
-
-    return cythonize("pyquant/*.pyx")
+extensions = [Extension(name="pyquant.cpeaks", sources=["pyquant/cpeaks.pyx"])]
 
 
 setup(
@@ -70,6 +43,6 @@ setup(
         "Programming Language :: Python",
     ],
     setup_requires=["cython", "numpy"],
-    ext_modules=defer_cythonize(extensions),
-    include_dirs=[numpy.get_include()] if NUMPY else [],
+    ext_modules=extensions,
+    include_dirs=[numpy.get_include()],
 )
