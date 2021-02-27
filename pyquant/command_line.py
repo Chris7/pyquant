@@ -242,10 +242,19 @@ def run_pyquant():
 
         result_iterator = results.iterrows()
 
+        def defloat(value):
+            # Pandas will coerce columns with missing data to floats, resulting in scan ids like
+            # 34284.0
+            try:
+                return int(value)
+            except Exception:
+                pass
+            return value
+
         def tsv_formatter(row):
             row_index, row_info = row
             peptide = row_info[peptide_col].strip() if peptide_col in row_info else ""
-            specId = str(row_info[scan_col])
+            specId = str(defloat(row_info[scan_col]))
             fname = row_info[file_col] if file_col in row_info else raw_file
             charge = float(row_info[charge_col]) if charge_col in row_info else 1
             precursor_mass = (
@@ -709,6 +718,7 @@ def run_pyquant():
             if scan.ms_level == msn_for_quant:
                 msn_rt_map[scan_id] = int(scan.title) if args.mrm else rt
             scan_rt_map[scan_id] = rt
+            # root.debug('%s %s %s %s %s', scan_id, scan.parent, scan.ms_level, scan.mass, scan.charge)
             scan_info_map[scan_id]["parent"] = scan.parent
             scan_info_map[scan_id]["msn"] = scan.ms_level
             scan_info_map[scan_id]["precursor"] = scan.mass
@@ -1351,10 +1361,10 @@ def run_pyquant():
                         scans = get_scans_under_peaks(rt_scan_map, peaks_found)
                         flattened_scans = set(
                             [
-                                l
-                                for i, v in scans.items()
-                                for j, k in v.items()
-                                for l in k
+                                _peak_scan
+                                for _peak_isotope, _peak_isotopes in scans.items()
+                                for _xic_peak_index, _xic_peak_scans in _peak_isotopes.items()
+                                for _peak_scan in _xic_peak_scans
                             ]
                         )
                         scans_to_export |= flattened_scans
@@ -1380,7 +1390,13 @@ def run_pyquant():
                                     }
                                 )
                             ] |= set(
-                                [l for i, v in scans[isotope_index].items() for l in v]
+                                [
+                                    _xic_peak_scans
+                                    for _xic_peak_index, _xic_peak_scans in scans[
+                                        isotope_index
+                                    ].items()
+                                    for _peak_scan in _xic_peak_scans
+                                ]
                             )
                         for xic_peak_index, xic_peak_info in isotope_peaks.items():
                             if args.export_mzml and args.export_mode == PER_PEAK:
