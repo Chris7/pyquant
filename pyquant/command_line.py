@@ -245,7 +245,7 @@ def run_pyquant():
         def tsv_formatter(row):
             row_index, row_info = row
             peptide = row_info[peptide_col].strip() if peptide_col in row_info else ""
-            specId = str(row_info[scan_col])
+            specId = None if args.scan_from_rt else str(row_info[scan_col])
             fname = row_info[file_col] if file_col in row_info else raw_file
             charge = float(row_info[charge_col]) if charge_col in row_info else 1
             precursor_mass = (
@@ -1073,6 +1073,13 @@ def run_pyquant():
         )
         manager = Manager()
         scan_mask = manager.dict()
+        target_scan_rt_series = pd.Series(
+            {
+                scan_id: scan_rt_map[scan_id]
+                for scan_msn, scan_id in msn_map
+                if scan_msn == msn_for_id
+            }
+        )
 
         for i in range(threads):
             worker = Worker(
@@ -1136,6 +1143,13 @@ def run_pyquant():
         for scan_index, raw_scan_info in enumerate(raw_scans):
             target_scan = raw_scan_info["id_scan"]
             quant_scan = raw_scan_info["quant_scan"]
+            if args.scan_from_rt and target_scan["id"] is None:
+                target_scan["id"] = target_scan_rt_series.index[
+                    find_nearest_indices(
+                        target_scan_rt_series.values, np.array([target_scan["rt"]])
+                    )[0]
+                ]
+
             scanId = target_scan["id"]
             scan_mass = target_scan.get("mass")
             if args.mrm:
@@ -1162,6 +1176,8 @@ def run_pyquant():
                             if scan_to_quant is None:
                                 scan_to_quant = child
                             quant_scan["scans"].append(child)
+                elif msn_for_quant == msn_for_id:
+                    scan_to_quant = scanId
                 else:
                     # we will hit this in a normal proteomic run
                     # figure out the ms-1 from the ms level we are at
@@ -1174,6 +1190,7 @@ def run_pyquant():
                             scan_to_quant_ms = scan_info[scan_to_quant]["msn"]
                             if scan_to_quant_ms == msn_for_quant:
                                 scan_to_quant = current_scan
+                                break
                     except KeyError:
                         scan_to_quant = None
                 if scan_to_quant is not None:
@@ -1351,10 +1368,10 @@ def run_pyquant():
                         scans = get_scans_under_peaks(rt_scan_map, peaks_found)
                         flattened_scans = set(
                             [
-                                l
-                                for i, v in scans.items()
-                                for j, k in v.items()
-                                for l in k
+                                scan_id
+                                for peak_isotope, peak_isotope_scans in scans.items()
+                                for xic_peak_index, xic_peak_scans in peak_isotope_scans.items()
+                                for scan_id in xic_peak_scans
                             ]
                         )
                         scans_to_export |= flattened_scans
@@ -1380,7 +1397,13 @@ def run_pyquant():
                                     }
                                 )
                             ] |= set(
-                                [l for i, v in scans[isotope_index].items() for l in v]
+                                [
+                                    scan_id
+                                    for peak_isotope, peak_isotope_scans in scans[
+                                        isotope_index
+                                    ].items()
+                                    for scan_id in peak_isotope_scans
+                                ]
                             )
                         for xic_peak_index, xic_peak_info in isotope_peaks.items():
                             if args.export_mzml and args.export_mode == PER_PEAK:
