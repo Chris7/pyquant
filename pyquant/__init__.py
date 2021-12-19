@@ -153,6 +153,11 @@ tsv_group.add_argument(
     help="The column indicating the raw file the scan is contained in.",
     default="Raw file",
 )
+tsv_group.add_argument(
+    "--scan-from-rt",
+    help="If set, no scan column is expected. The scan closest to RT is used.",
+    action="store_true",
+)
 
 ion_search_group = pyquant_parser.add_argument_group("Targetted Ion Search Parameters")
 ion_search_group.add_argument(

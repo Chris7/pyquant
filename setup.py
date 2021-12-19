@@ -10,11 +10,11 @@ try:
     include_dirs.append(numpy.get_include())
 except ImportError:
     pass
-from setuptools import (
+from setuptools import (  # noqa: E402
     Extension,
     setup,
     find_packages,
-)  # noqa: E402
+)
 
 
 # allow setup.py to be run from any path
@@ -31,15 +31,15 @@ setup(
     scripts=["scripts/pyQuant"],
     entry_points={"console_scripts": ["pyQuant = pyquant.command_line:run_pyquant",]},
     install_requires=[
-        "cython",
-        "numpy",
-        "scipy >= 0.18.*",
-        "patsy",
-        "pythomics >= 0.3.41",
-        "pandas >= 0.24.0",
-        "lxml",
-        "scikit-learn",
-        "simplejson",
+        "cython ~= 0.29",
+        "numpy ~= 1.21",
+        "scipy ~= 1.7",
+        "patsy ~= 0.5",
+        "pythomics >= 0.3.46",
+        "pandas ~= 1.3",
+        "lxml ~= 4.7",
+        "scikit-learn ~= 0.22",
+        "simplejson ~= 3.17",
     ],
     include_package_data=True,
     description="A framework for the analysis of quantitative mass spectrometry data",
