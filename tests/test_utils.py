@@ -511,5 +511,14 @@ class TestGetScansUnderPeak(unittest.TestCase):
         )
 
 
+class TestGetScanIdFromRt(unittest.TestCase):
+    def test_get_scan_id_from_rt(self):
+        scan_map = pd.Series({"id 1": 1.2, "id 2": 1.3, "id 3": 2.3})
+        self.assertEqual(utils.get_scan_id_from_rt(scan_map, 1.0), "id 1")
+        self.assertEqual(utils.get_scan_id_from_rt(scan_map, 1.2), "id 1")
+        self.assertEqual(utils.get_scan_id_from_rt(scan_map, 1.25), "id 2")
+        self.assertEqual(utils.get_scan_id_from_rt(scan_map, 10), "id 3")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -7,7 +7,7 @@ from sympy import symbols, diff, exp, Piecewise
 
 from .mixins import GaussianMixin
 from pyquant import peaks
-from pyquant import cpeaks
+from pyquant import cpeaks_wrapper as cpeaks
 
 
 def get_gauss_value(x, amp, mu, std):
