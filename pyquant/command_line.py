@@ -719,7 +719,6 @@ def run_pyquant():
             if scan.ms_level == msn_for_quant:
                 msn_rt_map[scan_id] = int(scan.title) if args.mrm else rt
             scan_rt_map[scan_id] = rt
-            # root.debug('%s %s %s %s %s', scan_id, scan.parent, scan.ms_level, scan.mass, scan.charge)
             scan_info_map[scan_id]["parent"] = scan.parent
             scan_info_map[scan_id]["msn"] = scan.ms_level
             scan_info_map[scan_id]["precursor"] = scan.mass
