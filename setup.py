@@ -26,7 +26,7 @@ extensions = [Extension(name="pyquant.cpeaks", sources=["pyquant/cpeaks.pyx"])]
 
 setup(
     name="pyquant",
-    version="0.4.1",
+    version="0.4.1rc1",
     packages=find_packages(),
     scripts=["scripts/pyQuant"],
     entry_points={"console_scripts": ["pyQuant = pyquant.command_line:run_pyquant",]},
