@@ -221,6 +221,7 @@ def run_pyquant():
     replicate_file_mapper = {}
 
     if input_found == "tsv":
+        # TODO: Create classes for abstracting this and making it testable
         if args.maxquant:
             peptide_col = "Sequence"
             precursor_col = "Mass"
