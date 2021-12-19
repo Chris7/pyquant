@@ -25,6 +25,7 @@ from .reader import Reader
 from .worker import Worker
 from .utils import (
     find_prior_scan,
+    get_scan_id_from_rt,
     get_scans_under_peaks,
     naninfmean,
     naninfsum,
@@ -32,7 +33,7 @@ from .utils import (
     get_formatted_mass,
 )
 from . import peaks
-from pyquant.cpeaks import find_nearest_indices
+from .cpeaks_wrapper import find_nearest_indices
 
 
 description = """
@@ -1144,11 +1145,9 @@ def run_pyquant():
             target_scan = raw_scan_info["id_scan"]
             quant_scan = raw_scan_info["quant_scan"]
             if args.scan_from_rt and target_scan["id"] is None:
-                target_scan["id"] = target_scan_rt_series.index[
-                    find_nearest_indices(
-                        target_scan_rt_series.values, np.array([target_scan["rt"]])
-                    )[0]
-                ]
+                target_scan["id"] = get_scan_id_from_rt(
+                    target_scan_rt_series, target_scan["rt"]
+                )
 
             scanId = target_scan["id"]
             scan_mass = target_scan.get("mass")

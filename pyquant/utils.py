@@ -14,6 +14,7 @@ from scipy.signal import savgol_filter
 from scipy.special import comb
 
 from . import PEAK_FINDING_DERIVATIVE, PEAK_FINDING_REL_MAX
+from .cpeaks_wrapper import find_nearest_index
 from .logger import logger
 
 
@@ -1138,3 +1139,7 @@ def subtract_baseline(y, components_to_remove=10, dampen_factor=10):
     final = fftpack.irfft(fftpack.ifftshift(filtered))
 
     return final
+
+
+def get_scan_id_from_rt(scan_map, rt):
+    return scan_map.index[find_nearest_index(scan_map.values, rt)]

@@ -1,4 +1,3 @@
-import os
 import sys
 from collections import defaultdict, OrderedDict
 from copy import deepcopy
@@ -9,20 +8,8 @@ from pythomics.proteomics.config import CARBON_NEUTRON
 from scipy import optimize
 from scipy.signal import convolve, kaiser
 
-if os.environ.get("PYQUANT_DEV", False) == "True":
-    try:
-        import pyximport
 
-        pyximport.install(
-            setup_args={"include_dirs": np.get_include()}, reload_support=True
-        )
-    except Exception as e:
-        import traceback
-
-        traceback.print_exc()
-        pass
-
-from .cpeaks import (
+from .cpeaks_wrapper import (
     bigauss_func,
     gauss_func,
     bigauss_ndim,
