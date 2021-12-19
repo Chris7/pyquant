@@ -6,4 +6,5 @@ patsy==0.5.2
 pythomics==0.3.46
 scipy==1.7.3
 scikit-learn==1.0.1
+simplejson==3.17.6
 sympy==1.9
