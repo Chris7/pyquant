@@ -38,7 +38,7 @@ setup(
         "pythomics >= 0.3.46",
         "pandas ~= 1.3",
         "lxml ~= 4.7",
-        "scikit-learn ~= 1.0",
+        "scikit-learn ~= 0.22",
         "simplejson ~= 3.17",
     ],
     include_package_data=True,

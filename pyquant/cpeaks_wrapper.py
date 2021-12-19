@@ -16,14 +16,15 @@ if os.environ.get("PYQUANT_DEV", False) == "True":
         pass
 
 from .cpeaks import (  # noqa: F401
-    bigauss_func,
-    gauss_func,
-    bigauss_ndim,
-    gauss_ndim,
     bigauss_jac,
-    gauss_jac,
+    bigauss_func,
+    bigauss_ndim,
     find_nearest,
     find_nearest_index,
     find_nearest_indices,
+    gauss_func,
+    gauss_hess,
+    gauss_ndim,
+    gauss_jac,
     get_ppm,
 )
