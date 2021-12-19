@@ -5,7 +5,7 @@ services:
     image: pyquant:dev
     build: .
     environment:
-      - PYQUANT_DEV=True
+      PYQUANT_DEV: True
     volumes:
       - ./data:/data
       - ./tests:/pyquant/tests
